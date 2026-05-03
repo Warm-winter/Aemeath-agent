@@ -160,6 +160,7 @@ public class McpChatPlugin
 
         var candidates = new List<string>();
         var baseDir = AppContext.BaseDirectory;
+        candidates.Add(Path.Combine(McpDependencyService.DefaultBinDirectory, exeName));
         candidates.Add(Path.Combine(baseDir, exeName));
         candidates.Add(Path.Combine(baseDir, "bin", exeName));
         candidates.Add(Path.Combine(baseDir, "..", "..", "..", "bin", exeName));

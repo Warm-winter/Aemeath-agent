@@ -97,9 +97,9 @@ This source repository intentionally does not commit generated outputs or large 
 - project `bin/` and `obj/`
 - installer output
 
-The desktop project can optionally copy `bun.exe`, `uv.exe`, `uvw.exe`, and `uvx.exe` from the repository root `bin/` folder when those files exist. They are used by built-in MCP helpers, but `bun.exe` is larger than GitHub's normal single-file limit, so these files should be distributed through GitHub Releases, an installer package, or Git LFS instead of normal Git history.
+The desktop project can optionally copy `bun.exe`, `uv.exe`, `uvw.exe`, and `uvx.exe` from the repository root `bin/` folder when those files exist. They are used by built-in MCP helpers, but `bun.exe` is larger than GitHub's normal single-file limit, so these files should be distributed through Releases, an installer package, or a local runtime cache instead of normal Git history.
 
-The source code still builds without those files; the affected built-in MCP launch helpers simply will not have bundled executables available until you provide them locally.
+The source code still builds without those files. In the app, open `设置中心 -> MCP 配置` and use `检测/下载 MCP 依赖` to download missing `uv.exe` and `bun.exe` into `%AppData%\Aemeath\tools\bin`. The downloader tries multiple China-friendly mirrors and falls back automatically when a mirror is unavailable.
 
 ## Configuration And Privacy
 

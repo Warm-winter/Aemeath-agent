@@ -34,11 +34,14 @@ public partial class ConfigWindow : Window
     private readonly Func<string?>? _currentSessionIdProvider;
     private readonly ParticleEffect _particleEffect;
     private readonly ProviderProbeService _providerProbeService = new();
+    private readonly McpDependencyService _mcpDependencyService = new();
     private readonly LongTermMemoryStore _memoryStore = new();
     private readonly DispatcherTimer _flickerTimer;
     private readonly List<ProviderModel> _currentModelCandidates = new();
     private bool _isLoadingProviderUi;
+    private bool _isInstallingMcpDependencies;
     private string? _selectedMemoryEntryId;
+    private string _lastMcpDependencySource = "本次尚未下载";
     private double _flickerPhase;
 
     public ConfigWindow() : this(new SettingsService(), new NoOpChatService(), null, null)
@@ -80,6 +83,7 @@ public partial class ConfigWindow : Window
         SaveAllButton.Click += async (_, _) => await SaveNonProviderSettingsAsync();
         OpenMcpConfigButton.Click += (_, _) => new McpConfigWindow().ShowDialog(this);
         SetupBuiltinMcpButton.Click += (_, _) => SetupBuiltinMcpServers();
+        DownloadMcpDependenciesButton.Click += async (_, _) => await DownloadMcpDependenciesAsync();
 
         BrowseAvatarButton.Click += async (_, _) => await PickAvatarAsync();
         AvatarMaleRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
@@ -107,6 +111,7 @@ public partial class ConfigWindow : Window
                 _particleEffect.Start(90);
             }
 
+            _ = RefreshMcpDependencyStatusAsync();
             SetupBuiltinMcpServers(showNotification: false);
         };
 
@@ -142,6 +147,7 @@ public partial class ConfigWindow : Window
         AvatarCustomRadio.IsChecked = avatarType == "custom";
         RefreshAvatarPreviewFromSelection();
         SetPreviewImage(ChatBackgroundPreviewImage, _settingsService.Current.ChatBackgroundImagePath);
+        _ = RefreshMcpDependencyStatusAsync();
     }
 
     private async Task SaveProviderAsync()
@@ -800,6 +806,109 @@ public partial class ConfigWindow : Window
         }
     }
 
+    private async Task RefreshMcpDependencyStatusAsync()
+    {
+        try
+        {
+            var status = await _mcpDependencyService.CheckAsync(_settingsService.Current);
+            McpDownloadDirectoryText.Text = McpDependencyService.DefaultBinDirectory;
+            McpUvPathText.Text = status.UvExists ? status.UvPath : "未找到";
+            McpBunPathText.Text = status.BunExists ? status.BunPath : "未找到";
+            McpLastMirrorText.Text = _lastMcpDependencySource;
+            McpDependencyStatusText.Text = status.IsComplete
+                ? "MCP 依赖已就绪。"
+                : $"MCP 依赖未完整：{FormatMissingMcpDependencies(status)}";
+        }
+        catch (Exception ex)
+        {
+            McpDependencyStatusText.Text = $"MCP 依赖检测失败：{ex.Message}";
+        }
+    }
+
+    private async Task DownloadMcpDependenciesAsync()
+    {
+        if (_isInstallingMcpDependencies)
+        {
+            return;
+        }
+
+        _isInstallingMcpDependencies = true;
+        DownloadMcpDependenciesButton.IsEnabled = false;
+        SetupBuiltinMcpButton.IsEnabled = false;
+        try
+        {
+            var status = await _mcpDependencyService.CheckAsync(_settingsService.Current);
+            if (status.IsComplete)
+            {
+                ApplyMcpDependencyStatusToSettings(status);
+                _settingsService.Save();
+                _lastMcpDependencySource = "本地已存在";
+                await RefreshMcpDependencyStatusAsync();
+                ShowSuccess("已检测到 uv.exe 和 bun.exe，不必下载。");
+                return;
+            }
+
+            var progress = new Progress<string>(message => McpDependencyStatusText.Text = message);
+            var result = await _mcpDependencyService.InstallMissingAsync(_settingsService.Current, progress);
+            _settingsService.Save();
+            _lastMcpDependencySource = result.UsedMirrors.Count > 0
+                ? string.Join("、", result.UsedMirrors)
+                : "本次未下载";
+
+            await RefreshMcpDependencyStatusAsync();
+            if (result.Success)
+            {
+                SetupBuiltinMcpServers(showNotification: false);
+                ShowSuccess(result.Message);
+            }
+            else
+            {
+                ShowError(result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "mcp dependency install failed", ex);
+            McpDependencyStatusText.Text = $"MCP 依赖下载失败：{ex.Message}";
+            ShowError($"MCP 依赖下载失败：{ex.Message}");
+        }
+        finally
+        {
+            _isInstallingMcpDependencies = false;
+            DownloadMcpDependenciesButton.IsEnabled = true;
+            SetupBuiltinMcpButton.IsEnabled = true;
+        }
+    }
+
+    private void ApplyMcpDependencyStatusToSettings(McpDependencyStatus status)
+    {
+        if (status.UvExists)
+        {
+            _settingsService.Current.UvExecutablePath = status.UvPath;
+        }
+
+        if (status.BunExists)
+        {
+            _settingsService.Current.BunExecutablePath = status.BunPath;
+        }
+    }
+
+    private static string FormatMissingMcpDependencies(McpDependencyStatus status)
+    {
+        var missing = new List<string>();
+        if (!status.UvExists)
+        {
+            missing.Add("uv.exe");
+        }
+
+        if (!status.BunExists)
+        {
+            missing.Add("bun.exe");
+        }
+
+        return string.Join("、", missing);
+    }
+
     private async Task PickAvatarAsync()
     {
 #pragma warning disable CS0618
@@ -969,24 +1078,7 @@ public partial class ConfigWindow : Window
 
     private static string ResolveBuiltinExecutablePath(string? configuredPath, string exeName)
     {
-        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        var candidates = new[]
-        {
-            Path.Combine(Directory.GetCurrentDirectory(), "bin", exeName),
-            Path.Combine(AppContext.BaseDirectory, "bin", exeName),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "bin", exeName),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "bin", exeName),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "bin", exeName)
-        };
-
-        return candidates
-                   .Select(Path.GetFullPath)
-                   .FirstOrDefault(File.Exists)
-               ?? string.Empty;
+        return McpDependencyService.ResolveExecutablePath(configuredPath, exeName) ?? string.Empty;
     }
 
     private static ProviderModel CloneModel(ProviderModel model)
