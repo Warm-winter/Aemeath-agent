@@ -1,0 +1,35 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aemeath.Desktop.App"
+             RequestedThemeVariant="Dark">
+    <Application.DataTemplates>
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+    
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Aemeath-agent/Styles/AemeathTheme.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon Icon="avares://Aemeath-agent/Assets/app.ico"
+                      ToolTipText="Aemeath-agent">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="唤出小爱" Click="OnTrayShowPetClick"/>
+                        <NativeMenuItem Header="收起桌宠" Click="OnTrayHidePetClick"/>
+                        <NativeMenuItemSeparator/>
+                        <NativeMenuItem Header="退出 Aemeath" Click="OnTrayExitClick"/>
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+</Application>

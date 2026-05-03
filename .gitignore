@@ -1,0 +1,71 @@
+# Build outputs
+**/bin/
+**/obj/
+/publish/
+/installer_output/
+
+# Bundled/runtime binaries are too large for normal GitHub source history.
+# Ship them through Releases, installer packaging, or Git LFS instead.
+/bin/
+
+# IDE and local tooling
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local agent/session state
+.sisyphus/
+
+# Duplicate/source-package assets not used by the solution
+/文件包/
+/小爱头像.png
+
+# Logs, dumps, caches, and temporary files
+*.log
+*.cache
+*.tmp
+*.temp
+*.bak
+*.orig
+*.pid
+*.dmp
+*.dump
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Local app/user data and secrets
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.secret.json
+*.secrets.json
+*.key
+*.pem
+*.pfx
+*.p12
+*.env
+.env*
+settings.json
+mcp_servers.json
+mcp_memory.json
+mcp_memory_store.jsonl
+long_term_memory.json
+
+# Packaged archives and generated installers
+*.zip
+*.7z
+*.rar
+*.msi
+*.exe
+!tools/**/*.iss
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

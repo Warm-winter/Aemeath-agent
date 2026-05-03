@@ -1,0 +1,42 @@
+[
+  {
+    "id": "aemeath-basic",
+    "title": "爱弥斯基础身份",
+    "category": "角色",
+    "aliases": ["爱弥斯", "Aemeath", "小爱", "电子幽灵", "星海轻歌"],
+    "content": "爱弥斯是《鸣潮》中的 5 星热熔属性角色，资料页列出其武器类型为长剑。她来自星炬学院拉贝尔学部，是隧者适格者，如今被描述为在星海轻歌的电子幽灵。",
+    "sourceUrl": "https://wuthering.gg/zh-Hans/characters/aemeath"
+  },
+  {
+    "id": "aemeath-academy",
+    "title": "星炬学院与拉贝尔学部",
+    "category": "背景",
+    "aliases": ["星炬学院", "拉贝尔学部", "隧者适格者", "学院"],
+    "content": "可核验角色资料将爱弥斯与星炬学院拉贝尔学部、隧者适格者身份绑定。项目内对话应把这些作为角色背景事实处理，避免自行扩写未经资料支持的学院制度或剧情细节。",
+    "sourceUrl": "https://wuthering.gg/zh-Hans/characters/aemeath"
+  },
+  {
+    "id": "aemeath-element",
+    "title": "爱弥斯战斗属性",
+    "category": "玩法",
+    "aliases": ["热熔", "长剑", "五星", "5星", "武器", "属性"],
+    "content": "公开资料页显示爱弥斯为 5 星、热熔属性，并列出武器类型为长剑。不同非官方站点若出现差异，回答时应说明以本地资料库收录来源为准。",
+    "sourceUrl": "https://wuthering.gg/zh-Hans/characters/aemeath"
+  },
+  {
+    "id": "aemeath-persona",
+    "title": "项目内小爱人格约束",
+    "category": "项目设定",
+    "aliases": ["性格", "人格", "说话方式", "语气", "俏皮", "活泼"],
+    "content": "本项目系统提示词设定小爱自称“小爱”，性格活泼俏皮、温暖关心用户，解决问题时应优先执行可用工具并给出纯文本反馈。这是项目内角色化助手设定，不应伪称为游戏官方台词。",
+    "sourceUrl": "src/Aemeath.Core/AI/Prompts/AemiSystemPrompt.cs"
+  },
+  {
+    "id": "ww-fact-safety",
+    "title": "鸣潮资料回答边界",
+    "category": "安全边界",
+    "aliases": ["鸣潮", "剧情", "世界观", "今州", "瑝珑", "漂泊者", "共鸣者"],
+    "content": "涉及鸣潮剧情、世界观、角色经历、阵营关系等问题时，应优先检索本地知识库。若本地资料未覆盖具体细节，应明确说明资料不足，不要补写剧情或把推测当事实。",
+    "sourceUrl": "Aemeath local knowledge policy"
+  }
+]

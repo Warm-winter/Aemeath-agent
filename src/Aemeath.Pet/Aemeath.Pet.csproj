@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Aemeath.Pet</RootNamespace>
+    <AssemblyName>Aemeath.Pet</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aemeath.Core\Aemeath.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\assets\daiji.gif">
+      <Link>Assets\daiji.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\yidong.gif">
+      <Link>Assets\yidong.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\dianji.gif">
+      <Link>Assets\dianji.gif</Link>
+    </AvaloniaResource>
+  </ItemGroup>
+
+</Project>

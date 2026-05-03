@@ -1,0 +1,311 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Aemeath.Desktop.Views.ConfigWindow"
+        Width="980" Height="800"
+        MinWidth="780" MinHeight="680"
+        Title="设置中心"
+        Icon="avares://Aemeath-agent/Assets/app.ico">
+  <Window.Styles>
+    <Style Selector="TabControl#SettingsTabControl">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="TabControl#SettingsTabControl TabItem">
+      <Setter Property="MinWidth" Value="164"/>
+      <Setter Property="Margin" Value="0,0,0,8"/>
+      <Setter Property="Padding" Value="15,12"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Foreground" Value="#B9C8E6"/>
+      <Setter Property="Background" Value="#121C2E"/>
+      <Setter Property="BorderBrush" Value="#2B3B5D"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="TabControl#SettingsTabControl TabItem:selected">
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+      <Setter Property="Background" Value="#21365C"/>
+      <Setter Property="BorderBrush" Value="#6FAFE8"/>
+    </Style>
+    <Style Selector="TextBlock.subtle">
+      <Setter Property="Foreground" Value="#B9C8E6"/>
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#7F8CAD"/>
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#23314D"/>
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+      <Setter Property="BorderBrush" Value="#3A4C75"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="13,8"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
+      <Setter Property="Foreground" Value="#07101E"/>
+      <Setter Property="BorderBrush" Value="#8AD2FF"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.ghost">
+      <Setter Property="Background" Value="#142035"/>
+      <Setter Property="BorderBrush" Value="#2F4368"/>
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="#3A1D2B"/>
+      <Setter Property="BorderBrush" Value="#9A4562"/>
+      <Setter Property="Foreground" Value="#FFD9E3"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#182338"/>
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+      <Setter Property="CaretBrush" Value="#FFE07A"/>
+      <Setter Property="BorderBrush" Value="#3A4C75"/>
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="#182338"/>
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+      <Setter Property="BorderBrush" Value="#3A4C75"/>
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+    </Style>
+    <Style Selector="RadioButton">
+      <Setter Property="Foreground" Value="#F7FAFF"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid>
+    <Grid x:Name="BackgroundContainer" IsHitTestVisible="False">
+      <Grid.Background>
+        <RadialGradientBrush Center="50%,35%" GradientOrigin="50%,35%" RadiusX="1" RadiusY="1">
+          <GradientStop Color="#10182A" Offset="0.0"/>
+          <GradientStop Color="#07111F" Offset="0.62"/>
+          <GradientStop Color="#03060C" Offset="1.0"/>
+        </RadialGradientBrush>
+      </Grid.Background>
+      <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.30"/>
+      <Border x:Name="GlowLayerPink" IsHitTestVisible="False">
+        <Border.Background>
+          <RadialGradientBrush Center="14%,22%" RadiusX="58%" RadiusY="58%">
+            <GradientStop Color="#30FF78BE" Offset="0"/>
+            <GradientStop Color="#00FF78BE" Offset="1"/>
+          </RadialGradientBrush>
+        </Border.Background>
+      </Border>
+      <Border x:Name="GlowLayerBlue" IsHitTestVisible="False">
+        <Border.Background>
+          <RadialGradientBrush Center="86%,72%" RadiusX="62%" RadiusY="62%">
+            <GradientStop Color="#366BB7FF" Offset="0"/>
+            <GradientStop Color="#006BB7FF" Offset="1"/>
+          </RadialGradientBrush>
+        </Border.Background>
+      </Border>
+      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.50">
+        <Border.Background>
+          <RadialGradientBrush Center="52%,5%" RadiusX="72%" RadiusY="42%">
+            <GradientStop Color="#16FFE07A" Offset="0"/>
+            <GradientStop Color="#00FFE07A" Offset="1"/>
+          </RadialGradientBrush>
+        </Border.Background>
+      </Border>
+    </Grid>
+
+    <Grid Margin="18" RowDefinitions="Auto,*,Auto">
+      <Border Grid.Row="0" CornerRadius="16" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="16">
+        <Grid ColumnDefinitions="Auto,*">
+          <Border Width="52" Height="52" CornerRadius="26" Background="#182338" BorderBrush="#88FFE07A" BorderThickness="1.5">
+            <Image Source="avares://Aemeath-agent/Assets/app.ico" Stretch="Uniform" Margin="10"/>
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
+            <TextBlock Text="学院档案 / 系统配置" FontSize="24" FontWeight="SemiBold" Foreground="#F7FAFF"/>
+            <TextBlock Text="Startorch Archive" Classes="subtle" FontSize="13"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="1" CornerRadius="18" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="0" Margin="0,14,0,0">
+        <TabControl x:Name="SettingsTabControl" TabStripPlacement="Left" FontSize="14">
+          <TabItem Header="提供商配置">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <Grid ColumnDefinitions="300,*">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="已保存提供商" FontSize="19" FontWeight="SemiBold"/>
+                  <Button x:Name="NewProviderButton" Content="新增提供商" Classes="ghost" HorizontalAlignment="Stretch"/>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ProviderCardsPanel" Spacing="10"/>
+                  </ScrollViewer>
+                </StackPanel>
+
+                <ScrollViewer Grid.Column="1" Margin="18,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                  <StackPanel Spacing="12">
+                    <TextBlock Text="连接与模型" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="ProviderStatusText" Text="选择或新增一个提供商" Classes="subtle"/>
+                    <Grid ColumnDefinitions="*,*">
+                      <StackPanel Spacing="8">
+                        <TextBlock Text="Provider 预设" Classes="subtle"/>
+                        <ComboBox x:Name="ProviderPresetBox"/>
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="8" Margin="12,0,0,0">
+                        <TextBlock Text="提供商名称" Classes="subtle"/>
+                        <TextBox x:Name="ProviderNameBox" Watermark="openai / deepseek / custom"/>
+                      </StackPanel>
+                    </Grid>
+                    <TextBlock Text="API Key" Classes="subtle"/>
+                    <TextBox x:Name="ApiKeyBox" PasswordChar="*"/>
+                    <TextBlock Text="OpenAI 兼容 URL" Classes="subtle"/>
+                    <TextBox x:Name="EndpointBox" Watermark="https://api.openai.com/v1"/>
+                    <TextBlock Text="默认模型" Classes="subtle"/>
+                    <ComboBox x:Name="DefaultModelBox"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox x:Name="ManualModelBox" Watermark="手动添加模型 ID"/>
+                      <Button Grid.Column="1" x:Name="AddManualModelButton" Content="添加" Classes="ghost" Margin="8,0,0,0"/>
+                    </Grid>
+                    <Border CornerRadius="12" BorderBrush="#344A73" BorderThickness="1" Background="#142035" Padding="12" MinHeight="130">
+                      <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ModelsPanel" Spacing="8"/>
+                      </ScrollViewer>
+                    </Border>
+                    <WrapPanel>
+                      <Button x:Name="SaveProviderButton" Content="保存提供商" Classes="primary" MinWidth="118" Margin="0,0,8,8"/>
+                      <Button x:Name="TestProviderButton" Content="测试连接" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
+                      <Button x:Name="FetchModelsButton" Content="获取模型" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
+                    </WrapPanel>
+                  </StackPanel>
+                </ScrollViewer>
+              </Grid>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="记忆管理">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <Grid ColumnDefinitions="330,*">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="长期记忆" FontSize="20" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="MemoryStatusText" Text="本地记忆仅保存在这台电脑" Classes="subtle"/>
+                  <ListBox x:Name="MemoryListBox" MinHeight="430" Background="#142035" BorderBrush="#344A73"/>
+                  <WrapPanel>
+                    <Button x:Name="DeleteMemoryButton" Content="删除选中" Classes="danger" MinWidth="104" Margin="0,0,8,8"/>
+                    <Button x:Name="ClearCurrentSessionMemoryButton" Content="清空当前会话" Classes="danger" MinWidth="128" Margin="0,0,8,8"/>
+                    <Button x:Name="ClearAllMemoryButton" Content="清空全部" Classes="danger" MinWidth="104" Margin="0,0,8,8"/>
+                  </WrapPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="12" Margin="18,0,0,0">
+                  <TextBlock Text="编辑记忆内容" FontSize="20" FontWeight="SemiBold"/>
+                  <TextBox x:Name="MemoryEditorBox"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           VerticalContentAlignment="Top"
+                           MinHeight="360"/>
+                  <Button x:Name="SaveMemoryButton" Content="保存修改" Classes="primary" HorizontalAlignment="Right" MinWidth="116"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="MCP 配置">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <StackPanel Spacing="16">
+                <TextBlock Text="工具接入" FontSize="20" FontWeight="SemiBold"/>
+                <Border CornerRadius="14" BorderBrush="#344A73" BorderThickness="1" Background="#142035" Padding="16">
+                  <StackPanel Spacing="12">
+                    <TextBlock Text="内置 Servers" Classes="subtle"/>
+                    <WrapPanel>
+                      <Button x:Name="SetupBuiltinMcpButton" Content="配置内置 MCP Servers" Classes="primary" MinWidth="190" Margin="0,0,10,0"/>
+                      <Button x:Name="OpenMcpConfigButton" Content="打开 MCP 配置页面" Classes="ghost" MinWidth="170"/>
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="界面与行为">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <StackPanel Spacing="14">
+                <TextBlock Text="桌宠行为" FontSize="20" FontWeight="SemiBold"/>
+                <CheckBox x:Name="AlwaysOnTopBox" Content="桌宠保持窗口最上层"/>
+                <CheckBox x:Name="MinimizeToTrayBox" Content="关闭时收纳到系统托盘"/>
+                <CheckBox x:Name="ParticleEffectsBox" Content="开启背景粒子动效"/>
+                <Border CornerRadius="14" BorderBrush="#344A73" BorderThickness="1" Background="#142035" Padding="16" Margin="0,10,0,0">
+                  <StackPanel Spacing="12">
+                    <TextBlock Text="桌宠外观与互动" FontSize="18" FontWeight="SemiBold"/>
+                    <Grid ColumnDefinitions="*,*">
+                      <StackPanel Spacing="8">
+                        <TextBlock Text="尺寸档位" Classes="subtle"/>
+                        <ComboBox x:Name="PetSizeBox"/>
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="8" Margin="14,0,0,0">
+                        <TextBlock Text="透明度" Classes="subtle"/>
+                        <Slider x:Name="PetOpacitySlider" Minimum="0.65" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+                      </StackPanel>
+                    </Grid>
+                    <CheckBox x:Name="EnablePetBubblesBox" Content="开启桌宠气泡台词"/>
+                    <CheckBox x:Name="EnablePetIdleGreetingBox" Content="开启闲置问候"/>
+                    <CheckBox x:Name="EnablePetEdgeSnapBox" Content="开启边缘吸附"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="语音唤醒">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Porcupine 语音唤醒" FontSize="20" FontWeight="SemiBold"/>
+                <Border CornerRadius="14" BorderBrush="#344A73" BorderThickness="1" Background="#142035" Padding="16">
+                  <StackPanel Spacing="10">
+                    <CheckBox x:Name="EnableWakeWordBox" Content="启用语音唤醒"/>
+                    <TextBlock Text="Picovoice AccessKey" Classes="subtle"/>
+                    <TextBox x:Name="PicovoiceAccessKeyBox" PasswordChar="*" Watermark="AccessKey"/>
+                    <TextBlock Text="关键词：小爱小爱" Classes="muted" FontSize="12"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="用户头像">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Width="112" Height="112" CornerRadius="56" BorderBrush="#88FFE07A" BorderThickness="1.5" Background="#182338">
+                  <Image x:Name="AvatarPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center" Margin="20,0,0,0">
+                  <TextBlock Text="头像档案" FontSize="20" FontWeight="SemiBold"/>
+                  <RadioButton x:Name="AvatarMaleRadio" Content="男（默认）"/>
+                  <RadioButton x:Name="AvatarFemaleRadio" Content="女"/>
+                  <RadioButton x:Name="AvatarCustomRadio" Content="自定义头像"/>
+                  <Button x:Name="BrowseAvatarButton" Content="选择自定义头像" Classes="ghost" HorizontalAlignment="Left" MinWidth="150"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </TabItem>
+
+          <TabItem Header="聊天背景">
+            <Border Background="#B80D1423" Padding="22" CornerRadius="0,18,18,0">
+              <StackPanel Spacing="14">
+                <TextBlock Text="通讯背景" FontSize="20" FontWeight="SemiBold"/>
+                <Border Height="180" CornerRadius="14" BorderBrush="#344A73" BorderThickness="1" Background="#142035">
+                  <Image x:Name="ChatBackgroundPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
+                </Border>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button x:Name="BrowseChatBackgroundButton" Content="选择背景图" Classes="primary" MinWidth="120"/>
+                  <Button x:Name="ClearChatBackgroundButton" Content="清除背景图" Classes="danger" MinWidth="120"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </TabItem>
+        </TabControl>
+      </Border>
+
+      <Border Grid.Row="2" CornerRadius="16" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="14" Margin="0,14,0,0">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock VerticalAlignment="Center" Text="Provider 请在卡片页单独保存；这里保存界面、语音、头像和背景设置" Classes="subtle"/>
+          <Button Grid.Column="1" x:Name="SaveAllButton" Content="保存非 Provider 设置" Classes="primary" MinWidth="170"/>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

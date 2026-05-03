@@ -1,0 +1,38 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Aemeath.Pet.PetWindow"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="125" d:DesignHeight="125"
+        Title="Aemeath Pet"
+        Width="125" Height="125"
+        ShowInTaskbar="False"
+        Topmost="True"
+        IsHitTestVisible="True"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        SystemDecorations="None">
+    
+    <Grid Name="PetGrid" Background="Transparent">
+        <Image Name="PetImage"
+               Stretch="Uniform"
+               IsHitTestVisible="False"/>
+        <Border Name="BubbleHost"
+                IsVisible="False"
+                IsHitTestVisible="False"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                MaxWidth="220"
+                Padding="10,6"
+                CornerRadius="12"
+                Background="#D9172438"
+                BorderBrush="#88FFE07A"
+                BorderThickness="1">
+            <TextBlock Name="BubbleText"
+                       TextWrapping="Wrap"
+                       Foreground="#F7FAFF"
+                       FontSize="12"
+                       LineHeight="16"/>
+        </Border>
+    </Grid>
+</Window>

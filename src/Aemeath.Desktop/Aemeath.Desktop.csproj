@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Aemeath.Desktop</RootNamespace>
+    <AssemblyName>Aemeath-agent</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <DefineTrace>true</DefineTrace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.ReactiveUI" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aemeath.Core\Aemeath.Core.csproj" />
+    <ProjectReference Include="..\Aemeath.Pet\Aemeath.Pet.csproj" />
+    <ProjectReference Include="..\Aemeath.Speech\Aemeath.Speech.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Styles\AemeathTheme.axaml" />
+    <AvaloniaResource Include="..\..\assets\app.ico">
+      <Link>Assets\app.ico</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\xiaoai-avatar.png">
+      <Link>Assets\xiaoai-avatar.png</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\user-male.png">
+      <Link>Assets\user-male.png</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\user-female.png">
+      <Link>Assets\user-female.png</Link>
+    </AvaloniaResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\assets\voice\porcupine_params_zh.pv">
+      <Link>voice\porcupine_params_zh.pv</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\..\assets\voice\小爱小爱_zh_windows_v4_0_0.ppn">
+      <Link>voice\小爱小爱_zh_windows_v4_0_0.ppn</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\..\bin\uv.exe" Condition="Exists('..\..\bin\uv.exe')">
+      <Link>bin\uv.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\..\bin\uvw.exe" Condition="Exists('..\..\bin\uvw.exe')">
+      <Link>bin\uvw.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\..\bin\uvx.exe" Condition="Exists('..\..\bin\uvx.exe')">
+      <Link>bin\uvx.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\..\bin\bun.exe" Condition="Exists('..\..\bin\bun.exe')">
+      <Link>bin\bun.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

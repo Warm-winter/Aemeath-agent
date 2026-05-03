@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AvaloniaVersion>11.2.1</AvaloniaVersion>
+    <UseRidGraph>true</UseRidGraph>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <Authors>Aemeath Team</Authors>
+    <Description>鸣潮爱弥斯 AI 桌宠助手 - 你的个性化智能电脑伙伴</Description>
+    <Copyright>© 2026 Aemeath Team. All rights reserved.</Copyright>
+  </PropertyGroup>
+
+</Project>
