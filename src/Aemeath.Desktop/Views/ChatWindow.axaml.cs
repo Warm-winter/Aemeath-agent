@@ -1282,7 +1282,7 @@ public partial class ChatWindow : Window
         _isLoadingProviderSwitch = true;
         try
         {
-            ProviderQuickSwitchBox.Items.Clear();
+            ResetComboBoxItems(ProviderQuickSwitchBox);
             var currentProvider = SettingsService.NormalizeProviderName(selectedProvider ?? _settingsService.Current.CurrentProvider);
             foreach (var provider in _settingsService.ListProviders())
             {
@@ -1309,32 +1309,48 @@ public partial class ChatWindow : Window
 
     private void RefreshModelQuickSwitch(string? selectedModel = null, string? providerOverride = null)
     {
-        ModelQuickSwitchBox.Items.Clear();
-        var provider = SettingsService.NormalizeProviderName(providerOverride ?? _settingsService.Current.CurrentProvider);
-        var info = _settingsService.GetApiKeyInfo(provider);
-        var currentModel = string.IsNullOrWhiteSpace(selectedModel)
-            ? info?.ModelId ?? _settingsService.Current.DefaultModel
-            : selectedModel;
-        var models = _settingsService.GetProviderModels(provider, enabledOnly: true).ToList();
-        if (!string.IsNullOrWhiteSpace(currentModel) &&
-            models.All(m => !string.Equals(m.Id, currentModel, StringComparison.OrdinalIgnoreCase)))
+        var wasLoadingProviderSwitch = _isLoadingProviderSwitch;
+        _isLoadingProviderSwitch = true;
+        try
         {
-            models.Insert(0, new ProviderModel { Id = currentModel, IsEnabled = true });
-        }
+            ResetComboBoxItems(ModelQuickSwitchBox);
+            var provider = SettingsService.NormalizeProviderName(providerOverride ?? _settingsService.Current.CurrentProvider);
+            var info = _settingsService.GetApiKeyInfo(provider);
+            var currentModel = string.IsNullOrWhiteSpace(selectedModel)
+                ? info?.ModelId ?? _settingsService.Current.DefaultModel
+                : selectedModel;
+            var models = _settingsService.GetProviderModels(provider, enabledOnly: true).ToList();
+            if (!string.IsNullOrWhiteSpace(currentModel) &&
+                models.All(m => !string.Equals(m.Id, currentModel, StringComparison.OrdinalIgnoreCase)))
+            {
+                models.Insert(0, new ProviderModel { Id = currentModel, IsEnabled = true });
+            }
 
-        foreach (var model in models)
-        {
-            var item = new ComboBoxItem
+            foreach (var model in models)
             {
-                Content = model.Id,
-                Tag = model.Id
-            };
-            ModelQuickSwitchBox.Items.Add(item);
-            if (string.Equals(model.Id, currentModel, StringComparison.OrdinalIgnoreCase))
-            {
-                ModelQuickSwitchBox.SelectedItem = item;
+                var item = new ComboBoxItem
+                {
+                    Content = model.Id,
+                    Tag = model.Id
+                };
+                ModelQuickSwitchBox.Items.Add(item);
+                if (string.Equals(model.Id, currentModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    ModelQuickSwitchBox.SelectedItem = item;
+                }
             }
         }
+        finally
+        {
+            _isLoadingProviderSwitch = wasLoadingProviderSwitch;
+        }
+    }
+
+    private static void ResetComboBoxItems(ComboBox comboBox)
+    {
+        comboBox.SelectedIndex = -1;
+        comboBox.SelectedItem = null;
+        comboBox.Items.Clear();
     }
 
     private async Task SwitchQuickProviderAsync()

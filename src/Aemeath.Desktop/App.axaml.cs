@@ -24,6 +24,7 @@ public partial class App : Application
     private PetWindow? _petWindow;
     private WakeWordService? _wakeWordService;
     private readonly SemaphoreSlim _wakeWordSemaphore = new(1, 1);
+    private bool _isExiting;
 
     public override void Initialize()
     {
@@ -117,6 +118,11 @@ public partial class App : Application
                 _chatService,
                 () => _ = RestartWakeWordServiceAsync(),
                 () => _chatWindow?.CurrentSessionId);
+            _configWindow.Closed += (_, _) =>
+            {
+                AppLogger.Info("config", "config window closed");
+                _configWindow = null;
+            };
             _configWindow.Show();
             return;
         }
@@ -126,6 +132,11 @@ public partial class App : Application
 
     private void OnPetWindowClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         if (_settingsService?.Current.MinimizeToTray != true)
         {
             return;
@@ -156,8 +167,37 @@ public partial class App : Application
 
     private void OnTrayExitClick(object? sender, EventArgs e)
     {
+        AppLogger.Info("app", "tray exit requested");
+        _isExiting = true;
         DisposeWakeWordService();
+
+        CloseWindow(_chatWindow, "chat");
+        _chatWindow = null;
+
+        CloseWindow(_configWindow, "config");
+        _configWindow = null;
+
+        CloseWindow(_petWindow, "pet");
+        _petWindow = null;
+
         _desktop?.Shutdown();
+    }
+
+    private static void CloseWindow(Window? window, string source)
+    {
+        if (window is null)
+        {
+            return;
+        }
+
+        try
+        {
+            window.Close();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(source, "failed to close window during tray exit", ex);
+        }
     }
 
     private async Task RestartWakeWordServiceAsync()
