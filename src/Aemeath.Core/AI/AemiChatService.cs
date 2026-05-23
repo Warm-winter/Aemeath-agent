@@ -134,7 +134,13 @@ public class AemiChatService : IChatService
         }
     }
 
-    public async Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default)
+    public Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default)
+        => SendMessageAsync(message, null, cancellationToken);
+
+    public async Task<string> SendMessageAsync(
+        string message,
+        IReadOnlyList<ChatAttachment>? attachments,
+        CancellationToken cancellationToken = default)
     {
         if (_currentKernel is null)
         {
@@ -144,7 +150,10 @@ public class AemiChatService : IChatService
         IsProcessing = true;
         try
         {
-            var response = await _currentKernel.SendMessageAsync(EnrichMessageWithKnowledge(message), cancellationToken);
+            var response = await _currentKernel.SendMessageAsync(
+                EnrichMessageWithKnowledge(message),
+                attachments,
+                cancellationToken);
             return FormatAemiResponse(response);
         }
         finally

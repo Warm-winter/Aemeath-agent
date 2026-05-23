@@ -7,10 +7,7 @@ using Aemeath.Core.Configuration;
 using Aemeath.Desktop.Services;
 using Aemeath.Desktop.Views;
 using Aemeath.Pet;
-using Aemeath.Speech;
 using Avalonia.Threading;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Aemeath.Desktop;
 
@@ -22,8 +19,6 @@ public partial class App : Application
     private ChatWindow? _chatWindow;
     private ConfigWindow? _configWindow;
     private PetWindow? _petWindow;
-    private WakeWordService? _wakeWordService;
-    private readonly SemaphoreSlim _wakeWordSemaphore = new(1, 1);
     private bool _isExiting;
 
     public override void Initialize()
@@ -46,10 +41,6 @@ public partial class App : Application
                 OpenConfigWindow,
                 _settingsService);
 
-            _wakeWordService = new WakeWordService();
-            _wakeWordService.WakeWordDetected += OnWakeWordDetected;
-            _ = RestartWakeWordServiceAsync();
-
             _petWindow.Closing += OnPetWindowClosing;
             desktop.MainWindow = _petWindow;
         }
@@ -67,8 +58,13 @@ public partial class App : Application
         if (_chatWindow is null)
         {
             _chatWindow = new ChatWindow(_chatService, _settingsService);
-            _chatWindow.Closed += (_, _) =>
+            _chatWindow.ActivityChanged += OnChatActivityChanged;
+            _chatWindow.Closed += (closedSender, _) =>
             {
+                if (closedSender is ChatWindow window)
+                {
+                    window.ActivityChanged -= OnChatActivityChanged;
+                }
                 AppLogger.Info("chat", "chat window closed");
                 _chatWindow = null;
             };
@@ -99,9 +95,57 @@ public partial class App : Application
         {
             AppLogger.Error("chat", "failed to show existing chat window, recreating", ex);
             _chatWindow = new ChatWindow(_chatService, _settingsService);
-            _chatWindow.Closed += (_, _) => _chatWindow = null;
+            _chatWindow.ActivityChanged += OnChatActivityChanged;
+            _chatWindow.Closed += (closedSender, _) =>
+            {
+                if (closedSender is ChatWindow window)
+                {
+                    window.ActivityChanged -= OnChatActivityChanged;
+                }
+                _chatWindow = null;
+            };
             _chatWindow.Show();
         }
+    }
+
+    private void OnChatActivityChanged(object? sender, ChatActivityChangedEventArgs e)
+    {
+        if (_petWindow is null)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_petWindow is null)
+            {
+                return;
+            }
+
+            switch (e.Kind)
+            {
+                case ChatActivityKind.Sending:
+                    _petWindow.SetActivityState(PetState.Running, "小爱正在执行任务。");
+                    break;
+                case ChatActivityKind.VoiceListening:
+                    _petWindow.SetActivityState(PetState.Waiting, "小爱正在聆听。");
+                    break;
+                case ChatActivityKind.ToolWaiting:
+                    _petWindow.SetActivityState(PetState.Waiting, "有高风险操作需要确认。");
+                    break;
+                case ChatActivityKind.Completed:
+                    _petWindow.SetActivityState(null);
+                    _ = _petWindow.PlayTemporaryStateAsync(PetState.Review, TimeSpan.FromSeconds(1.4), "任务反馈完成。");
+                    break;
+                case ChatActivityKind.Failed:
+                    _petWindow.SetActivityState(null);
+                    _ = _petWindow.PlayTemporaryStateAsync(PetState.Failed, TimeSpan.FromSeconds(1.6), "信号异常，小爱需要再试一次。");
+                    break;
+                default:
+                    _petWindow.SetActivityState(null);
+                    break;
+            }
+        }, DispatcherPriority.Background);
     }
 
     private void OpenConfigWindow()
@@ -116,7 +160,6 @@ public partial class App : Application
             _configWindow = new ConfigWindow(
                 _settingsService,
                 _chatService,
-                () => _ = RestartWakeWordServiceAsync(),
                 () => _chatWindow?.CurrentSessionId);
             _configWindow.Closed += (_, _) =>
             {
@@ -169,7 +212,6 @@ public partial class App : Application
     {
         AppLogger.Info("app", "tray exit requested");
         _isExiting = true;
-        DisposeWakeWordService();
 
         CloseWindow(_chatWindow, "chat");
         _chatWindow = null;
@@ -200,79 +242,4 @@ public partial class App : Application
         }
     }
 
-    private async Task RestartWakeWordServiceAsync()
-    {
-        if (_settingsService is null || _wakeWordService is null)
-        {
-            return;
-        }
-
-        _wakeWordService.Stop();
-
-        if (!_settingsService.Current.EnableWakeWord)
-        {
-            AppLogger.Info("wakeword", "wake word disabled");
-            return;
-        }
-
-        var accessKey = _settingsService.Current.PicovoiceAccessKey;
-        if (string.IsNullOrWhiteSpace(accessKey))
-        {
-            AppLogger.Info("wakeword", "wake word not started because access key is missing");
-            return;
-        }
-
-        await Task.Run(() =>
-        {
-            if (_wakeWordService.Start(accessKey))
-            {
-                AppLogger.Info("wakeword", "wake word listener started");
-                return;
-            }
-
-            AppLogger.Error("wakeword", $"wake word listener failed: {_wakeWordService.LastError}");
-        });
-    }
-
-    private void OnWakeWordDetected(object? sender, WakeWordDetectedEventArgs e)
-    {
-        AppLogger.Info("wakeword", $"wake word detected: {e.KeywordLabel}");
-        Dispatcher.UIThread.Post(async () => await HandleWakeWordDetectedAsync(), DispatcherPriority.Background);
-    }
-
-    private async Task HandleWakeWordDetectedAsync()
-    {
-        if (!await _wakeWordSemaphore.WaitAsync(0))
-        {
-            return;
-        }
-
-        try
-        {
-            _wakeWordService?.Stop();
-            OpenChatWindow();
-
-            if (_chatWindow is not null)
-            {
-                await _chatWindow.HandleWakeWordAsync();
-            }
-        }
-        finally
-        {
-            await RestartWakeWordServiceAsync();
-            _wakeWordSemaphore.Release();
-        }
-    }
-
-    private void DisposeWakeWordService()
-    {
-        if (_wakeWordService is null)
-        {
-            return;
-        }
-
-        _wakeWordService.WakeWordDetected -= OnWakeWordDetected;
-        _wakeWordService.Dispose();
-        _wakeWordService = null;
-    }
 }

@@ -19,8 +19,8 @@
 
     <TrayIcon.Icons>
         <TrayIcons>
-            <TrayIcon Icon="avares://Aemeath-agent/Assets/app.ico"
-                      ToolTipText="Aemeath-agent">
+            <TrayIcon Icon="avares://Aemeath-agent/Assets/static/app.ico"
+                      ToolTipText="Aemeath / 小爱">
                 <TrayIcon.Menu>
                     <NativeMenu>
                         <NativeMenuItem Header="唤出小爱" Click="OnTrayShowPetClick"/>

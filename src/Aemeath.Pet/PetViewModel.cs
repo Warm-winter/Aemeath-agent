@@ -61,5 +61,12 @@ public enum PetState
 {
     Idle,
     Follow,
-    Click
+    FollowLeft,
+    Click,
+    Wave,
+    Jump,
+    Failed,
+    Waiting,
+    Running,
+    Review
 }

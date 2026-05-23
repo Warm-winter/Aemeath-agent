@@ -3,82 +3,111 @@
         xmlns:i="using:Avalonia.Input"
         xmlns:behaviors="using:Aemeath.Desktop.Behaviors"
         x:Class="Aemeath.Desktop.Views.ChatWindow"
-        Width="900" Height="760"
+        Width="940" Height="780"
         MinWidth="660" MinHeight="620"
-        Title="小爱对话"
-        Icon="avares://Aemeath-agent/Assets/app.ico">
+        Title="&#x5C0F;&#x7231;&#x5BF9;&#x8BDD;"
+        Icon="avares://Aemeath-agent/Assets/static/app.ico">
   <Window.Styles>
     <Style Selector="TextBlock.subtle">
-      <Setter Property="Foreground" Value="#B9C8E6"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="#7F8CAD"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.faint">
+      <Setter Property="Foreground" Value="{StaticResource AemiTextFaintBrush}"/>
     </Style>
     <Style Selector="Button">
-      <Setter Property="Background" Value="#23314D"/>
-      <Setter Property="Foreground" Value="#F7FAFF"/>
-      <Setter Property="BorderBrush" Value="#3A4C75"/>
+      <Setter Property="Background" Value="#24304C"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="8"/>
       <Setter Property="Padding" Value="13,8"/>
+      <Setter Property="MinHeight" Value="36"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="#2E3C60"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
+    </Style>
+    <Style Selector="Button:pressed">
+      <Setter Property="Background" Value="#1B2540"/>
+    </Style>
+    <Style Selector="Button:focus">
+      <Setter Property="BorderBrush" Value="{StaticResource AemiFocusBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled">
+      <Setter Property="Opacity" Value="0.48"/>
     </Style>
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
       <Setter Property="Foreground" Value="#07101E"/>
-      <Setter Property="BorderBrush" Value="#8AD2FF"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiHaloSoftBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#142035"/>
-      <Setter Property="BorderBrush" Value="#2F4368"/>
+      <Setter Property="Background" Value="#161F36"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
     </Style>
     <Style Selector="Button.danger">
       <Setter Property="Background" Value="#3A1D2B"/>
-      <Setter Property="BorderBrush" Value="#9A4562"/>
+      <Setter Property="BorderBrush" Value="#A94B68"/>
       <Setter Property="Foreground" Value="#FFD9E3"/>
     </Style>
     <Style Selector="Button.icon">
       <Setter Property="Padding" Value="6"/>
+      <Setter Property="MinWidth" Value="44"/>
+      <Setter Property="MinHeight" Value="44"/>
     </Style>
     <Style Selector="ComboBox">
-      <Setter Property="Background" Value="#182338"/>
-      <Setter Property="Foreground" Value="#F7FAFF"/>
-      <Setter Property="BorderBrush" Value="#3A4C75"/>
+      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="MinHeight" Value="34"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="12,9"/>
     </Style>
   </Window.Styles>
+
   <Grid>
     <Grid x:Name="BackgroundContainer" IsHitTestVisible="False">
       <Grid.Background>
-        <RadialGradientBrush Center="52%,42%" GradientOrigin="52%,42%" RadiusX="1.05" RadiusY="1.05">
-          <GradientStop Color="#10182A" Offset="0.0"/>
-          <GradientStop Color="#07111F" Offset="0.62"/>
-          <GradientStop Color="#03060C" Offset="1.0"/>
+        <RadialGradientBrush Center="52%,38%" GradientOrigin="52%,38%" RadiusX="1.08" RadiusY="1.08">
+          <GradientStop Color="#131F39" Offset="0.0"/>
+          <GradientStop Color="#07101E" Offset="0.58"/>
+          <GradientStop Color="#02040A" Offset="1.0"/>
         </RadialGradientBrush>
       </Grid.Background>
-
-      <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.34"/>
+      <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.30"/>
       <Border x:Name="GlowLayerPink" IsHitTestVisible="False">
         <Border.Background>
-          <RadialGradientBrush Center="12%,18%" RadiusX="58%" RadiusY="58%">
-            <GradientStop Color="#32FF78BE" Offset="0"/>
+          <RadialGradientBrush Center="11%,18%" RadiusX="58%" RadiusY="58%">
+            <GradientStop Color="#2DFF78BE" Offset="0"/>
             <GradientStop Color="#00FF78BE" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
       </Border>
       <Border x:Name="GlowLayerBlue" IsHitTestVisible="False">
         <Border.Background>
-          <RadialGradientBrush Center="88%,68%" RadiusX="62%" RadiusY="62%">
-            <GradientStop Color="#3A6BB7FF" Offset="0"/>
-            <GradientStop Color="#006BB7FF" Offset="1"/>
+          <RadialGradientBrush Center="90%,68%" RadiusX="62%" RadiusY="62%">
+            <GradientStop Color="#3473C7FF" Offset="0"/>
+            <GradientStop Color="#0073C7FF" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
       </Border>
-      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.55">
+      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.52">
         <Border.Background>
-          <RadialGradientBrush Center="50%,8%" RadiusX="72%" RadiusY="42%">
-            <GradientStop Color="#18FFE07A" Offset="0"/>
+          <RadialGradientBrush Center="50%,5%" RadiusX="76%" RadiusY="42%">
+            <GradientStop Color="#17FFE07A" Offset="0"/>
             <GradientStop Color="#00FFE07A" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
@@ -86,46 +115,64 @@
     </Grid>
 
     <Grid Margin="18" RowDefinitions="Auto,*,Auto">
-      <Border Grid.Row="0" CornerRadius="16" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="16">
-        <Grid ColumnDefinitions="Auto,*,Auto">
-          <Border Width="58" Height="58" CornerRadius="29" BorderBrush="#88FFE07A" BorderThickness="1.5" Background="#182338">
-            <Image Source="avares://Aemeath-agent/Assets/xiaoai-avatar.png" Stretch="UniformToFill" ClipToBounds="True"/>
+      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="14">
+        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+          <Border Width="64" Height="64" CornerRadius="32" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="#172238">
+            <Grid>
+              <Ellipse Stroke="#6673C7FF" StrokeThickness="1" Margin="3"/>
+              <Image Source="avares://Aemeath-agent/Assets/static/xiaoai-avatar.png" Stretch="UniformToFill" ClipToBounds="True"/>
+            </Grid>
           </Border>
 
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="Aemeath" FontSize="22" FontWeight="SemiBold" Foreground="#F7FAFF"/>
-              <Border CornerRadius="10" Padding="8,2" Background="#24FFE07A" BorderBrush="#55FFE07A" BorderThickness="1">
-                <TextBlock Text="电子幽灵" FontSize="12" Foreground="#FFEAB0"/>
+              <TextBlock Text="Aemeath / &#x5C0F;&#x7231;" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+              <Border CornerRadius="999" Padding="8,3" Background="#24FFE07A" BorderBrush="#66FFE07A" BorderThickness="1">
+                <TextBlock Text="Digital Ghost" FontSize="12" Foreground="{StaticResource AemiStarBrush}" FontWeight="SemiBold"/>
+              </Border>
+              <Border CornerRadius="999" Padding="8,3" Background="#2473C7FF" BorderBrush="#6673C7FF" BorderThickness="1">
+                <TextBlock Text="Resonance Link" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
               </Border>
             </StackPanel>
-            <TextBlock Text="星海通讯终端" Classes="subtle" FontSize="13"/>
+            <TextBlock Text="&#x661F;&#x6D77;&#x5B66;&#x9662;&#x901A;&#x8BAF;&#x7EC8;&#x7AEF; / Startorch Academy uplink" Classes="subtle" FontSize="13"/>
           </StackPanel>
 
-          <StackPanel Grid.Column="2" Spacing="6" Width="430" VerticalAlignment="Center">
-            <Grid ColumnDefinitions="170,*">
+          <StackPanel Grid.Column="2" Spacing="8" Width="430" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="160,*">
               <ComboBox x:Name="ProviderQuickSwitchBox" HorizontalAlignment="Stretch"/>
               <ComboBox Grid.Column="1" x:Name="ModelQuickSwitchBox" HorizontalAlignment="Stretch" Margin="8,0,0,0"/>
             </Grid>
-            <TextBlock x:Name="ProviderSwitchStatusText" Text="" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"/>
-            <Grid ColumnDefinitions="Auto,Auto,*">
-              <Button x:Name="NewSessionButton" Content="新建对话" Classes="ghost" MinWidth="96"/>
-              <Button Grid.Column="1" x:Name="DeleteSessionButton" Content="删除对话" Classes="danger" MinWidth="96" Margin="8,0,0,0"/>
-              <ComboBox Grid.Column="2" x:Name="SessionSelector" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </Grid>
+            <Border CornerRadius="999" Background="#1A73C7FF" BorderBrush="#4473C7FF" BorderThickness="1" Padding="8,4">
+              <TextBlock x:Name="ProviderSwitchStatusText" Text="" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"/>
+            </Border>
           </StackPanel>
+
+          <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="Auto,Auto,*" Margin="0,12,0,0">
+            <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;&#x5BF9;&#x8BDD;" Classes="ghost" MinWidth="96"/>
+            <Button Grid.Column="1" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;&#x5BF9;&#x8BDD;" Classes="danger" MinWidth="96" Margin="8,0,0,0"/>
+            <ComboBox Grid.Column="2" x:Name="SessionSelector" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          </Grid>
         </Grid>
       </Border>
 
       <Border Grid.Row="1"
               x:Name="ChatBackgroundHost"
-              CornerRadius="18"
-              Background="#BE0D1423"
-              BorderBrush="#5D6FAFE8"
+              CornerRadius="20"
+              Background="#B80A1020"
+              BorderBrush="#6673C7FF"
               BorderThickness="1"
               Margin="0,14,0,0">
         <Grid>
-          <Border IsHitTestVisible="False" Margin="1" CornerRadius="17" BorderBrush="#22FFE07A" BorderThickness="1"/>
+          <Border IsHitTestVisible="False" Margin="1" CornerRadius="19" BorderBrush="#22FFE07A" BorderThickness="1"/>
+          <Grid IsHitTestVisible="False" Opacity="0.10">
+            <Grid.Background>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Color="#00FFFFFF" Offset="0"/>
+                <GradientStop Color="#44FFFFFF" Offset="0.48"/>
+                <GradientStop Color="#00FFFFFF" Offset="1"/>
+              </LinearGradientBrush>
+            </Grid.Background>
+          </Grid>
           <ScrollViewer x:Name="ChatScrollViewer"
                         Padding="18"
                         VerticalScrollBarVisibility="Auto"
@@ -135,37 +182,41 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="2" CornerRadius="16" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="12" Margin="0,14,0,0">
-        <Grid ColumnDefinitions="*,Auto,Auto">
-          <TextBox x:Name="InputBox"
-                   Watermark="向小爱发送消息..."
-                   AcceptsReturn="False"
-                   TextWrapping="Wrap"
-                   TextChanged="InputBox_OnTextChanged"
-                   i:InputMethod.IsInputMethodEnabled="True"
-                   behaviors:ImeFixBehavior.EnableImeCursorFix="True"
-                   MinHeight="48"
-                   MaxHeight="126"
-                   VerticalContentAlignment="Center"
-                   Background="#172238"
-                   BorderBrush="#506FAFE8"
-                   Foreground="#F7FAFF"
-                   CaretBrush="#FFE07A"/>
-          <Button x:Name="VoiceRecordButton"
-                  IsVisible="False"
-                  Content="按住说话"
-                  MinHeight="48"
-                  Height="48"
-                  HorizontalAlignment="Stretch"
-                  HorizontalContentAlignment="Center"
-                  VerticalContentAlignment="Center"
-                  FontSize="15"
-                  FontWeight="SemiBold"
-                  Background="#172238"
-                  BorderBrush="#506FAFE8"
-                  Foreground="#F7FAFF"/>
-          <Button Grid.Column="1" x:Name="VoiceButton" Classes="icon ghost" Content="🎤" Width="48" Height="48" Margin="10,0,0,0"/>
-          <Button Grid.Column="2" x:Name="SendButton" Content="发送" Classes="primary" MinWidth="96" Height="48" Margin="10,0,0,0"/>
+      <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="12" Margin="0,14,0,0">
+        <Grid RowDefinitions="Auto,Auto">
+          <WrapPanel x:Name="AttachmentPanel" IsVisible="False" Margin="0,0,0,10"/>
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
+            <Button x:Name="UploadButton" Classes="icon ghost" Width="50" Height="50"/>
+            <TextBox Grid.Column="1"
+                     x:Name="InputBox"
+                     Watermark="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
+                     AcceptsReturn="False"
+                     TextWrapping="Wrap"
+                     TextChanged="InputBox_OnTextChanged"
+                     i:InputMethod.IsInputMethodEnabled="True"
+                     behaviors:ImeFixBehavior.EnableImeCursorFix="True"
+                     Margin="10,0,0,0"
+                     MinHeight="50"
+                     MaxHeight="126"
+                     VerticalContentAlignment="Center"/>
+            <Button Grid.Column="1"
+                    x:Name="VoiceRecordButton"
+                    IsVisible="False"
+                    Content="&#x6309;&#x4F4F;&#x8BF4;&#x8BDD;"
+                    MinHeight="50"
+                    Height="50"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Margin="10,0,0,0"
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    Background="#172238"
+                    BorderBrush="#6673C7FF"
+                    Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+            <Button Grid.Column="2" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
+            <Button Grid.Column="3" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="10,0,0,0"/>
+          </Grid>
         </Grid>
       </Border>
     </Grid>

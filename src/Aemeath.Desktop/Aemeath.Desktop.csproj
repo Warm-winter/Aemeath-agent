@@ -9,7 +9,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <DefineTrace>true</DefineTrace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\static\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,31 +30,21 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Styles\AemeathTheme.axaml" />
-    <AvaloniaResource Include="..\..\assets\app.ico">
-      <Link>Assets\app.ico</Link>
+    <AvaloniaResource Include="..\..\assets\static\app.ico">
+      <Link>Assets\static\app.ico</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\xiaoai-avatar.png">
-      <Link>Assets\xiaoai-avatar.png</Link>
+    <AvaloniaResource Include="..\..\assets\static\xiaoai-avatar.png">
+      <Link>Assets\static\xiaoai-avatar.png</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\user-male.png">
-      <Link>Assets\user-male.png</Link>
+    <AvaloniaResource Include="..\..\assets\static\user-male.png">
+      <Link>Assets\static\user-male.png</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\user-female.png">
-      <Link>Assets\user-female.png</Link>
+    <AvaloniaResource Include="..\..\assets\static\user-female.png">
+      <Link>Assets\static\user-female.png</Link>
     </AvaloniaResource>
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\assets\voice\porcupine_params_zh.pv">
-      <Link>voice\porcupine_params_zh.pv</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
-    <None Include="..\..\assets\voice\小爱小爱_zh_windows_v4_0_0.ppn">
-      <Link>voice\小爱小爱_zh_windows_v4_0_0.ppn</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
     <None Include="..\..\bin\uv.exe" Condition="Exists('..\..\bin\uv.exe')">
       <Link>bin\uv.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

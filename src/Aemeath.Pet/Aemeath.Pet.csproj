@@ -19,14 +19,32 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="..\..\assets\daiji.gif">
-      <Link>Assets\daiji.gif</Link>
+    <AvaloniaResource Include="..\..\assets\animations\pet\daiji.gif">
+      <Link>Assets\animations\pet\daiji.gif</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\yidong.gif">
-      <Link>Assets\yidong.gif</Link>
+    <AvaloniaResource Include="..\..\assets\animations\pet\yidong.gif">
+      <Link>Assets\animations\pet\yidong.gif</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\dianji.gif">
-      <Link>Assets\dianji.gif</Link>
+    <AvaloniaResource Include="..\..\assets\animations\pet\dianji.gif">
+      <Link>Assets\animations\pet\dianji.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-failed.gif">
+      <Link>Assets\animations\pet\aemeath-mini-failed.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-jumping.gif">
+      <Link>Assets\animations\pet\aemeath-mini-jumping.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-review.gif">
+      <Link>Assets\animations\pet\aemeath-mini-review.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-running-left.gif">
+      <Link>Assets\animations\pet\aemeath-mini-running-left.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-waiting.gif">
+      <Link>Assets\animations\pet\aemeath-mini-waiting.gif</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\animations\pet\aemeath-mini-waving.gif">
+      <Link>Assets\animations\pet\aemeath-mini-waving.gif</Link>
     </AvaloniaResource>
   </ItemGroup>
 

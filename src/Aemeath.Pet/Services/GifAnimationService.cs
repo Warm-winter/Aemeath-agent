@@ -63,15 +63,25 @@ public class GifAnimationService
         return Task.CompletedTask;
     }
 
-    public void SetState(PetState state)
+    public void SetState(PetState state, bool restart = false)
     {
         if (!_stateFrames.TryGetValue(state, out var frames) || frames.Count == 0)
         {
             return;
         }
 
+        var isStateChanged = _currentState != state;
+        if (!restart && !isStateChanged && _petImage.Source is not null)
+        {
+            return;
+        }
+
         _currentState = state;
-        _currentFrameIndex = 0;
+        if (restart || isStateChanged || _currentFrameIndex >= frames.Count)
+        {
+            _currentFrameIndex = 0;
+        }
+
         RenderCurrentFrame(frames);
     }
 

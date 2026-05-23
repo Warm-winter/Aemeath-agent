@@ -1,11 +1,14 @@
 using Avalonia;
 using System;
+using System.Threading;
 using Aemeath.Desktop.Services;
 
 namespace Aemeath.Desktop;
 
 class Program
 {
+    private const string SingleInstanceMutexName = @"Local\Aemeath.Desktop.SingleInstance";
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -20,6 +23,13 @@ class Program
 
         try
         {
+            using var singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out var createdNew);
+            if (!createdNew)
+            {
+                AppLogger.Info("program", "another desktop instance is already running");
+                return;
+            }
+
             AppLogger.Info("program", "desktop lifetime start");
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }

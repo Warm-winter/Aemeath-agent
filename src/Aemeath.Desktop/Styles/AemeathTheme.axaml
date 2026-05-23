@@ -1,77 +1,131 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Aemeath visual system: digital ghost, starfield, academy archive, pink/blue/gold accents. -->
-    <Color x:Key="AemiInkColor">#070A12</Color>
-    <Color x:Key="AemiPanelColor">#111827</Color>
-    <Color x:Key="AemiPanelSoftColor">#172033</Color>
-    <Color x:Key="AemiPanelRaisedColor">#1C2740</Color>
-    <Color x:Key="AemiBorderColor">#3A4C75</Color>
-    <Color x:Key="AemiBorderStrongColor">#6FAFE8</Color>
+    <!-- Aemeath immersive system: digital ghost, Startorch archive, star pupils, blue halo, pink hair. -->
+    <Color x:Key="AemiVoidColor">#050712</Color>
+    <Color x:Key="AemiVoidDeepColor">#02040A</Color>
+    <Color x:Key="AemiNebulaColor">#0A1020</Color>
+    <Color x:Key="AemiPanelColor">#111A2E</Color>
+    <Color x:Key="AemiPanelSoftColor">#16213A</Color>
+    <Color x:Key="AemiPanelRaisedColor">#1C2A48</Color>
+    <Color x:Key="AemiGlassColor">#D90E1627</Color>
+    <Color x:Key="AemiGlassSoftColor">#B8121C31</Color>
+    <Color x:Key="AemiArchiveColor">#141F35</Color>
 
     <Color x:Key="AemiPinkColor">#FF78BE</Color>
-    <Color x:Key="AemiPinkLightColor">#FFB3D7</Color>
-    <Color x:Key="AemiPinkDarkColor">#D94A95</Color>
-    <Color x:Key="AemiBlueColor">#6BB7FF</Color>
-    <Color x:Key="AemiBlueLightColor">#A8D8FF</Color>
-    <Color x:Key="AemiBlueDarkColor">#3478D8</Color>
-    <Color x:Key="AemiGoldColor">#FFE07A</Color>
+    <Color x:Key="AemiPinkSoftColor">#FFB6DA</Color>
+    <Color x:Key="AemiPinkDeepColor">#C9418D</Color>
+    <Color x:Key="AemiHaloColor">#73C7FF</Color>
+    <Color x:Key="AemiHaloSoftColor">#B9E5FF</Color>
+    <Color x:Key="AemiHaloDeepColor">#2F78E8</Color>
+    <Color x:Key="AemiStarColor">#FFE07A</Color>
+    <Color x:Key="AemiGhostColor">#F7FBFF</Color>
 
-    <Color x:Key="AemiGradientStartColor">#FF78BE</Color>
-    <Color x:Key="AemiGradientEndColor">#6BB7FF</Color>
-    <Color x:Key="AemiBackgroundColor">#070A12</Color>
-    <Color x:Key="AemiBackgroundDarkColor">#03050B</Color>
-    <Color x:Key="AemiSurfaceColor">#111827</Color>
+    <Color x:Key="AemiBorderColor">#375070</Color>
+    <Color x:Key="AemiBorderSoftColor">#2A3A59</Color>
+    <Color x:Key="AemiBorderGlowColor">#7ECFFF</Color>
+    <Color x:Key="AemiFocusColor">#FFE07A</Color>
 
-    <Color x:Key="AemiTextPrimaryColor">#F7FAFF</Color>
-    <Color x:Key="AemiTextSecondaryColor">#B9C8E6</Color>
-    <Color x:Key="AemiTextMutedColor">#7F8CAD</Color>
-    <Color x:Key="AemiAccentColor">#FF78BE</Color>
-    <Color x:Key="AemiSuccessColor">#64E8B0</Color>
+    <Color x:Key="AemiTextPrimaryColor">#F7FBFF</Color>
+    <Color x:Key="AemiTextSecondaryColor">#C5D4F2</Color>
+    <Color x:Key="AemiTextMutedColor">#8FA2C8</Color>
+    <Color x:Key="AemiTextFaintColor">#637293</Color>
+    <Color x:Key="AemiSuccessColor">#65E8B0</Color>
     <Color x:Key="AemiWarningColor">#FFE07A</Color>
     <Color x:Key="AemiErrorColor">#FF6B7A</Color>
+    <Color x:Key="AemiDisabledColor">#56627B</Color>
 
-    <SolidColorBrush x:Key="AemiInkBrush" Color="{StaticResource AemiInkColor}"/>
+    <!-- Backward-compatible keys used by existing screens. -->
+    <Color x:Key="AemiInkColor">#050712</Color>
+    <Color x:Key="AemiBorderStrongColor">#7ECFFF</Color>
+    <Color x:Key="AemiBlueColor">#73C7FF</Color>
+    <Color x:Key="AemiBlueLightColor">#B9E5FF</Color>
+    <Color x:Key="AemiBlueDarkColor">#2F78E8</Color>
+    <Color x:Key="AemiGoldColor">#FFE07A</Color>
+    <Color x:Key="AemiAccentColor">#FF78BE</Color>
+    <Color x:Key="AemiBackgroundColor">#050712</Color>
+    <Color x:Key="AemiBackgroundDarkColor">#02040A</Color>
+    <Color x:Key="AemiSurfaceColor">#111A2E</Color>
+    <Color x:Key="AemiGradientStartColor">#FF78BE</Color>
+    <Color x:Key="AemiGradientEndColor">#73C7FF</Color>
+
+    <SolidColorBrush x:Key="AemiVoidBrush" Color="{StaticResource AemiVoidColor}"/>
+    <SolidColorBrush x:Key="AemiVoidDeepBrush" Color="{StaticResource AemiVoidDeepColor}"/>
+    <SolidColorBrush x:Key="AemiNebulaBrush" Color="{StaticResource AemiNebulaColor}"/>
     <SolidColorBrush x:Key="AemiPanelBrush" Color="{StaticResource AemiPanelColor}"/>
     <SolidColorBrush x:Key="AemiPanelSoftBrush" Color="{StaticResource AemiPanelSoftColor}"/>
     <SolidColorBrush x:Key="AemiPanelRaisedBrush" Color="{StaticResource AemiPanelRaisedColor}"/>
-    <SolidColorBrush x:Key="AemiBorderBrush" Color="{StaticResource AemiBorderColor}"/>
-    <SolidColorBrush x:Key="AemiBorderStrongBrush" Color="{StaticResource AemiBorderStrongColor}"/>
+    <SolidColorBrush x:Key="AemiGlassBrush" Color="{StaticResource AemiGlassColor}"/>
+    <SolidColorBrush x:Key="AemiGlassSoftBrush" Color="{StaticResource AemiGlassSoftColor}"/>
+    <SolidColorBrush x:Key="AemiArchiveBrush" Color="{StaticResource AemiArchiveColor}"/>
 
     <SolidColorBrush x:Key="AemiPinkBrush" Color="{StaticResource AemiPinkColor}"/>
-    <SolidColorBrush x:Key="AemiPinkLightBrush" Color="{StaticResource AemiPinkLightColor}"/>
-    <SolidColorBrush x:Key="AemiPinkDarkBrush" Color="{StaticResource AemiPinkDarkColor}"/>
+    <SolidColorBrush x:Key="AemiPinkSoftBrush" Color="{StaticResource AemiPinkSoftColor}"/>
+    <SolidColorBrush x:Key="AemiPinkDeepBrush" Color="{StaticResource AemiPinkDeepColor}"/>
+    <SolidColorBrush x:Key="AemiHaloBrush" Color="{StaticResource AemiHaloColor}"/>
+    <SolidColorBrush x:Key="AemiHaloSoftBrush" Color="{StaticResource AemiHaloSoftColor}"/>
+    <SolidColorBrush x:Key="AemiHaloDeepBrush" Color="{StaticResource AemiHaloDeepColor}"/>
+    <SolidColorBrush x:Key="AemiStarBrush" Color="{StaticResource AemiStarColor}"/>
+    <SolidColorBrush x:Key="AemiGhostBrush" Color="{StaticResource AemiGhostColor}"/>
+
+    <SolidColorBrush x:Key="AemiBorderBrush" Color="{StaticResource AemiBorderColor}"/>
+    <SolidColorBrush x:Key="AemiBorderSoftBrush" Color="{StaticResource AemiBorderSoftColor}"/>
+    <SolidColorBrush x:Key="AemiBorderStrongBrush" Color="{StaticResource AemiBorderGlowColor}"/>
+    <SolidColorBrush x:Key="AemiBorderGlowBrush" Color="{StaticResource AemiBorderGlowColor}"/>
+    <SolidColorBrush x:Key="AemiFocusBrush" Color="{StaticResource AemiFocusColor}"/>
+
+    <SolidColorBrush x:Key="AemiTextPrimaryBrush" Color="{StaticResource AemiTextPrimaryColor}"/>
+    <SolidColorBrush x:Key="AemiTextSecondaryBrush" Color="{StaticResource AemiTextSecondaryColor}"/>
+    <SolidColorBrush x:Key="AemiTextMutedBrush" Color="{StaticResource AemiTextMutedColor}"/>
+    <SolidColorBrush x:Key="AemiTextFaintBrush" Color="{StaticResource AemiTextFaintColor}"/>
+    <SolidColorBrush x:Key="AemiSuccessBrush" Color="{StaticResource AemiSuccessColor}"/>
+    <SolidColorBrush x:Key="AemiWarningBrush" Color="{StaticResource AemiWarningColor}"/>
+    <SolidColorBrush x:Key="AemiErrorBrush" Color="{StaticResource AemiErrorColor}"/>
+    <SolidColorBrush x:Key="AemiDisabledBrush" Color="{StaticResource AemiDisabledColor}"/>
+
+    <SolidColorBrush x:Key="AemiInkBrush" Color="{StaticResource AemiInkColor}"/>
     <SolidColorBrush x:Key="AemiBlueBrush" Color="{StaticResource AemiBlueColor}"/>
     <SolidColorBrush x:Key="AemiBlueLightBrush" Color="{StaticResource AemiBlueLightColor}"/>
     <SolidColorBrush x:Key="AemiBlueDarkBrush" Color="{StaticResource AemiBlueDarkColor}"/>
     <SolidColorBrush x:Key="AemiGoldBrush" Color="{StaticResource AemiGoldColor}"/>
-
+    <SolidColorBrush x:Key="AemiAccentBrush" Color="{StaticResource AemiAccentColor}"/>
     <SolidColorBrush x:Key="AemiBackgroundBrush" Color="{StaticResource AemiBackgroundColor}"/>
     <SolidColorBrush x:Key="AemiBackgroundDarkBrush" Color="{StaticResource AemiBackgroundDarkColor}"/>
     <SolidColorBrush x:Key="AemiSurfaceBrush" Color="{StaticResource AemiSurfaceColor}"/>
-    <SolidColorBrush x:Key="AemiTextPrimaryBrush" Color="{StaticResource AemiTextPrimaryColor}"/>
-    <SolidColorBrush x:Key="AemiTextSecondaryBrush" Color="{StaticResource AemiTextSecondaryColor}"/>
-    <SolidColorBrush x:Key="AemiTextMutedBrush" Color="{StaticResource AemiTextMutedColor}"/>
-    <SolidColorBrush x:Key="AemiAccentBrush" Color="{StaticResource AemiAccentColor}"/>
-    <SolidColorBrush x:Key="AemiSuccessBrush" Color="{StaticResource AemiSuccessColor}"/>
-    <SolidColorBrush x:Key="AemiWarningBrush" Color="{StaticResource AemiWarningColor}"/>
-    <SolidColorBrush x:Key="AemiErrorBrush" Color="{StaticResource AemiErrorColor}"/>
 
     <LinearGradientBrush x:Key="AemiPrimaryGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
-        <GradientStop Color="#FF78BE" Offset="0.0"/>
-        <GradientStop Color="#6BB7FF" Offset="0.72"/>
-        <GradientStop Color="#FFE07A" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiPinkColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiHaloColor}" Offset="0.72"/>
+        <GradientStop Color="{StaticResource AemiStarColor}" Offset="1.0"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="AemiArchiveGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Color="#1A2844" Offset="0.0"/>
+        <GradientStop Color="#111A2E" Offset="0.58"/>
+        <GradientStop Color="#251B3B" Offset="1.0"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="AemiGhostGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Color="#2B73C7FF" Offset="0.0"/>
+        <GradientStop Color="#22FF78BE" Offset="1.0"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AemiPinkGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
         <GradientStop Color="{StaticResource AemiPinkColor}" Offset="0.0"/>
-        <GradientStop Color="{StaticResource AemiPinkLightColor}" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiPinkSoftColor}" Offset="1.0"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="AemiBlueGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
-        <GradientStop Color="{StaticResource AemiBlueDarkColor}" Offset="0.0"/>
-        <GradientStop Color="{StaticResource AemiBlueLightColor}" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiHaloDeepColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiHaloSoftColor}" Offset="1.0"/>
     </LinearGradientBrush>
+
+    <x:Double x:Key="AemiSpace1">4</x:Double>
+    <x:Double x:Key="AemiSpace2">8</x:Double>
+    <x:Double x:Key="AemiSpace3">12</x:Double>
+    <x:Double x:Key="AemiSpace4">16</x:Double>
+    <x:Double x:Key="AemiSpace5">20</x:Double>
+    <x:Double x:Key="AemiSpace6">24</x:Double>
 
     <x:Double x:Key="AemiFontSizeSmall">12</x:Double>
     <x:Double x:Key="AemiFontSizeNormal">14</x:Double>
@@ -80,7 +134,8 @@
     <x:Double x:Key="AemiFontSizeXLarge">24</x:Double>
     <x:Double x:Key="AemiFontSizeTitle">30</x:Double>
 
-    <CornerRadius x:Key="AemiCornerRadiusSmall">4</CornerRadius>
+    <CornerRadius x:Key="AemiCornerRadiusTiny">4</CornerRadius>
+    <CornerRadius x:Key="AemiCornerRadiusSmall">6</CornerRadius>
     <CornerRadius x:Key="AemiCornerRadiusNormal">8</CornerRadius>
     <CornerRadius x:Key="AemiCornerRadiusMedium">12</CornerRadius>
     <CornerRadius x:Key="AemiCornerRadiusLarge">16</CornerRadius>

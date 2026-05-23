@@ -4,7 +4,7 @@
 
 ## 1. 项目定位
 
-Aemeath 是一个 Windows 桌面 AI 助手项目，主题围绕“鸣潮 / 爱弥斯 / 小爱”的桌宠式陪伴体验。它不是纯聊天 Demo，而是把桌宠窗口、聊天窗口、Provider/Model 管理、长期记忆、语音输入、唤醒词、本地工具调用和 MCP 能力组合到一个本地桌面应用里。
+Aemeath 是一个 Windows 桌面 AI 助手项目，主题围绕“鸣潮 / 爱弥斯 / 小爱”的桌宠式陪伴体验。它不是纯聊天 Demo，而是把桌宠窗口、聊天窗口、Provider/Model 管理、长期记忆、语音输入、本地工具调用和 MCP 能力组合到一个本地桌面应用里。
 
 当前技术栈：
 
@@ -12,7 +12,7 @@ Aemeath 是一个 Windows 桌面 AI 助手项目，主题围绕“鸣潮 / 爱�
 - Avalonia UI 11.2.1，桌面生命周期使用 `IClassicDesktopStyleApplicationLifetime`。
 - CommunityToolkit.Mvvm，用于部分 ViewModel 的 observable 属性模式。
 - Microsoft Semantic Kernel 1.20.0，用于 LLM Provider 接入和工具插件注册。
-- NAudio、Whisper.net、Porcupine，用于录音、转写和唤醒词。
+- NAudio、Whisper.net，用于录音和转写。
 - System.Text.Json，用于设置、会话、记忆等 JSON 持久化。
 - Windows DPAPI，通过 `System.Security.Cryptography.ProtectedData` 保护本地 API Key。
 
@@ -120,24 +120,21 @@ Aemeath 是一个 Windows 桌面 AI 助手项目，主题围绕“鸣潮 / 爱�
 
 ### `src/Aemeath.Speech`
 
-负责语音捕获、转写和唤醒词。
+负责语音捕获和转写。
 
 主要职责：
 
 - 麦克风录音。
 - Windows/Whisper 语音识别路径。
 - Whisper base 模型下载与缓存。
-- Porcupine 唤醒词监听。
 
 常见入口：
 
 - `SpeechService.cs`：语音输入、录音停止后转写、Whisper 模型缓存。
 - `MicrophoneHandler.cs`：麦克风音频采集。
-- `WakeWordService.cs`：Porcupine 唤醒词服务。
-
 约束：
 
-- 语音和唤醒词都可能持有设备资源，异常和关闭路径必须释放。
+- 语音服务可能持有设备资源，异常和关闭路径必须释放。
 - 长耗时操作应支持 `CancellationToken`，至少不要阻塞 UI 线程。
 - Whisper 模型缓存路径遵循 `%AppData%\Aemeath\whisper`。
 
@@ -150,7 +147,7 @@ Aemeath 是一个 Windows 桌面 AI 助手项目，主题围绕“鸣潮 / 爱�
 - `README.md`：面向用户的项目说明，注意当前文件中可能存在历史编码问题，修改时要特别验证 UTF-8。
 - `AGENTS.md`：当前文件，面向自动化代理。
 - `.gitignore`：排除构建产物、本地配置、日志、密钥和发布产物。
-- `assets/`：共享图标、头像、GIF、语音唤醒资源。
+- `assets/`：共享图标、头像、GIF 和第三方资源声明。
 - `tools/installer.iss`：安装包脚本。
 
 不要编辑或提交：
@@ -335,7 +332,7 @@ Provider/Model 快速切换规则：
 启动流程：
 
 - `Program.Main` 初始化日志并启动 Avalonia。
-- `App.OnFrameworkInitializationCompleted` 创建 `SettingsService`、`AemiChatService`、`PetWindow` 和 `WakeWordService`。
+- `App.OnFrameworkInitializationCompleted` 创建 `SettingsService`、`AemiChatService` 和 `PetWindow`。
 - `desktop.MainWindow` 当前是桌宠窗口。
 - 系统托盘菜单定义在 `App.axaml`。
 
@@ -349,7 +346,7 @@ Provider/Model 快速切换规则：
 托盘行为：
 
 - 如果 `Settings.MinimizeToTray == true`，普通关闭桌宠窗口应取消关闭并隐藏。
-- 托盘菜单“退出 Aemeath”必须是真正退出：停止唤醒词、关闭聊天窗口、关闭设置窗口、关闭桌宠窗口，然后调用桌面生命周期 `Shutdown`。
+- 托盘菜单“退出 Aemeath”必须是真正退出：关闭聊天窗口、关闭设置窗口、关闭桌宠窗口，然后调用桌面生命周期 `Shutdown`。
 - 真正退出时应使用应用级退出标记，避免 `OnPetWindowClosing` 再次把关闭改成隐藏。
 
 修改生命周期时要手动验证：
@@ -387,27 +384,20 @@ MCP 能力分两部分：
 - 下载失败要返回明确中文错误，不要静默吞掉。
 - 不要把下载的 exe 或压缩包提交到仓库。
 
-## 10. 语音和唤醒词
+## 10. 语音输入
 
-语音能力涉及设备、权限、模型下载和后台监听，修改时要保守。
+语音能力涉及设备、权限和模型下载，修改时要保守。
 
 关键路径：
 
 - `SpeechService.StartCaptureAsync`
 - `SpeechService.StopCaptureAndRecognizeAsync`
 - `SpeechService.EnsureBaseModelAsync`
-- `WakeWordService.Start`
-- `WakeWordService.Stop`
-- `WakeWordService.Dispose`
-- `ChatWindow.HandleWakeWordAsync`
-- `App.RestartWakeWordServiceAsync`
 
 规则：
 
-- 唤醒词服务启动前必须检查设置是否启用，以及 Picovoice AccessKey 是否存在。
-- 唤醒词触发后应停止监听、打开聊天窗口、执行语音捕获，再恢复监听。
 - 设备和模型相关异常必须记录日志并给出可恢复路径。
-- `SpeechService` 和 `WakeWordService` 持有本机资源，必须在关闭和异常路径释放。
+- `SpeechService` 持有本机资源，必须在关闭和异常路径释放。
 - 长按录音太短时应忽略，避免误触。
 
 ## 11. Avalonia 和 UI 风格

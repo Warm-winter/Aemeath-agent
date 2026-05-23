@@ -7,6 +7,7 @@ public class Settings
     public string DefaultModel { get; set; } = "gpt-4o";
     public bool EnableAlwaysOnTop { get; set; } = true;
     public bool MinimizeToTray { get; set; } = false;
+    public bool EnableAutoStart { get; set; } = false;
     public bool IsPetFollowing { get; set; } = false;
     public int PetWidth { get; set; } = 125;
     public int PetHeight { get; set; } = 125;
@@ -18,8 +19,6 @@ public class Settings
     public string SystemPrompt { get; set; } = "Default";
     public bool EnableParticleEffects { get; set; } = true;
     public bool EnableVoiceInput { get; set; } = false;
-    public bool EnableWakeWord { get; set; } = true;
-    public string? PicovoiceAccessKey { get; set; }
     public string? AzureSpeechKey { get; set; }
     public string? AzureSpeechRegion { get; set; }
     public string UserAvatarType { get; set; } = "male";

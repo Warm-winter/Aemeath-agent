@@ -1,73 +1,79 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aemeath.Desktop.Views.McpConfigWindow"
-        Width="560" Height="440"
+        Width="590" Height="460"
         MinWidth="500" MinHeight="380"
         Title="MCP 配置"
-        Icon="avares://Aemeath-agent/Assets/app.ico">
+        Icon="avares://Aemeath-agent/Assets/static/app.ico">
   <Window.Styles>
     <Style Selector="TextBlock.subtle">
-      <Setter Property="Foreground" Value="#B9C8E6"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="#7F8CAD"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
     </Style>
     <Style Selector="Button">
-      <Setter Property="Background" Value="#23314D"/>
-      <Setter Property="Foreground" Value="#F7FAFF"/>
-      <Setter Property="BorderBrush" Value="#3A4C75"/>
+      <Setter Property="Background" Value="#24304C"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="8"/>
       <Setter Property="Padding" Value="13,8"/>
+      <Setter Property="MinHeight" Value="36"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
-    <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
-      <Setter Property="Foreground" Value="#07101E"/>
-      <Setter Property="BorderBrush" Value="#8AD2FF"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="#2E3C60"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
     </Style>
     <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#142035"/>
-      <Setter Property="BorderBrush" Value="#2F4368"/>
+      <Setter Property="Background" Value="#161F36"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
     </Style>
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="#182338"/>
-      <Setter Property="Foreground" Value="#F7FAFF"/>
-      <Setter Property="CaretBrush" Value="#FFE07A"/>
-      <Setter Property="BorderBrush" Value="#3A4C75"/>
+      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="12,9"/>
     </Style>
   </Window.Styles>
   <Grid>
     <Grid.Background>
       <RadialGradientBrush Center="50%,24%" GradientOrigin="50%,24%" RadiusX="1" RadiusY="1">
-        <GradientStop Color="#10182A" Offset="0.0"/>
-        <GradientStop Color="#07111F" Offset="0.68"/>
-        <GradientStop Color="#03060C" Offset="1.0"/>
+        <GradientStop Color="#141F39" Offset="0.0"/>
+        <GradientStop Color="#07101E" Offset="0.68"/>
+        <GradientStop Color="#02040A" Offset="1.0"/>
       </RadialGradientBrush>
     </Grid.Background>
 
-    <Border Margin="18" CornerRadius="18" Background="#D90E1627" BorderBrush="#546FAFE8" BorderThickness="1" Padding="18">
+    <Border Margin="18" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="18">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
         <StackPanel Spacing="4">
-          <TextBlock Text="MCP 配置入口" FontSize="22" FontWeight="SemiBold"/>
-          <TextBlock Text="工具 Schema 草稿" Classes="subtle" FontSize="13"/>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Schema 草稿舱" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+            <Border CornerRadius="999" Padding="8,3" Background="#2473C7FF" BorderBrush="#6673C7FF" BorderThickness="1">
+              <TextBlock Text="MCP Draft" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
+            </Border>
+          </StackPanel>
+          <TextBlock Text="为小爱的本地工具链整理工具名与参数 Schema。" Classes="subtle" FontSize="13"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Spacing="6" Margin="0,12,0,0">
+        <StackPanel Grid.Row="1" Spacing="6" Margin="0,14,0,0">
           <TextBlock Text="工具名称" Classes="subtle"/>
           <TextBox x:Name="ToolNameBox" Watermark="browser.search"/>
         </StackPanel>
 
-        <TextBlock Grid.Row="2" Text="参数 Schema (JSON)" Classes="subtle" Margin="0,12,0,0"/>
+        <TextBlock Grid.Row="2" Text="参数 Schema (JSON)" Classes="subtle" Margin="0,14,0,0"/>
         <TextBox x:Name="SchemaBox"
                  Grid.Row="3"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  VerticalContentAlignment="Top"
-                 Background="#142035"
-                 BorderBrush="#344A73"
+                 Background="#141F35"
+                 BorderBrush="{StaticResource AemiBorderBrush}"
                  Margin="0,6,0,0"/>
 
         <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0">

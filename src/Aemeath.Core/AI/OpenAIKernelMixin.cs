@@ -1,13 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Aemeath.Core.AI;
 
 /// <summary>
-/// OpenAI 兼容 Provider 实现
-/// 支持 OpenAI、DeepSeek、Moonshot 等兼容 OpenAI API 的服务
+/// OpenAI-compatible provider implementation.
 /// </summary>
 public sealed class OpenAIKernelMixin : KernelMixinBase
 {
@@ -27,7 +26,7 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
 
         var builder = Kernel.CreateBuilder();
         _kernel = BuildKernel(builder);
-        
+
         _chatService = _kernel.Services.GetRequiredService<IChatCompletionService>();
         _isInitialized = true;
         return Task.CompletedTask;
@@ -37,18 +36,18 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
     {
         if (string.IsNullOrEmpty(_apiKey))
         {
-            throw new InvalidOperationException("API Key 未设置");
+            throw new InvalidOperationException("API Key \u672a\u8bbe\u7f6e");
         }
 
-        // 如果有自定义端点，使用自定义配置
+        var httpClient = CreateOpenAIHttpClient();
         if (!string.IsNullOrEmpty(_endpoint))
         {
 #pragma warning disable SKEXP0010
             builder.AddOpenAIChatCompletion(
                 modelId: _modelId,
                 apiKey: _apiKey!,
-                endpoint: new Uri(_endpoint!)
-            );
+                endpoint: new Uri(_endpoint!),
+                httpClient: httpClient);
 #pragma warning restore SKEXP0010
         }
         else
@@ -56,13 +55,16 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
 #pragma warning disable SKEXP0010
             builder.AddOpenAIChatCompletion(
                 modelId: _modelId,
-                apiKey: _apiKey!
-            );
+                apiKey: _apiKey!,
+                httpClient: httpClient);
 #pragma warning restore SKEXP0010
         }
 
         return builder.Build();
     }
+
+    private static HttpClient CreateOpenAIHttpClient()
+        => new(new OpenAIResponseNormalizationHandler(new HttpClientHandler()));
 
     public void SetModel(string modelId)
     {

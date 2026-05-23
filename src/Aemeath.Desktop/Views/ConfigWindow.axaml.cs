@@ -30,7 +30,6 @@ public partial class ConfigWindow : Window
 
     private readonly SettingsService _settingsService;
     private readonly IChatService _chatService;
-    private readonly Action? _wakeWordSettingsChanged;
     private readonly Func<string?>? _currentSessionIdProvider;
     private readonly ParticleEffect _particleEffect;
     private readonly ProviderProbeService _providerProbeService = new();
@@ -44,20 +43,18 @@ public partial class ConfigWindow : Window
     private string _lastMcpDependencySource = "本次尚未下载";
     private double _flickerPhase;
 
-    public ConfigWindow() : this(new SettingsService(), new NoOpChatService(), null, null)
+    public ConfigWindow() : this(new SettingsService(), new NoOpChatService(), null)
     {
     }
 
     public ConfigWindow(
         SettingsService settingsService,
         IChatService chatService,
-        Action? wakeWordSettingsChanged = null,
         Func<string?>? currentSessionIdProvider = null)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _chatService = chatService;
-        _wakeWordSettingsChanged = wakeWordSettingsChanged;
         _currentSessionIdProvider = currentSessionIdProvider;
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
 
@@ -132,14 +129,22 @@ public partial class ConfigWindow : Window
 
         AlwaysOnTopBox.IsChecked = _settingsService.Current.EnableAlwaysOnTop;
         MinimizeToTrayBox.IsChecked = _settingsService.Current.MinimizeToTray;
+        try
+        {
+            AutoStartBox.IsChecked = AutoStartService.IsEnabled();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "failed to read auto start state", ex);
+            AutoStartBox.IsChecked = _settingsService.Current.EnableAutoStart;
+        }
+
         ParticleEffectsBox.IsChecked = _settingsService.Current.EnableParticleEffects;
         EnablePetBubblesBox.IsChecked = _settingsService.Current.EnablePetBubbles;
         EnablePetIdleGreetingBox.IsChecked = _settingsService.Current.EnablePetIdleGreeting;
         EnablePetEdgeSnapBox.IsChecked = _settingsService.Current.EnablePetEdgeSnap;
         PetOpacitySlider.Value = Math.Clamp(_settingsService.Current.PetOpacity, 0.65, 1.0);
         SelectPetSize(_settingsService.Current.PetSizePreset);
-        EnableWakeWordBox.IsChecked = _settingsService.Current.EnableWakeWord;
-        PicovoiceAccessKeyBox.Text = _settingsService.Current.PicovoiceAccessKey ?? string.Empty;
 
         var avatarType = _settingsService.Current.UserAvatarType;
         AvatarMaleRadio.IsChecked = avatarType == "male";
@@ -233,6 +238,19 @@ public partial class ConfigWindow : Window
     {
         _settingsService.Current.EnableAlwaysOnTop = AlwaysOnTopBox.IsChecked == true;
         _settingsService.Current.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
+        var enableAutoStart = AutoStartBox.IsChecked == true;
+        try
+        {
+            AutoStartService.SetEnabled(enableAutoStart);
+            _settingsService.Current.EnableAutoStart = enableAutoStart;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "failed to save auto start state", ex);
+            ShowError($"开机自启动设置失败：{ex.Message}");
+            return;
+        }
+
         _settingsService.Current.EnableParticleEffects = ParticleEffectsBox.IsChecked == true;
         _settingsService.Current.EnablePetBubbles = EnablePetBubblesBox.IsChecked == true;
         _settingsService.Current.EnablePetIdleGreeting = EnablePetIdleGreetingBox.IsChecked == true;
@@ -243,10 +261,6 @@ public partial class ConfigWindow : Window
             ApplyPetSizePresetToSettings(petSize);
         }
         _settingsService.Current.EnableVoiceInput = true;
-        _settingsService.Current.EnableWakeWord = EnableWakeWordBox.IsChecked == true;
-        _settingsService.Current.PicovoiceAccessKey = string.IsNullOrWhiteSpace(PicovoiceAccessKeyBox.Text)
-            ? null
-            : PicovoiceAccessKeyBox.Text.Trim();
         _settingsService.Current.AzureSpeechKey = null;
         _settingsService.Current.AzureSpeechRegion = null;
 
@@ -257,7 +271,6 @@ public partial class ConfigWindow : Window
                 : "male";
 
         _settingsService.Save();
-        _wakeWordSettingsChanged?.Invoke();
         ShowSuccess("设置已保存。");
         await Task.CompletedTask;
     }
@@ -344,19 +357,21 @@ public partial class ConfigWindow : Window
 
         var border = new Border
         {
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(12),
-            Background = new SolidColorBrush(AvaloniaColor.Parse(isCurrent ? "#243B66" : "#142035")),
-            BorderBrush = new SolidColorBrush(AvaloniaColor.Parse(isCurrent ? "#8AD2FF" : "#344A73")),
+            CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(14),
+            Background = AemiUi.Brush(isCurrent ? "#202F54" : "#141F35"),
+            BorderBrush = AemiUi.Brush(isCurrent ? AemiUi.Star : AemiUi.Border),
             BorderThickness = new Thickness(1)
         };
 
         var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(AemiUi.Badge(isCurrent ? "当前链路" : "Provider Archive", isCurrent ? "star" : "halo"));
         panel.Children.Add(new TextBlock
         {
             Text = isCurrent ? $"{provider}  当前" : provider,
             FontWeight = FontWeight.SemiBold,
-            Foreground = Brushes.White
+            Foreground = AemiUi.Brush(AemiUi.Ghost),
+            FontSize = 16
         });
         panel.Children.Add(new TextBlock
         {
@@ -383,10 +398,13 @@ public partial class ConfigWindow : Window
             Spacing = 8
         };
         var editButton = new Button { Content = "编辑", Classes = { "ghost" }, MinWidth = 64 };
+        editButton.Content = "编辑";
         editButton.Click += (_, _) => LoadProviderIntoForm(provider);
         var useButton = new Button { Content = "使用", Classes = { "primary" }, MinWidth = 64, IsEnabled = !isCurrent };
+        useButton.Content = "使用";
         useButton.Click += (_, _) => UseProvider(provider);
         var deleteButton = new Button { Content = "删除", Classes = { "danger" }, MinWidth = 64 };
+        deleteButton.Content = "删除";
         deleteButton.Click += async (_, _) => await DeleteProviderAsync(provider);
 
         buttons.Children.Add(editButton);
@@ -503,7 +521,10 @@ public partial class ConfigWindow : Window
             {
                 Content = string.IsNullOrWhiteSpace(model.OwnedBy) ? model.Id : $"{model.Id}  ({model.OwnedBy})",
                 Tag = model.Id,
-                IsChecked = model.IsEnabled
+                IsChecked = model.IsEnabled,
+                Foreground = AemiUi.Brush(AemiUi.Ghost),
+                Padding = new Thickness(6, 4),
+                Margin = new Thickness(0, 0, 0, 2)
             };
             ModelsPanel.Children.Add(checkBox);
 
@@ -719,15 +740,17 @@ public partial class ConfigWindow : Window
         {
             Title = title,
             Width = 380,
-            Height = 190,
+            Height = 230,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
-            Background = new SolidColorBrush(AvaloniaColor.Parse("#10182A"))
+            Background = AemiUi.Brush(AemiUi.Void)
         };
 
         var result = false;
         var okButton = new Button { Content = "确认", Classes = { "danger" }, MinWidth = 86 };
         var cancelButton = new Button { Content = "取消", Classes = { "ghost" }, MinWidth = 86 };
+        okButton.Content = "确认";
+        cancelButton.Content = "取消";
         okButton.Click += (_, _) =>
         {
             result = true;
@@ -738,12 +761,17 @@ public partial class ConfigWindow : Window
         dialog.Content = new Border
         {
             Padding = new Thickness(18),
+            CornerRadius = new CornerRadius(18),
+            Background = AemiUi.Brush(AemiUi.Glass),
+            BorderBrush = AemiUi.Brush(AemiUi.Star),
+            BorderThickness = new Thickness(1),
             Child = new StackPanel
             {
                 Spacing = 16,
                 Children =
                 {
-                    new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White },
+                    AemiUi.Badge("危险档案确认 · Manual Gate", "star"),
+                    new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, Foreground = AemiUi.Brush(AemiUi.Ghost) },
                     new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Classes = { "subtle" } },
                     new StackPanel
                     {
@@ -985,8 +1013,8 @@ public partial class ConfigWindow : Window
         }
 
         var uri = AvatarFemaleRadio.IsChecked == true
-            ? "avares://Aemeath-agent/Assets/user-female.png"
-            : "avares://Aemeath-agent/Assets/user-male.png";
+            ? "avares://Aemeath-agent/Assets/static/user-female.png"
+            : "avares://Aemeath-agent/Assets/static/user-male.png";
         SetPreviewImageFromResource(AvatarPreviewImage, uri);
     }
 

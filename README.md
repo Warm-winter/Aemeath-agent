@@ -95,17 +95,15 @@ Aemeath Agent 带有长期记忆系统。她会在对话进行一段时间后自
 
 这让你可以根据速度、价格、模型效果在不同服务之间切换，不需要反复复制粘贴配置。
 
-### 语音输入与唤醒
+### 语音输入
 
-项目包含语音输入与唤醒相关能力：
+项目包含语音输入相关能力：
 
 - 长按录音
 - Windows 语音能力
 - Whisper.net 转写
-- Porcupine 唤醒词
-- “小爱小爱”唤醒资源
 
-语音能力仍需要结合本机环境、麦克风权限和相关 AccessKey 配置使用。
+语音能力仍需要结合本机环境、麦克风权限和 Whisper 模型缓存使用。
 
 ## MCP 依赖下载
 
@@ -137,7 +135,6 @@ Aemeath Agent 带有长期记忆系统。她会在对话进行一段时间后自
 - Microsoft Semantic Kernel
 - NAudio
 - Whisper.net
-- Porcupine
 - SixLabors.ImageSharp
 
 ## 仓库结构
@@ -149,19 +146,14 @@ Aemeath/
 ├─ Directory.Packages.props
 ├─ build.bat
 ├─ assets/
-│  ├─ app.ico
-│  ├─ daiji.gif
-│  ├─ yidong.gif
-│  ├─ dianji.gif
-│  ├─ user-male.png
-│  ├─ user-female.png
-│  ├─ xiaoai-avatar.png
-│  └─ voice/
+│  ├─ static/            # 图标、头像等静态资源
+│  ├─ animations/pet/    # 桌宠 GIF 动画资源
+│  └─ notices/           # 第三方资源授权与致谢
 ├─ src/
 │  ├─ Aemeath.Core/      # AI、设置、知识库、MCP、工具插件
 │  ├─ Aemeath.Desktop/   # Avalonia 主程序、聊天窗口、设置窗口
 │  ├─ Aemeath.Pet/       # 桌宠窗口、动画、跟随与交互
-│  └─ Aemeath.Speech/    # 录音、语音识别、唤醒词
+│  └─ Aemeath.Speech/    # 录音、语音识别
 └─ tools/
    └─ installer.iss
 ```
@@ -204,7 +196,7 @@ publish\Aemeath.Desktop\Aemeath-agent.exe
 3. 点击 **测试连接** 或 **获取模型**，确认配置是否可用。
 4. 进入 **MCP 配置**，按需点击 **检测/下载 MCP 依赖**。
 5. 在 **界面与行为** 中调整桌宠大小、透明度、气泡台词、边缘吸附。
-6. 设置头像、聊天背景和语音唤醒。
+6. 设置头像和聊天背景。
 7. 回到桌面，双击小爱开始聊天。
 
 ## 隐私与本地数据

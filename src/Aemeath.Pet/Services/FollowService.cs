@@ -16,13 +16,13 @@ public class FollowService
         _petWindow = petWindow;
     }
 
-    public void UpdateFollowPosition()
+    public double UpdateFollowPosition()
     {
         try
         {
             if (!GetCursorPos(out var cursor))
             {
-                return;
+                return 0;
             }
             var mousePos = new PixelPoint(cursor.X, cursor.Y);
             var petPos = _petWindow.Position;
@@ -49,13 +49,17 @@ public class FollowService
                     newY = Math.Max(minY, Math.Min(newY, maxY));
                 }
 
-                _petWindow.Position = new PixelPoint((int)newX, (int)newY);
+                var newPosition = new PixelPoint((int)newX, (int)newY);
+                _petWindow.Position = newPosition;
+                return newPosition.X - petPos.X;
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"跟随更新失败：{ex.Message}");
         }
+
+        return 0;
     }
 
     [StructLayout(LayoutKind.Sequential)]

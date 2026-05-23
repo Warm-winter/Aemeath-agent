@@ -24,6 +24,8 @@ public interface IChatService
     /// <returns>AI 响应文本</returns>
     Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default);
 
+    Task<string> SendMessageAsync(string message, IReadOnlyList<ChatAttachment>? attachments, CancellationToken cancellationToken = default);
+
     Task<string> SummarizeAsync(string message, CancellationToken cancellationToken = default);
 
     /// <summary>

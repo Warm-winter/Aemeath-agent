@@ -12,7 +12,7 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         SystemDecorations="None">
-    
+
     <Grid Name="PetGrid" Background="Transparent">
         <Image Name="PetImage"
                Stretch="Uniform"
@@ -22,17 +22,21 @@
                 IsHitTestVisible="False"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                MaxWidth="220"
-                Padding="10,6"
-                CornerRadius="12"
-                Background="#D9172438"
-                BorderBrush="#88FFE07A"
+                MaxWidth="236"
+                Padding="12,8"
+                CornerRadius="14"
+                Background="#D90A1020"
+                BorderBrush="#AA73C7FF"
                 BorderThickness="1">
-            <TextBlock Name="BubbleText"
-                       TextWrapping="Wrap"
-                       Foreground="#F7FAFF"
-                       FontSize="12"
-                       LineHeight="16"/>
+            <Grid>
+                <Border IsHitTestVisible="False" CornerRadius="13" BorderBrush="#44FFE07A" BorderThickness="1"/>
+                <TextBlock Name="BubbleText"
+                           Margin="2"
+                           TextWrapping="Wrap"
+                           Foreground="#F7FBFF"
+                           FontSize="12"
+                           LineHeight="17"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -7,12 +7,15 @@ using Aemeath.Pet.Services;
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Aemeath.Pet;
 
 public partial class PetWindow : Window
 {
+    private const string AssetRoot = "avares://Aemeath.Pet/Assets/animations/pet";
+
     private readonly GifAnimationService _animationService;
     private readonly FollowService _followService;
     private readonly PetViewModel _viewModel;
@@ -36,8 +39,12 @@ public partial class PetWindow : Window
     private DispatcherTimer? _followTimer;
     private DispatcherTimer? _bubbleTimer;
     private DispatcherTimer? _idleGreetingTimer;
+    private CancellationTokenSource? _temporaryStateCts;
+    private PetState? _activityState;
     private bool _isDragging;
     private bool _movedDuringPointerPress;
+    private bool _isTemporaryState;
+    private PetState _followState = PetState.Follow;
     private Point _dragOffset;
     private PixelPoint _pressCursorPoint;
     private DateTime _lastClickAt = DateTime.MinValue;
@@ -81,6 +88,53 @@ public partial class PetWindow : Window
         StartIdleGreetingLoop();
     }
 
+    public async Task PlayTemporaryStateAsync(PetState state, TimeSpan duration, string? bubble = null)
+    {
+        var cts = new CancellationTokenSource();
+        var oldCts = _temporaryStateCts;
+        _temporaryStateCts = cts;
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
+        _isTemporaryState = true;
+        if (!string.IsNullOrWhiteSpace(bubble))
+        {
+            ShowBubble(bubble);
+        }
+
+        SetAnimationState(state, restart: true);
+
+        try
+        {
+            await Task.Delay(duration, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (_temporaryStateCts != cts)
+        {
+            return;
+        }
+
+        _isTemporaryState = false;
+        _temporaryStateCts = null;
+        cts.Dispose();
+        RestoreBaseState();
+    }
+
+    public void SetActivityState(PetState? state, string? bubble = null)
+    {
+        _activityState = state;
+        if (!string.IsNullOrWhiteSpace(bubble))
+        {
+            ShowBubble(bubble);
+        }
+
+        RestoreBaseState();
+    }
+
     private void SetupEventHandlers()
     {
         PointerPressed += OnPointerPressed;
@@ -91,10 +145,17 @@ public partial class PetWindow : Window
 
     private async Task LoadGifAssetsAsync()
     {
-        await _animationService.LoadGifAsync("avares://Aemeath.Pet/Assets/daiji.gif", PetState.Idle);
-        await _animationService.LoadGifAsync("avares://Aemeath.Pet/Assets/yidong.gif", PetState.Follow);
-        await _animationService.LoadGifAsync("avares://Aemeath.Pet/Assets/dianji.gif", PetState.Click);
-        _animationService.SetState(PetState.Idle);
+        await _animationService.LoadGifAsync($"{AssetRoot}/daiji.gif", PetState.Idle);
+        await _animationService.LoadGifAsync($"{AssetRoot}/yidong.gif", PetState.Follow);
+        await _animationService.LoadGifAsync($"{AssetRoot}/dianji.gif", PetState.Click);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-waving.gif", PetState.Wave);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-jumping.gif", PetState.Jump);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-failed.gif", PetState.Failed);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-waiting.gif", PetState.Waiting);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-running-left.gif", PetState.FollowLeft);
+        await _animationService.LoadGifAsync($"{AssetRoot}/daiji.gif", PetState.Running);
+        await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-review.gif", PetState.Review);
+        RestoreBaseState();
     }
 
     private void StartAnimationLoop()
@@ -107,10 +168,12 @@ public partial class PetWindow : Window
         _followTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
         _followTimer.Tick += (_, _) =>
         {
-            if (_viewModel.IsFollowing && !_isDragging)
+            if (!_viewModel.IsFollowing || _isDragging)
             {
-                _followService.UpdateFollowPosition();
+                return;
             }
+
+            UpdateFollowAnimation(_followService.UpdateFollowPosition());
         };
         _followTimer.Start();
     }
@@ -196,6 +259,7 @@ public partial class PetWindow : Window
         {
             _isDragging = false;
             e.Pointer?.Capture(null);
+            RestoreBaseState();
             return;
         }
 
@@ -218,6 +282,7 @@ public partial class PetWindow : Window
         _isDragging = false;
         e.Pointer?.Capture(null);
         SnapToEdgeIfNeeded();
+        RestoreBaseState();
         _viewModel.LastOperateTime = DateTime.Now;
     }
 
@@ -238,10 +303,7 @@ public partial class PetWindow : Window
         try
         {
             _singleClickPending = false;
-            ShowBubble(PickLine(_tapLines));
-            _animationService.SetState(PetState.Click);
-            await Task.Delay(700);
-            _animationService.SetState(_viewModel.IsFollowing ? PetState.Follow : PetState.Idle);
+            await PlayTemporaryStateAsync(PetState.Click, TimeSpan.FromMilliseconds(700), PickLine(_tapLines));
             _viewModel.LastOperateTime = DateTime.Now;
         }
         catch (Exception ex)
@@ -275,7 +337,7 @@ public partial class PetWindow : Window
         interactItem.Click += async (_, _) => await TriggerSingleClickInteractionAsync();
 
         var greetingItem = new MenuItem { Header = "随机问候" };
-        greetingItem.Click += (_, _) => ShowBubble(PickLine(_idleLines.Concat(_tapLines).ToArray()));
+        greetingItem.Click += async (_, _) => await PlayTemporaryStateAsync(PetState.Wave, TimeSpan.FromSeconds(1), PickLine(_idleLines.Concat(_tapLines).ToArray()));
 
         var dockItem = new MenuItem { Header = "回到屏幕边缘" };
         dockItem.Click += (_, _) => DockToNearestEdge(showBubble: true);
@@ -441,7 +503,7 @@ public partial class PetWindow : Window
             _settingsService.Save();
         }
 
-        _animationService.SetState(_viewModel.IsFollowing ? PetState.Follow : PetState.Idle);
+        RestoreBaseState();
         ShowBubble(_viewModel.IsFollowing ? "小爱跟上漂泊者啦。" : "小爱在这里等你。");
     }
 
@@ -538,7 +600,7 @@ public partial class PetWindow : Window
         Position = ClampToScreen(new PixelPoint(x, y), new PixelPoint(x, y));
         if (showBubble)
         {
-            ShowBubble("小爱贴边站好啦。");
+            _ = PlayTemporaryStateAsync(PetState.Jump, TimeSpan.FromSeconds(1), "小爱贴边站好啦。");
         }
     }
 
@@ -565,8 +627,46 @@ public partial class PetWindow : Window
         Height = Math.Clamp(height, 80, 220);
     }
 
+    private void UpdateFollowAnimation(double deltaX)
+    {
+        if (Math.Abs(deltaX) < 0.5)
+        {
+            return;
+        }
+
+        _followState = deltaX < 0 ? PetState.FollowLeft : PetState.Follow;
+        if (!_isTemporaryState && _activityState is null && _viewModel.IsFollowing)
+        {
+            SetAnimationState(_followState);
+        }
+    }
+
+    private void RestoreBaseState()
+    {
+        if (_isTemporaryState)
+        {
+            return;
+        }
+
+        if (_activityState is PetState activityState)
+        {
+            SetAnimationState(activityState);
+            return;
+        }
+
+        SetAnimationState(_viewModel.IsFollowing ? _followState : PetState.Idle);
+    }
+
+    private void SetAnimationState(PetState state, bool restart = false)
+    {
+        _animationService.SetState(state, restart);
+        _viewModel.CurrentState = state;
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        _temporaryStateCts?.Cancel();
+        _temporaryStateCts?.Dispose();
         _animationService.Dispose();
         _followTimer?.Stop();
         _bubbleTimer?.Stop();
