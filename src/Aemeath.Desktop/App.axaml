@@ -1,14 +1,10 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Aemeath.Desktop.App"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Light">
     <Application.DataTemplates>
     </Application.DataTemplates>
 
-    <Application.Styles>
-        <FluentTheme />
-    </Application.Styles>
-    
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -17,16 +13,75 @@
         </ResourceDictionary>
     </Application.Resources>
 
+    <Application.Styles>
+        <FluentTheme />
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
+            <Setter Property="Background" Value="{DynamicResource AemiBackgroundBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.pixel">
+            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+            <Setter Property="Background" Value="{DynamicResource AemiPinkBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="MinHeight" Value="34"/>
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="{DynamicResource AemiPinkDeepBrush}"/>
+        </Style>
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="#FFEAF0"/>
+            <Setter Property="Foreground" Value="{DynamicResource AemiErrorBrush}"/>
+            <Setter Property="BorderBrush" Value="#F0A9B8"/>
+        </Style>
+        <Style Selector="ComboBox, TextBox, ListBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+        </Style>
+        <Style Selector="ComboBox, TextBox">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="MinHeight" Value="34"/>
+        </Style>
+        <Style Selector="CheckBox, RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+        </Style>
+        <Style Selector="ContextMenu">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+        </Style>
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+        </Style>
+    </Application.Styles>
+
     <TrayIcon.Icons>
         <TrayIcons>
             <TrayIcon Icon="avares://Aemeath-agent/Assets/static/app.ico"
-                      ToolTipText="Aemeath / 小爱">
+                      ToolTipText="Aemeath / &#x5C0F;&#x7231;">
                 <TrayIcon.Menu>
                     <NativeMenu>
-                        <NativeMenuItem Header="唤出小爱" Click="OnTrayShowPetClick"/>
-                        <NativeMenuItem Header="收起桌宠" Click="OnTrayHidePetClick"/>
+                        <NativeMenuItem Header="&#x5524;&#x51FA;&#x5C0F;&#x7231;" Click="OnTrayShowPetClick"/>
+                        <NativeMenuItem Header="&#x6536;&#x8D77;&#x684C;&#x5BA0;" Click="OnTrayHidePetClick"/>
                         <NativeMenuItemSeparator/>
-                        <NativeMenuItem Header="退出 Aemeath" Click="OnTrayExitClick"/>
+                        <NativeMenuItem Header="&#x9000;&#x51FA; Aemeath" Click="OnTrayExitClick"/>
                     </NativeMenu>
                 </TrayIcon.Menu>
             </TrayIcon>

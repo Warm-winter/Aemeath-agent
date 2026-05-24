@@ -1,4 +1,4 @@
-using Aemeath.Core.AI.Prompts;
+﻿using Aemeath.Core.AI.Prompts;
 using Aemeath.Core.Configuration;
 using Aemeath.Core.Tools;
 using Aemeath.Core.MCP;
@@ -190,8 +190,14 @@ public class AemiChatService : IChatService
         return FormatAemiResponse(response);
     }
 
+    public IAsyncEnumerable<string> SendMessageStreamingAsync(
+        string message,
+        CancellationToken cancellationToken = default)
+        => SendMessageStreamingAsync(message, null, cancellationToken);
+
     public async IAsyncEnumerable<string> SendMessageStreamingAsync(
-        string message, 
+        string message,
+        IReadOnlyList<ChatAttachment>? attachments,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (_currentKernel is null)
@@ -202,7 +208,10 @@ public class AemiChatService : IChatService
         IsProcessing = true;
         try
         {
-            await foreach (var chunk in _currentKernel.SendMessageStreamingAsync(EnrichMessageWithKnowledge(message), cancellationToken))
+            await foreach (var chunk in _currentKernel.SendMessageStreamingAsync(
+                               EnrichMessageWithKnowledge(message),
+                               attachments,
+                               cancellationToken))
             {
                 yield return chunk;
             }
@@ -320,3 +329,4 @@ internal sealed class DynamicToolPlugin
         return _handler(input);
     }
 }
+

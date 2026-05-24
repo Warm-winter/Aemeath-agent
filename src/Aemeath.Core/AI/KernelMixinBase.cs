@@ -1,4 +1,4 @@
-using Microsoft.SemanticKernel;
+﻿using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Text;
@@ -148,17 +148,53 @@ public abstract class KernelMixinBase
         }
     }
 
+    public IAsyncEnumerable<string> SendMessageStreamingAsync(
+        string message,
+        CancellationToken cancellationToken = default)
+        => SendMessageStreamingAsync(message, null, cancellationToken);
+
     public async IAsyncEnumerable<string> SendMessageStreamingAsync(
         string message,
+        IReadOnlyList<ChatAttachment>? attachments,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var response = await SendMessageAsync(message, cancellationToken);
-        const int chunkSize = 28;
-        for (int i = 0; i < response.Length; i += chunkSize)
+        EnsureInitialized();
+
+        if (attachments is { Count: > 0 })
         {
-            var len = Math.Min(chunkSize, response.Length - i);
-            yield return response.Substring(i, len);
+            var contentItems = await BuildUserContentItemsAsync(message, attachments, cancellationToken);
+            _chatHistory.AddUserMessage(contentItems);
         }
+        else
+        {
+            _chatHistory.AddUserMessage(message);
+        }
+
+        var settings = new OpenAIPromptExecutionSettings
+        {
+#pragma warning disable SKEXP0001
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
+#pragma warning restore SKEXP0001
+        };
+
+        var builder = new StringBuilder();
+        await foreach (var chunk in _chatService!.GetStreamingChatMessageContentsAsync(
+                           _chatHistory,
+                           executionSettings: settings,
+                           kernel: _kernel,
+                           cancellationToken: cancellationToken))
+        {
+            var text = chunk.Content;
+            if (string.IsNullOrEmpty(text))
+            {
+                continue;
+            }
+
+            builder.Append(text);
+            yield return text;
+        }
+
+        _chatHistory.AddAssistantMessage(builder.ToString());
     }
 
     public void ClearHistory()
@@ -193,3 +229,4 @@ public abstract class KernelMixinBase
         return bytes >= 1024 ? $"{bytes / 1024d:0.##} KB" : $"{bytes} B";
     }
 }
+

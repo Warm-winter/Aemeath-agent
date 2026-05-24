@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aemeath.Pet.PetWindow"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -25,18 +25,19 @@
                 MaxWidth="236"
                 Padding="12,8"
                 CornerRadius="14"
-                Background="#D90A1020"
-                BorderBrush="#AA73C7FF"
+                Background="#F8FFFFFF"
+                BorderBrush="#F3C2D4"
                 BorderThickness="1">
             <Grid>
-                <Border IsHitTestVisible="False" CornerRadius="13" BorderBrush="#44FFE07A" BorderThickness="1"/>
+                <Border IsHitTestVisible="False" CornerRadius="13" BorderBrush="#FFE1EE" BorderThickness="1"/>
                 <TextBlock Name="BubbleText"
                            Margin="2"
                            TextWrapping="Wrap"
-                           Foreground="#F7FBFF"
+                           Foreground="#4A2A3A"
                            FontSize="12"
                            LineHeight="17"/>
             </Grid>
         </Border>
     </Grid>
 </Window>
+

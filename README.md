@@ -1,4 +1,4 @@
-# Aemeath Agent
+﻿# Aemeath Agent
 
 一个写给鸣潮玩家的「爱弥斯」主题 Windows AI 桌宠助手。
 
@@ -230,6 +230,10 @@ dotnet test Aemeath.sln
 
 项目仍在持续开发中。当前已经从“能运行的桌宠基线”推进到“面向鸣潮玩家的角色化 AI 桌面助手”。后续仍适合继续完善自动化测试、安装包发布、更多桌宠互动、更多角色知识库内容和更完整的 MCP 工具体验。
 
+## 致谢
+
+- UI风格参考项目：Ameath 桌宠项目，https://gitee.com/lzy-buaa-jdi/ameath
 ## License
 
 本项目使用 MIT License。详见 [LICENSE](LICENSE)。
+

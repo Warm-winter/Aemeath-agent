@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Notifications;
 using Avalonia.Layout;
@@ -359,7 +359,7 @@ public partial class ConfigWindow : Window
         {
             CornerRadius = new CornerRadius(14),
             Padding = new Thickness(14),
-            Background = AemiUi.Brush(isCurrent ? "#202F54" : "#141F35"),
+            Background = AemiUi.Brush(isCurrent ? "#FFE1EE" : "#FFFFFF"),
             BorderBrush = AemiUi.Brush(isCurrent ? AemiUi.Star : AemiUi.Border),
             BorderThickness = new Thickness(1)
         };
@@ -1147,3 +1147,4 @@ public partial class ConfigWindow : Window
         base.OnClosed(e);
     }
 }
+

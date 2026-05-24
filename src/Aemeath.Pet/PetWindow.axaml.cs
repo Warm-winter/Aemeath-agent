@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -21,6 +21,7 @@ public partial class PetWindow : Window
     private readonly PetViewModel _viewModel;
     private readonly Action? _openChatAction;
     private readonly Action? _openConfigAction;
+    private readonly Action? _exitAction;
     private readonly SettingsService? _settingsService;
     private readonly Random _random = new();
     private readonly string[] _tapLines =
@@ -50,16 +51,17 @@ public partial class PetWindow : Window
     private DateTime _lastClickAt = DateTime.MinValue;
     private bool _singleClickPending;
 
-    public PetWindow() : this(null, null, null, null)
+    public PetWindow() : this(null, null, null, null, null)
     {
     }
 
-    public PetWindow(Settings? settings = null, Action? openChatAction = null, Action? openConfigAction = null, SettingsService? settingsService = null)
+    public PetWindow(Settings? settings = null, Action? openChatAction = null, Action? openConfigAction = null, SettingsService? settingsService = null, Action? exitAction = null)
     {
         InitializeComponent();
 
         _openChatAction = openChatAction;
         _openConfigAction = openConfigAction;
+        _exitAction = exitAction;
         _settingsService = settingsService;
 
         _viewModel = new PetViewModel();
@@ -333,6 +335,12 @@ public partial class PetWindow : Window
     {
         var menu = new ContextMenu();
 
+        var titleItem = new MenuItem
+        {
+            Header = "快捷菜单 · Ameath",
+            IsEnabled = false
+        };
+
         var interactItem = new MenuItem { Header = "摸摸小爱" };
         interactItem.Click += async (_, _) => await TriggerSingleClickInteractionAsync();
 
@@ -415,8 +423,19 @@ public partial class PetWindow : Window
         trayItem.Click += (_, _) => Hide();
 
         var exitItem = new MenuItem { Header = "退出 Aemeath" };
-        exitItem.Click += (_, _) => Close();
+        exitItem.Click += (_, _) =>
+        {
+            if (_exitAction is not null)
+            {
+                _exitAction.Invoke();
+                return;
+            }
 
+            Close();
+        };
+
+        menu.Items.Add(titleItem);
+        menu.Items.Add(new Separator());
         menu.Items.Add(interactItem);
         menu.Items.Add(greetingItem);
         menu.Items.Add(dockItem);
@@ -696,3 +715,7 @@ public partial class PetWindow : Window
         return false;
     }
 }
+
+
+
+

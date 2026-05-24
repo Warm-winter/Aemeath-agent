@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -36,6 +36,9 @@
     <AvaloniaResource Include="..\..\assets\static\xiaoai-avatar.png">
       <Link>Assets\static\xiaoai-avatar.png</Link>
     </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\fonts\zpix.ttf">
+      <Link>Assets\fonts\zpix.ttf</Link>
+    </AvaloniaResource>
     <AvaloniaResource Include="..\..\assets\static\user-male.png">
       <Link>Assets\static\user-male.png</Link>
     </AvaloniaResource>
@@ -68,3 +71,5 @@
   </ItemGroup>
 
 </Project>
+
+

@@ -1,4 +1,4 @@
-namespace Aemeath.Core.AI;
+﻿namespace Aemeath.Core.AI;
 
 /// <summary>
 /// AI 聊天服务接口
@@ -36,6 +36,8 @@ public interface IChatService
     /// <returns>流式响应文本片段</returns>
     IAsyncEnumerable<string> SendMessageStreamingAsync(string message, CancellationToken cancellationToken = default);
 
+    IAsyncEnumerable<string> SendMessageStreamingAsync(string message, IReadOnlyList<ChatAttachment>? attachments, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// 清空对话历史
     /// </summary>
@@ -58,3 +60,5 @@ public interface IChatService
     /// <param name="handler">工具处理函数</param>
     void RegisterTool(string toolName, string description, Func<string, Task<string>> handler);
 }
+
+

@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
@@ -39,7 +39,8 @@ public partial class App : Application
                 _settingsService.Current,
                 OpenChatWindow,
                 OpenConfigWindow,
-                _settingsService);
+                _settingsService,
+                ExitApplication);
 
             _petWindow.Closing += OnPetWindowClosing;
             desktop.MainWindow = _petWindow;
@@ -210,7 +211,12 @@ public partial class App : Application
 
     private void OnTrayExitClick(object? sender, EventArgs e)
     {
-        AppLogger.Info("app", "tray exit requested");
+        ExitApplication();
+    }
+
+    private void ExitApplication()
+    {
+        AppLogger.Info("app", "exit requested");
         _isExiting = true;
 
         CloseWindow(_chatWindow, "chat");
@@ -243,3 +249,5 @@ public partial class App : Application
     }
 
 }
+
+

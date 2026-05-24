@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aemeath.Desktop.Views.ConfigWindow"
         Width="1040" Height="820"
@@ -16,7 +16,7 @@
       <Setter Property="Foreground" Value="{StaticResource AemiTextFaintBrush}"/>
     </Style>
     <Style Selector="Button">
-      <Setter Property="Background" Value="#24304C"/>
+      <Setter Property="Background" Value="#FF69B4"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
@@ -27,7 +27,7 @@
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button:pointerover">
-      <Setter Property="Background" Value="#2E3C60"/>
+      <Setter Property="Background" Value="#E84D8E"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
     </Style>
     <Style Selector="Button:focus">
@@ -38,21 +38,21 @@
     </Style>
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
-      <Setter Property="Foreground" Value="#07101E"/>
+      <Setter Property="Foreground" Value="#4A2A3A"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiHaloSoftBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#161F36"/>
+      <Setter Property="Background" Value="#FFE1EE"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
     </Style>
     <Style Selector="Button.danger">
-      <Setter Property="Background" Value="#3A1D2B"/>
-      <Setter Property="BorderBrush" Value="#A94B68"/>
-      <Setter Property="Foreground" Value="#FFD9E3"/>
+      <Setter Property="Background" Value="#FFEAF0"/>
+      <Setter Property="BorderBrush" Value="#F0A9B8"/>
+      <Setter Property="Foreground" Value="#D94A62"/>
     </Style>
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Background" Value="#FFFFFF"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
@@ -60,7 +60,7 @@
       <Setter Property="Padding" Value="12,9"/>
     </Style>
     <Style Selector="ComboBox">
-      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Background" Value="#FFFFFF"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
       <Setter Property="CornerRadius" Value="8"/>
@@ -73,7 +73,7 @@
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
     </Style>
     <Style Selector="ListBox">
-      <Setter Property="Background" Value="#142035"/>
+      <Setter Property="Background" Value="#FFFFFF"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
     </Style>
@@ -88,7 +88,7 @@
       <Setter Property="Padding" Value="14,12"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
-      <Setter Property="Background" Value="#121C2E"/>
+      <Setter Property="Background" Value="#FFE1EE"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
     </Style>
@@ -98,7 +98,7 @@
     </Style>
     <Style Selector="TabControl#SettingsTabControl TabItem:selected">
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="Background" Value="#21365C"/>
+      <Setter Property="Background" Value="#FFD1E5"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
     </Style>
   </Window.Styles>
@@ -107,48 +107,48 @@
     <Grid x:Name="BackgroundContainer" IsHitTestVisible="False">
       <Grid.Background>
         <RadialGradientBrush Center="50%,34%" GradientOrigin="50%,34%" RadiusX="1" RadiusY="1">
-          <GradientStop Color="#141F39" Offset="0.0"/>
-          <GradientStop Color="#07101E" Offset="0.60"/>
-          <GradientStop Color="#02040A" Offset="1.0"/>
+          <GradientStop Color="#FFF1F6" Offset="0.0"/>
+          <GradientStop Color="#FFF8FB" Offset="0.60"/>
+          <GradientStop Color="#FFE1EE" Offset="1.0"/>
         </RadialGradientBrush>
       </Grid.Background>
       <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.28"/>
       <Border x:Name="GlowLayerPink" IsHitTestVisible="False">
         <Border.Background>
           <RadialGradientBrush Center="13%,22%" RadiusX="58%" RadiusY="58%">
-            <GradientStop Color="#2AFF78BE" Offset="0"/>
-            <GradientStop Color="#00FF78BE" Offset="1"/>
+            <GradientStop Color="#55FFD1E5" Offset="0"/>
+            <GradientStop Color="#00FFD1E5" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
       </Border>
       <Border x:Name="GlowLayerBlue" IsHitTestVisible="False">
         <Border.Background>
           <RadialGradientBrush Center="88%,72%" RadiusX="62%" RadiusY="62%">
-            <GradientStop Color="#3073C7FF" Offset="0"/>
-            <GradientStop Color="#0073C7FF" Offset="1"/>
+            <GradientStop Color="#55FFE1EE" Offset="0"/>
+            <GradientStop Color="#00FFE1EE" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
       </Border>
       <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.48">
         <Border.Background>
           <RadialGradientBrush Center="52%,5%" RadiusX="72%" RadiusY="42%">
-            <GradientStop Color="#16FFE07A" Offset="0"/>
-            <GradientStop Color="#00FFE07A" Offset="1"/>
+            <GradientStop Color="#33FFFFFF" Offset="0"/>
+            <GradientStop Color="#00FFFFFF" Offset="1"/>
           </RadialGradientBrush>
         </Border.Background>
       </Border>
     </Grid>
 
     <Grid Margin="18" RowDefinitions="Auto,*,Auto">
-      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="16">
+      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="16">
         <Grid ColumnDefinitions="Auto,*">
-          <Border Width="58" Height="58" CornerRadius="29" Background="#172238" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5">
+          <Border Width="58" Height="58" CornerRadius="29" Background="#FFFFFF" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5">
             <Image Source="avares://Aemeath-agent/Assets/static/app.ico" Stretch="Uniform" Margin="10"/>
           </Border>
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <TextBlock Text="星炬学院档案库" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-              <Border CornerRadius="999" Padding="8,3" Background="#2473C7FF" BorderBrush="#6673C7FF" BorderThickness="1">
+              <Border CornerRadius="999" Padding="8,3" Background="#FFD1E5" BorderBrush="#F3C2D4" BorderThickness="1">
                 <TextBlock Text="Startorch Archive" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
               </Border>
             </StackPanel>
@@ -157,10 +157,10 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Margin="0,14,0,0">
+      <Border Grid.Row="1" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Margin="0,14,0,0">
         <TabControl x:Name="SettingsTabControl" TabStripPlacement="Left" FontSize="14" Padding="12">
           <TabItem Header="提供商配置">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <Grid ColumnDefinitions="310,*">
                 <StackPanel Spacing="12">
                   <TextBlock Text="已保存提供商" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
@@ -174,7 +174,7 @@
                 <ScrollViewer Grid.Column="1" Margin="18,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                   <StackPanel Spacing="12">
                     <TextBlock Text="连接与模型" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                    <Border CornerRadius="999" Background="#1A73C7FF" BorderBrush="#4473C7FF" BorderThickness="1" Padding="10,5">
+                    <Border CornerRadius="999" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1" Padding="10,5">
                       <TextBlock x:Name="ProviderStatusText" Text="选择或新增一个提供商" Classes="subtle" TextWrapping="Wrap"/>
                     </Border>
                     <Grid ColumnDefinitions="*,*">
@@ -197,7 +197,7 @@
                       <TextBox x:Name="ManualModelBox" Watermark="手动添加模型 ID"/>
                       <Button Grid.Column="1" x:Name="AddManualModelButton" Content="添加" Classes="ghost" Margin="8,0,0,0"/>
                     </Grid>
-                    <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#141F35" Padding="12" MinHeight="130">
+                    <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="12" MinHeight="130">
                       <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="ModelsPanel" Spacing="8"/>
                       </ScrollViewer>
@@ -214,7 +214,7 @@
           </TabItem>
 
           <TabItem Header="记忆管理">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <Grid ColumnDefinitions="330,*">
                 <StackPanel Spacing="12">
                   <TextBlock Text="长期记忆" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
@@ -240,10 +240,10 @@
           </TabItem>
 
           <TabItem Header="MCP 配置">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <StackPanel Spacing="16">
                 <TextBlock Text="工具接入" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#141F35" Padding="16">
+                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16">
                   <StackPanel Spacing="12">
                     <TextBlock Text="内置 Servers" Classes="subtle"/>
                     <WrapPanel>
@@ -252,7 +252,7 @@
                     </WrapPanel>
                   </StackPanel>
                 </Border>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#141F35" Padding="16">
+                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16">
                   <StackPanel Spacing="12">
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="4">
@@ -283,14 +283,14 @@
           </TabItem>
 
           <TabItem Header="界面与行为">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <StackPanel Spacing="14">
                 <TextBlock Text="桌面行为" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
                 <CheckBox x:Name="AlwaysOnTopBox" Content="桌宠保持窗口最上层"/>
                 <CheckBox x:Name="MinimizeToTrayBox" Content="关闭时收纳到系统托盘"/>
                 <CheckBox x:Name="AutoStartBox" Content="开机自启动"/>
                 <CheckBox x:Name="ParticleEffectsBox" Content="开启背景粒子动效"/>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#141F35" Padding="16" Margin="0,10,0,0">
+                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16" Margin="0,10,0,0">
                   <StackPanel Spacing="12">
                     <TextBlock Text="桌宠外观与互动" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
                     <Grid ColumnDefinitions="*,*">
@@ -313,9 +313,9 @@
           </TabItem>
 
           <TabItem Header="用户头像">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <Grid ColumnDefinitions="Auto,*">
-                <Border Width="112" Height="112" CornerRadius="56" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="#172238">
+                <Border Width="112" Height="112" CornerRadius="56" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="#FFFFFF">
                   <Image x:Name="AvatarPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center" Margin="20,0,0,0">
@@ -330,10 +330,10 @@
           </TabItem>
 
           <TabItem Header="聊天背景">
-            <Border Background="#B80A1020" Padding="20" CornerRadius="0,18,18,0">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <StackPanel Spacing="14">
                 <TextBlock Text="通讯背景" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                <Border Height="180" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#141F35">
+                <Border Height="180" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF">
                   <Image x:Name="ChatBackgroundPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
                 </Border>
                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -346,7 +346,7 @@
         </TabControl>
       </Border>
 
-      <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="14" Margin="0,14,0,0">
+      <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="14" Margin="0,14,0,0">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" Text="Provider 请在卡片页单独保存；这里保存界面、语音、头像和背景设置。" Classes="subtle"/>
           <Button Grid.Column="1" x:Name="SaveAllButton" Content="保存非 Provider 设置" Classes="primary" MinWidth="170"/>
@@ -355,3 +355,5 @@
     </Grid>
   </Grid>
 </Window>
+
+

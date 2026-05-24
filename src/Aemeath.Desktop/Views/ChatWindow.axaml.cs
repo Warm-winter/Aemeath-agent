@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -273,7 +273,7 @@ public partial class ChatWindow : Window
 
             _chatService.ClearHistory();
 
-            var reply = await _chatService.SendMessageAsync(prompt, attachments);
+            var reply = await StreamReplyIntoAsync(prompt, pending, attachments);
             var sanitizedReply = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitizedReply))
             {
@@ -327,6 +327,33 @@ public partial class ChatWindow : Window
             _isSending = false;
             UpdateProviderQuickSwitchEnabled();
         }
+    }
+
+    private async Task<string> StreamReplyIntoAsync(
+        string prompt,
+        TextBlock target,
+        IReadOnlyList<ChatAttachment>? attachments = null,
+        CancellationToken cancellationToken = default)
+    {
+        var builder = new System.Text.StringBuilder();
+        await foreach (var chunk in _chatService.SendMessageStreamingAsync(prompt, attachments, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrEmpty(chunk))
+            {
+                continue;
+            }
+
+            builder.Append(chunk);
+            target.Text = SanitizeAssistantOutput(builder.ToString());
+            ScrollToBottom();
+            if (ShouldSuppressConfirmationReply(target.Text))
+            {
+                break;
+            }
+        }
+
+        return builder.ToString();
     }
     private void InputBox_OnTextChanged(object? sender, TextChangedEventArgs e)
     {
@@ -780,7 +807,7 @@ public partial class ChatWindow : Window
 
             _chatService.ClearHistory();
 
-            var reply = await _chatService.SendMessageAsync(prompt);
+            var reply = await StreamReplyIntoAsync(prompt, pending);
             var sanitizedReply = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitizedReply))
             {
@@ -1136,7 +1163,7 @@ public partial class ChatWindow : Window
             Height = 44,
             CornerRadius = new CornerRadius(22),
             Padding = new Thickness(3),
-            Background = AemiUi.Brush(isAssistant ? "#2473C7FF" : "#244C6FFF"),
+            Background = AemiUi.Brush(isAssistant ? "#FFD1E5" : "#FFE1EE"),
             BorderBrush = AemiUi.Brush(isAssistant ? AemiUi.Star : AemiUi.Halo),
             BorderThickness = new Thickness(1),
             Margin = isAssistant ? new Thickness(0, 4, 10, 0) : new Thickness(10, 4, 0, 0),
@@ -1148,8 +1175,8 @@ public partial class ChatWindow : Window
             MaxWidth = bubbleMax,
             CornerRadius = new CornerRadius(isAssistant ? 16 : 14),
             Padding = new Thickness(14, 12),
-            Background = AemiUi.Brush(isAssistant ? "#E61C2A48" : "#D914365D"),
-            BorderBrush = AemiUi.Brush(isAssistant ? "#8873C7FF" : "#88FF78BE"),
+            Background = AemiUi.Brush(isAssistant ? "#FFFFFF" : "#FFF8FB"),
+            BorderBrush = AemiUi.Brush(isAssistant ? "#F3C2D4" : "#FF69B4"),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = isAssistant ? HorizontalAlignment.Left : HorizontalAlignment.Right
         };
@@ -1281,8 +1308,8 @@ public partial class ChatWindow : Window
             CornerRadius = new CornerRadius(16),
             Padding = new Thickness(16),
             Margin = new Thickness(46, 2, 12, 8),
-            Background = AemiUi.Brush("#302A2038"),
-            BorderBrush = AemiUi.Brush("#AAFFE07A"),
+            Background = AemiUi.Brush("#FFF8FB"),
+            BorderBrush = AemiUi.Brush("#F3C2D4"),
             BorderThickness = new Thickness(1),
             MaxWidth = ChatScrollViewer.Bounds.Width > 0
                 ? Math.Max(260, ChatScrollViewer.Bounds.Width * 0.72)
@@ -1294,7 +1321,7 @@ public partial class ChatWindow : Window
         panel.Children.Add(new TextBlock
         {
             Text = "高风险操作需要确认",
-            Foreground = new SolidColorBrush(Color.Parse("#FFEAB0")),
+            Foreground = new SolidColorBrush(Color.Parse("#E84D8E")),
             FontWeight = Avalonia.Media.FontWeight.SemiBold,
             FontSize = 15
         });
@@ -1324,9 +1351,9 @@ public partial class ChatWindow : Window
         var confirmButton = new Button
         {
             Content = "确认执行",
-            Background = new SolidColorBrush(Color.Parse("#FFE07A")),
+            Background = new SolidColorBrush(Color.Parse("#FF69B4")),
             Foreground = new SolidColorBrush(Color.Parse("#07101E")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#FFF1AF")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#E84D8E")),
             CornerRadius = new CornerRadius(8),
             MinWidth = 92
         };
@@ -1337,9 +1364,9 @@ public partial class ChatWindow : Window
         var cancelButton = new Button
         {
             Content = "取消",
-            Background = new SolidColorBrush(Color.Parse("#23314D")),
+            Background = new SolidColorBrush(Color.Parse("#FFE1EE")),
             Foreground = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.Parse("#3A4C75")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#F3C2D4")),
             CornerRadius = new CornerRadius(8),
             MinWidth = 82
         };
@@ -1468,7 +1495,7 @@ public partial class ChatWindow : Window
             _chatService.ClearHistory();
             var recent = _displayMessages.TakeLast(40).ToList();
             var prompt = BuildPromptWithRecentContext(recent, userContent);
-            var reply = await _chatService.SendMessageAsync(prompt);
+            var reply = await StreamReplyIntoAsync(prompt, pending);
             var sanitized = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitized))
             {
@@ -2018,7 +2045,13 @@ internal sealed class NoOpChatService : IChatService
     public Task<string> SummarizeAsync(string message, CancellationToken cancellationToken = default)
         => Task.FromResult(string.Empty);
 
-    public async IAsyncEnumerable<string> SendMessageStreamingAsync(string message, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<string> SendMessageStreamingAsync(string message, CancellationToken cancellationToken = default)
+        => SendMessageStreamingAsync(message, null, cancellationToken);
+
+    public async IAsyncEnumerable<string> SendMessageStreamingAsync(
+        string message,
+        IReadOnlyList<ChatAttachment>? attachments,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         yield return "\u672a\u914d\u7f6e AI \u670d\u52a1\uff0c\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u586b\u5199 API Key\u3002";
         await Task.CompletedTask;
@@ -2028,3 +2061,7 @@ internal sealed class NoOpChatService : IChatService
     public Task<bool> SwitchProviderAsync(string providerName, string apiKey, string? endpoint = null) => Task.FromResult(false);
     public void RegisterTool(string toolName, string description, Func<string, Task<string>> handler) { }
 }
+
+
+
+

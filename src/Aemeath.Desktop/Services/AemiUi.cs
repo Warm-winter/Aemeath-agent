@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -7,25 +7,25 @@ namespace Aemeath.Desktop.Services;
 
 internal static class AemiUi
 {
-    public const string Void = "#050712";
-    public const string VoidDeep = "#02040A";
-    public const string Panel = "#111A2E";
-    public const string PanelSoft = "#16213A";
-    public const string PanelRaised = "#1C2A48";
-    public const string Glass = "#D90E1627";
-    public const string GlassSoft = "#B8121C31";
-    public const string Border = "#375070";
-    public const string BorderSoft = "#2A3A59";
-    public const string Halo = "#73C7FF";
-    public const string HaloSoft = "#B9E5FF";
-    public const string Pink = "#FF78BE";
-    public const string PinkSoft = "#FFB6DA";
-    public const string Star = "#FFE07A";
-    public const string Ghost = "#F7FBFF";
-    public const string TextSecondary = "#C5D4F2";
-    public const string TextMuted = "#8FA2C8";
-    public const string Success = "#65E8B0";
-    public const string Error = "#FF6B7A";
+    public const string Void = "#FFF1F6";
+    public const string VoidDeep = "#FFE1EE";
+    public const string Panel = "#FFFFFF";
+    public const string PanelSoft = "#FFF8FB";
+    public const string PanelRaised = "#FFFFFF";
+    public const string Glass = "#FFFFFF";
+    public const string GlassSoft = "#FFF8FB";
+    public const string Border = "#F3C2D4";
+    public const string BorderSoft = "#F8D8E4";
+    public const string Halo = "#FF9BCF";
+    public const string HaloSoft = "#FFE1EE";
+    public const string Pink = "#FF69B4";
+    public const string PinkSoft = "#FFD1E5";
+    public const string Star = "#FF69B4";
+    public const string Ghost = "#4A2A3A";
+    public const string TextSecondary = "#7A5564";
+    public const string TextMuted = "#9A7482";
+    public const string Success = "#3CA66B";
+    public const string Error = "#D94A62";
 
     public static SolidColorBrush Brush(string color) => new(Color.Parse(color));
 
@@ -66,11 +66,11 @@ internal static class AemiUi
     {
         var (foreground, background, border) = tone switch
         {
-            "star" => (Star, "#26FFE07A", "#66FFE07A"),
-            "pink" => (PinkSoft, "#24FF78BE", "#66FF78BE"),
-            "danger" => ("#FFD9E3", "#32FF6B7A", "#88FF6B7A"),
-            "success" => (Success, "#2665E8B0", "#7765E8B0"),
-            _ => (HaloSoft, "#2473C7FF", "#6673C7FF")
+            "star" => (Pink, "#FFE1EE", "#F3C2D4"),
+            "pink" => (Pink, "#FFD1E5", "#F3C2D4"),
+            "danger" => (Error, "#FFEAF0", "#F0A9B8"),
+            "success" => (Success, "#E9FFF2", "#A7E5BE"),
+            _ => (TextSecondary, "#FFE1EE", "#F3C2D4")
         };
 
         return new Border
@@ -113,9 +113,9 @@ internal static class AemiUi
             MinWidth = 38,
             MinHeight = 34,
             Padding = new Thickness(6, 4),
-            Background = Brush("#3A1C2A48"),
+            Background = Brush("#FFE1EE"),
             Foreground = Brush(Ghost),
-            BorderBrush = Brush("#6673C7FF"),
+            BorderBrush = Brush("#F3C2D4"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(9)
         };
@@ -126,3 +126,4 @@ internal static class AemiUi
     public static TextBlock Label(string text)
         => Text(text, 12, TextMuted, FontWeight.SemiBold);
 }
+

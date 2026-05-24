@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aemeath.Desktop.Views.McpConfigWindow"
         Width="590" Height="460"
@@ -13,7 +13,7 @@
       <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
     </Style>
     <Style Selector="Button">
-      <Setter Property="Background" Value="#24304C"/>
+      <Setter Property="Background" Value="#FF69B4"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
@@ -24,15 +24,15 @@
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button:pointerover">
-      <Setter Property="Background" Value="#2E3C60"/>
+      <Setter Property="Background" Value="#E84D8E"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
     </Style>
     <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#161F36"/>
+      <Setter Property="Background" Value="#FFE1EE"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
     </Style>
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="#172238"/>
+      <Setter Property="Background" Value="#FFFFFF"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
       <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
@@ -43,18 +43,18 @@
   <Grid>
     <Grid.Background>
       <RadialGradientBrush Center="50%,24%" GradientOrigin="50%,24%" RadiusX="1" RadiusY="1">
-        <GradientStop Color="#141F39" Offset="0.0"/>
-        <GradientStop Color="#07101E" Offset="0.68"/>
-        <GradientStop Color="#02040A" Offset="1.0"/>
+        <GradientStop Color="#FFF1F6" Offset="0.0"/>
+        <GradientStop Color="#4A2A3A" Offset="0.68"/>
+        <GradientStop Color="#FFE1EE" Offset="1.0"/>
       </RadialGradientBrush>
     </Grid.Background>
 
-    <Border Margin="18" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#6673C7FF" BorderThickness="1" Padding="18">
+    <Border Margin="18" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="18">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
         <StackPanel Spacing="4">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="Schema 草稿舱" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-            <Border CornerRadius="999" Padding="8,3" Background="#2473C7FF" BorderBrush="#6673C7FF" BorderThickness="1">
+            <Border CornerRadius="999" Padding="8,3" Background="#FFD1E5" BorderBrush="#F3C2D4" BorderThickness="1">
               <TextBlock Text="MCP Draft" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
             </Border>
           </StackPanel>
@@ -72,7 +72,7 @@
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  VerticalContentAlignment="Top"
-                 Background="#141F35"
+                 Background="#FFFFFF"
                  BorderBrush="{StaticResource AemiBorderBrush}"
                  Margin="0,6,0,0"/>
 
@@ -84,3 +84,5 @@
     </Border>
   </Grid>
 </Window>
+
+

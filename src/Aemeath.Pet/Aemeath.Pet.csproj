@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <Nullable>enable</Nullable>
@@ -19,6 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="..\..\assets\fonts\zpix.ttf">
+      <Link>Assets\fonts\zpix.ttf</Link>
+    </AvaloniaResource>
     <AvaloniaResource Include="..\..\assets\animations\pet\daiji.gif">
       <Link>Assets\animations\pet\daiji.gif</Link>
     </AvaloniaResource>
@@ -49,3 +52,5 @@
   </ItemGroup>
 
 </Project>
+
+
