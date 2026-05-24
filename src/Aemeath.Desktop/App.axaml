@@ -23,7 +23,7 @@
             <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
         </Style>
         <Style Selector="Button">
-            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
             <Setter Property="Background" Value="{DynamicResource AemiPinkBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
@@ -56,7 +56,7 @@
         </Style>
         <Style Selector="CheckBox, RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
         </Style>
         <Style Selector="ContextMenu">
             <Setter Property="Background" Value="White"/>
@@ -65,7 +65,7 @@
         </Style>
         <Style Selector="MenuItem">
             <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
         </Style>
         <Style Selector="MenuItem:pointerover">
             <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>

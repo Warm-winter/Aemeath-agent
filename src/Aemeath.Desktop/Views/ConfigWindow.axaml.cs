@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Notifications;
 using Avalonia.Layout;
@@ -513,6 +513,8 @@ public partial class ConfigWindow : Window
     private void RenderModels(string? selectedModel)
     {
         ModelsPanel.Children.Clear();
+        DefaultModelBox.SelectedItem = null;
+        DefaultModelBox.SelectedIndex = -1;
         DefaultModelBox.Items.Clear();
 
         foreach (var model in _currentModelCandidates.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
