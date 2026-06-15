@@ -125,16 +125,8 @@
           </Border>
 
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="Aemeath / &#x5C0F;&#x7231;" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-              <Border CornerRadius="999" Padding="8,3" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1">
-                <TextBlock Text="Digital Ghost" FontSize="12" Foreground="{StaticResource AemiStarBrush}" FontWeight="SemiBold"/>
-              </Border>
-              <Border CornerRadius="999" Padding="8,3" Background="#FFD1E5" BorderBrush="#F3C2D4" BorderThickness="1">
-                <TextBlock Text="Resonance Link" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
-              </Border>
-            </StackPanel>
-            <TextBlock Text="&#x661F;&#x6D77;&#x5B66;&#x9662;&#x901A;&#x8BAF;&#x7EC8;&#x7AEF; / Startorch Academy uplink" Classes="subtle" FontSize="13"/>
+            <TextBlock Text="爱弥斯" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+            <TextBlock Text="星炬学院通讯终端" Classes="subtle" FontSize="13"/>
           </StackPanel>
 
           <StackPanel Grid.Column="2" Spacing="8" Width="430" VerticalAlignment="Center">
@@ -142,7 +134,7 @@
               <ComboBox x:Name="ProviderQuickSwitchBox" HorizontalAlignment="Stretch"/>
               <ComboBox Grid.Column="1" x:Name="ModelQuickSwitchBox" HorizontalAlignment="Stretch" Margin="8,0,0,0"/>
             </Grid>
-            <Border CornerRadius="999" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1" Padding="8,4">
+            <Border x:Name="ProviderSwitchStatusBorder" CornerRadius="999" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1" Padding="8,4" IsVisible="False">
               <TextBlock x:Name="ProviderSwitchStatusText" Text="" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"/>
             </Border>
           </StackPanel>

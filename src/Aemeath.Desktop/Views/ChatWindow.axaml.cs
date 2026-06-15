@@ -40,6 +40,7 @@ public partial class ChatWindow : Window
     private readonly ToolConfirmationService? _toolConfirmationService;
     private readonly DispatcherTimer _pendingTimer;
     private readonly DispatcherTimer _flickerTimer;
+    private readonly DispatcherTimer _statusHideTimer;
     private readonly string[] _pendingFrames = ["星点同步中", "星点同步中.", "星点同步中..", "星点同步中..."];
 
     private int _pendingFrameIndex;
@@ -180,6 +181,13 @@ public partial class ChatWindow : Window
             GlowLayerPink.Opacity = glow;
             GlowLayerBlue.Opacity = glow;
             GlowLayerWhite.Opacity = glow;
+        };
+
+        _statusHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _statusHideTimer.Tick += (_, _) =>
+        {
+            _statusHideTimer.Stop();
+            ProviderSwitchStatusBorder.IsVisible = false;
         };
 
         SendButton.Click += async (_, _) => await SendAsync();
@@ -471,11 +479,16 @@ public partial class ChatWindow : Window
         }
 
         RenderAttachmentChips();
-        ProviderSwitchStatusText.Text = notices.Count > 0
+        var message = notices.Count > 0
             ? string.Join(" ", notices)
             : _pendingAttachments.Count > 0
                 ? $"\u5df2\u9644\u52a0 {_pendingAttachments.Count} \u4e2a\u6587\u4ef6\u3002"
                 : string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            ShowStatusMessage(message);
+        }
     }
 
 
@@ -547,11 +560,11 @@ public partial class ChatWindow : Window
                     if (_chatService is AemiChatService service)
                     {
                         service.ReloadMcpTools();
-                        ProviderSwitchStatusText.Text = "MCP 工具正在后台刷新。";
+                        ShowStatusMessage("MCP 工具正在后台刷新。");
                     }
                     else
                     {
-                        ProviderSwitchStatusText.Text = $"MCP 服务已{(!server.Enabled ? "开启" : "关闭")}：{server.DisplayName}";
+                        ShowStatusMessage($"MCP 服务已{(!server.Enabled ? "开启" : "关闭")}：{server.DisplayName}");
                     }
                 };
                 menu.Items.Add(item);
@@ -1805,18 +1818,18 @@ public partial class ChatWindow : Window
         var oldModel = _settingsService.GetApiKeyInfo(oldProvider)?.ModelId ?? _settingsService.Current.DefaultModel;
         try
         {
-            ProviderSwitchStatusText.Text = "正在切换提供商...";
+            ShowStatusMessage("正在切换提供商...");
             UpdateProviderQuickSwitchEnabled(forceDisabled: true);
 
             if (string.Equals(SettingsService.NormalizeProviderName(provider), SettingsService.NormalizeProviderName(oldProvider), StringComparison.OrdinalIgnoreCase))
             {
-                ProviderSwitchStatusText.Text = string.Empty;
+                HideStatusMessage();
                 return;
             }
 
             if (_settingsService.GetApiKeyInfo(provider) is null)
             {
-                ProviderSwitchStatusText.Text = "切换失败：未找到这个提供商。";
+                ShowStatusMessage("切换失败：未找到这个提供商。");
                 RefreshProviderQuickSwitch(oldProvider, oldModel);
                 return;
             }
@@ -1824,7 +1837,7 @@ public partial class ChatWindow : Window
             var switched = _settingsService.SwitchCurrentProvider(provider);
             if (!switched)
             {
-                ProviderSwitchStatusText.Text = "切换失败：配置没有保存成功。";
+                ShowStatusMessage("切换失败：配置没有保存成功。");
                 RefreshProviderQuickSwitch(oldProvider, oldModel);
                 return;
             }
@@ -1835,15 +1848,15 @@ public partial class ChatWindow : Window
             var ready = TryReloadChatServiceFromSettings(out var error);
 
             RefreshProviderQuickSwitch(activeProvider, targetModel);
-            ProviderSwitchStatusText.Text = ready
+            ShowStatusMessage(ready
                 ? $"已切换到 {activeProvider} / {targetModel}"
-                : $"已切换到 {activeProvider}，但服务暂时还没准备好：{error ?? "请检查 API Key、Endpoint 和模型配置。"}";
+                : $"已切换到 {activeProvider}，但服务暂时还没准备好：{error ?? "请检查 API Key、Endpoint 和模型配置。"}");
         }
         catch (Exception ex)
         {
             AppLogger.Error("chat", "quick provider switch failed", ex);
             RefreshProviderQuickSwitch();
-            ProviderSwitchStatusText.Text = $"切换时遇到问题：{ex.Message}";
+            ShowStatusMessage($"切换时遇到问题：{ex.Message}");
         }
         finally
         {
@@ -1874,11 +1887,11 @@ public partial class ChatWindow : Window
         var oldModel = _settingsService.GetApiKeyInfo(provider)?.ModelId ?? _settingsService.Current.DefaultModel;
         try
         {
-            ProviderSwitchStatusText.Text = "正在切换模型...";
+            ShowStatusMessage("正在切换模型...");
             UpdateProviderQuickSwitchEnabled(forceDisabled: true);
             if (string.IsNullOrWhiteSpace(model) || string.Equals(model, oldModel, StringComparison.OrdinalIgnoreCase))
             {
-                ProviderSwitchStatusText.Text = string.Empty;
+                HideStatusMessage();
                 return;
             }
 
@@ -1886,21 +1899,21 @@ public partial class ChatWindow : Window
             if (!switched)
             {
                 RefreshModelQuickSwitch(oldModel, provider);
-                ProviderSwitchStatusText.Text = "模型切换失败：没有找到这个模型配置。";
+                ShowStatusMessage("模型切换失败：没有找到这个模型配置。");
                 return;
             }
 
             var ready = TryReloadChatServiceFromSettings(out var error);
             RefreshModelQuickSwitch(model, provider);
-            ProviderSwitchStatusText.Text = ready
+            ShowStatusMessage(ready
                 ? $"已切换模型：{model}"
-                : $"已切换模型：{model}，但服务暂时还没准备好：{error ?? "请检查 API Key、Endpoint 和模型配置。"}";
+                : $"已切换模型：{model}，但服务暂时还没准备好：{error ?? "请检查 API Key、Endpoint 和模型配置。"}");
         }
         catch (Exception ex)
         {
             AppLogger.Error("chat", "quick model switch failed", ex);
             RefreshModelQuickSwitch();
-            ProviderSwitchStatusText.Text = $"模型切换时遇到问题：{ex.Message}";
+            ShowStatusMessage($"模型切换时遇到问题：{ex.Message}");
         }
         finally
         {
@@ -2213,6 +2226,21 @@ public partial class ChatWindow : Window
         cleaned = Regex.Replace(cleaned, @"(?im)^\s*think:\s*$", string.Empty);
         cleaned = Regex.Replace(cleaned, @"(?im)^\s*thinking:\s*$", string.Empty);
         return cleaned.Trim();
+    }
+
+    private void ShowStatusMessage(string message)
+    {
+        ProviderSwitchStatusText.Text = message;
+        ProviderSwitchStatusBorder.IsVisible = true;
+        _statusHideTimer.Stop();
+        _statusHideTimer.Start();
+    }
+
+    private void HideStatusMessage()
+    {
+        _statusHideTimer.Stop();
+        ProviderSwitchStatusBorder.IsVisible = false;
+        ProviderSwitchStatusText.Text = string.Empty;
     }
 
     protected override void OnClosed(EventArgs e)

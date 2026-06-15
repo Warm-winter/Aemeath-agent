@@ -80,9 +80,9 @@ public static class ImeFixBehavior
     /// <summary>
     /// KeyUp fires after a key is released. We check:
     /// 1. Is it an arrow key (Left/Right/Home/End)?
-    /// 2. Is IME currently NOT composing?
-    /// If both true, refresh the caret visual — this fixes the case where
-    /// arrow keys after IME commit don't update the visual caret position.
+    /// If true, refresh the caret visual regardless of IME state.
+    /// This fixes the case where arrow keys don't update the visual caret position,
+    /// even during IME composition.
     /// </summary>
     private static void OnKeyUp(object? sender, KeyEventArgs e)
     {
@@ -99,12 +99,7 @@ public static class ImeFixBehavior
             return;
         }
 
-        // If IME is currently composing, don't interfere
-        if (IsImeComposing())
-        {
-            return;
-        }
-
+        // Always refresh caret visual for arrow keys, even during IME composition
         ScheduleCaretRefresh(tb);
     }
 
