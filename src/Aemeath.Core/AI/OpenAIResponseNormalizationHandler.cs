@@ -31,15 +31,6 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
             return response;
         }
 
-        if (string.Equals(mediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase))
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (TryNormalizeEventStream(body, out var normalized))
-            {
-                response.Content = CreateReplacementContent(normalized, response.Content, "text/event-stream");
-            }
-        }
-
         return response;
     }
 
@@ -74,47 +65,6 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
         {
             return false;
         }
-    }
-
-    private static bool TryNormalizeEventStream(string body, out string normalized)
-    {
-        normalized = body;
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            return false;
-        }
-
-        var changed = false;
-        var builder = new StringBuilder();
-        using var reader = new StringReader(body);
-
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            {
-                builder.AppendLine(line);
-                continue;
-            }
-
-            var data = line[5..].TrimStart();
-            if (data == "[DONE]" || !TryNormalizeJson(data, out var normalizedData))
-            {
-                builder.AppendLine(line);
-                continue;
-            }
-
-            changed = true;
-            builder.Append("data: ").AppendLine(normalizedData);
-        }
-
-        if (!changed)
-        {
-            return false;
-        }
-
-        normalized = builder.ToString();
-        return true;
     }
 
     private static bool NormalizeChatCompletionObject(JsonObject root)

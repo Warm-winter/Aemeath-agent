@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -44,6 +44,15 @@
     </AvaloniaResource>
     <AvaloniaResource Include="..\..\assets\static\user-female.png">
       <Link>Assets\static\user-female.png</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\static\chat-background-default.png">
+      <Link>Assets\static\chat-background-default.png</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\static\icons\*.svg">
+      <Link>Assets\static\icons\%(Filename)%(Extension)</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\assets\static\icons\*.png">
+      <Link>Assets\static\icons\%(Filename)%(Extension)</Link>
     </AvaloniaResource>
   </ItemGroup>
 

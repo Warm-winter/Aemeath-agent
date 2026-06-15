@@ -78,7 +78,7 @@ public partial class ConfigWindow : Window
         ProviderPresetBox.SelectionChanged += (_, _) => ApplySelectedProviderPreset();
 
         SaveAllButton.Click += async (_, _) => await SaveNonProviderSettingsAsync();
-        OpenMcpConfigButton.Click += (_, _) => new McpConfigWindow().ShowDialog(this);
+        OpenMcpConfigButton.Click += (_, _) => new McpConfigWindow(new McpServerStore(), TriggerMcpBackgroundReload).ShowDialog(this);
         SetupBuiltinMcpButton.Click += (_, _) => SetupBuiltinMcpServers();
         DownloadMcpDependenciesButton.Click += async (_, _) => await DownloadMcpDependenciesAsync();
 
@@ -817,6 +817,23 @@ public partial class ConfigWindow : Window
         var bun = ResolveBuiltinExecutablePath(_settingsService.Current.BunExecutablePath, "bun.exe");
 
         var result = plugin.SetupBuiltinMcpServers(uv, bun, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        if (!result.Contains("失败", StringComparison.Ordinal) && !result.Contains("未找到", StringComparison.Ordinal))
+        {
+            var store = new McpServerStore();
+            var existingServers = store.ListServers();
+            var legacyConfigPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Aemeath",
+                "mcp_servers.json");
+
+            if (File.Exists(legacyConfigPath) && existingServers.Count == 0)
+            {
+                store.ImportJson(File.ReadAllText(legacyConfigPath));
+            }
+
+            TriggerMcpBackgroundReload();
+        }
+
         _settingsService.Current.UvExecutablePath = string.IsNullOrWhiteSpace(uv) ? null : uv;
         _settingsService.Current.BunExecutablePath = string.IsNullOrWhiteSpace(bun) ? null : bun;
         _settingsService.Save();
@@ -836,6 +853,14 @@ public partial class ConfigWindow : Window
         }
     }
 
+
+    private void TriggerMcpBackgroundReload()
+    {
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            aemiChatService.ReloadMcpTools();
+        }
+    }
     private async Task RefreshMcpDependencyStatusAsync()
     {
         try

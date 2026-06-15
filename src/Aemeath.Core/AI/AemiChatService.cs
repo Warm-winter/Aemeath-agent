@@ -1,9 +1,10 @@
-﻿using Aemeath.Core.AI.Prompts;
+using Aemeath.Core.AI.Prompts;
 using Aemeath.Core.Configuration;
 using Aemeath.Core.Tools;
 using Aemeath.Core.MCP;
 using Aemeath.Core.Knowledge;
 using System.Diagnostics;
+using Microsoft.SemanticKernel;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -18,11 +19,23 @@ public class AemiChatService : IChatService
     public ToolConfirmationService ToolConfirmationService { get; } = new();
     private readonly Dictionary<string, Func<string, Task<string>>> _customTools = new();
     private readonly Dictionary<string, string> _customToolDescriptions = new();
+    private readonly McpRuntimeService _mcpRuntime = new();
+    private readonly SemaphoreSlim _mcpReloadLock = new(1, 1);
+    private CancellationTokenSource? _mcpReloadCts;
+    private const int McpReloadTimeoutSeconds = 130;
+    private Action<Action>? _uiThreadInvoker;
 
     public string CurrentAssistantName => "小爱";
     public bool IsProcessing { get; private set; }
     public bool IsReady => _currentKernel is not null;
     public string? LastInitializationError { get; private set; }
+    public string McpStatus { get; private set; } = "未加载";
+    public event EventHandler<string>? McpStatusChanged;
+
+    public void SetUiThreadInvoker(Action<Action> invoker)
+    {
+        _uiThreadInvoker = invoker;
+    }
 
     public AemiChatService(SettingsService settingsService)
     {
@@ -108,18 +121,7 @@ public class AemiChatService : IChatService
         TryRegisterPlugin(new BrowserPlugin(ToolConfirmationService), "browser");
         TryRegisterPlugin(new ReminderPlugin(), "reminder");
         TryRegisterPlugin(new KnowledgeBasePlugin(_knowledgeBase), "knowledge");
-
-        try
-        {
-            var mcpPlugin = new McpChatPlugin();
-            var roots = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            mcpPlugin.SetupBuiltinMcpServers(_settingsService.Current.UvExecutablePath, _settingsService.Current.BunExecutablePath, roots);
-            TryRegisterPlugin(mcpPlugin, "mcp");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"MCP 工具准备失败: {ex}");
-        }
+        TryRegisterPlugin(new McpChatPlugin(), "mcp_local");
     }
 
     private void TryRegisterPlugin(object plugin, string name)
@@ -220,6 +222,88 @@ public class AemiChatService : IChatService
         {
             IsProcessing = false;
         }
+    }
+
+    public void ReloadMcpTools()
+    {
+        _ = ReloadMcpToolsAsync();
+    }
+
+    public async Task ReloadMcpToolsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await _mcpReloadLock.WaitAsync(0, cancellationToken))
+        {
+            SetMcpStatus("MCP 工具正在加载中");
+            return;
+        }
+
+        _mcpReloadCts?.Cancel();
+        try
+        {
+            await Task.Delay(100, CancellationToken.None);
+        }
+        catch
+        {
+        }
+        _mcpReloadCts?.Dispose();
+        _mcpReloadCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _mcpReloadCts.CancelAfter(TimeSpan.FromSeconds(McpReloadTimeoutSeconds));
+        var token = _mcpReloadCts.Token;
+
+        try
+        {
+            SetMcpStatus("MCP 工具正在后台加载");
+            var plugin = await _mcpRuntime.BuildEnabledPluginAsync(token);
+            if (token.IsCancellationRequested)
+            {
+                SetMcpStatus("MCP 工具加载超时");
+                return;
+            }
+
+            if (plugin is null)
+            {
+                SetMcpStatus("没有可用的外部 MCP 工具");
+                if (_uiThreadInvoker is not null)
+                {
+                    _uiThreadInvoker(() => _currentKernel?.ReplacePlugin(null));
+                }
+                else
+                {
+                    _currentKernel?.ReplacePlugin(null);
+                }
+                return;
+            }
+
+            if (_uiThreadInvoker is not null)
+            {
+                _uiThreadInvoker(() => _currentKernel?.ReplacePlugin(plugin));
+            }
+            else
+            {
+                _currentKernel?.ReplacePlugin(plugin);
+            }
+            var failedCount = _mcpRuntime.ListServers().Count(s => s.Enabled && string.Equals(s.LastStatus, "error", StringComparison.OrdinalIgnoreCase));
+            SetMcpStatus(failedCount > 0 ? $"MCP 工具已加载，{failedCount} 个服务失败" : "MCP 工具已加载");
+        }
+        catch (OperationCanceledException)
+        {
+            SetMcpStatus("MCP 工具加载超时");
+        }
+        catch (Exception ex)
+        {
+            SetMcpStatus("MCP 工具加载失败：" + ex.Message);
+            Debug.WriteLine($"MCP 工具后台加载失败: {ex}");
+        }
+        finally
+        {
+            _mcpReloadLock.Release();
+        }
+    }
+
+    private void SetMcpStatus(string status)
+    {
+        McpStatus = status;
+        McpStatusChanged?.Invoke(this, status);
     }
 
     public void ClearHistory()

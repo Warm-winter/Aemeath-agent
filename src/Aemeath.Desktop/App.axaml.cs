@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
@@ -32,23 +32,71 @@ public partial class App : Application
         {
             _desktop = desktop;
             _settingsService = new SettingsService();
+            AppLogger.Info("app", "settings loaded");
             _chatService = new AemiChatService(_settingsService);
-            AppLogger.Info("app", "framework initialized");
+            if (_chatService is AemiChatService aemiService)
+            {
+                aemiService.SetUiThreadInvoker(action => Dispatcher.UIThread.Post(action, DispatcherPriority.Normal));
+            }
+            AppLogger.Info("app", "chat service created");
 
-            _petWindow = new PetWindow(
-                _settingsService.Current,
-                OpenChatWindow,
-                OpenConfigWindow,
-                _settingsService,
-                ExitApplication);
-
-            _petWindow.Closing += OnPetWindowClosing;
+            _petWindow = CreatePetWindow();
+            AppLogger.Info("app", "pet window created");
             desktop.MainWindow = _petWindow;
+            AppLogger.Info("app", "main window assigned");
+            AppLogger.Info("app", "framework initialized");
+            StartMcpBackgroundReload();
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
+
+    private PetWindow CreatePetWindow()
+    {
+        if (_settingsService is null)
+        {
+            throw new InvalidOperationException("Settings service is not ready.");
+        }
+
+        var window = new PetWindow(
+            _settingsService.Current,
+            OpenChatWindow,
+            OpenConfigWindow,
+            _settingsService,
+            ExitApplication);
+        window.Closing += OnPetWindowClosing;
+        return window;
+    }
+
+    private void StartMcpBackgroundReload()
+    {
+        if (_chatService is not AemiChatService aemiChatService)
+        {
+            return;
+        }
+
+        aemiChatService.McpStatusChanged -= OnMcpStatusChanged;
+        aemiChatService.McpStatusChanged += OnMcpStatusChanged;
+        AppLogger.Info("mcp", "mcp background reload started");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await aemiChatService.ReloadMcpToolsAsync();
+                AppLogger.Info("mcp", "mcp background reload completed: " + aemiChatService.McpStatus);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("mcp", "mcp background reload failed", ex);
+            }
+        });
+    }
+
+    private void OnMcpStatusChanged(object? sender, string status)
+    {
+        AppLogger.Info("mcp", status);
+    }
     private void OpenChatWindow()
     {
         if (_chatService is null || _settingsService is null)
@@ -195,25 +243,52 @@ public partial class App : Application
 
     private void OnTrayShowPetClick(object? sender, EventArgs e)
     {
-        if (_petWindow is null)
+        try
         {
-            return;
-        }
+            if (_petWindow is null)
+            {
+                _petWindow = CreatePetWindow();
+                if (_desktop is not null)
+                {
+                    _desktop.MainWindow = _petWindow;
+                }
+                AppLogger.Info("pet", "pet window recreated from tray");
+            }
 
-        _petWindow.Show();
-        _petWindow.Activate();
+            _petWindow.Show();
+            _petWindow.Activate();
+            AppLogger.Info("pet", "pet window shown from tray");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("tray", "failed to show pet from tray", ex);
+        }
     }
 
     private void OnTrayHidePetClick(object? sender, EventArgs e)
     {
-        _petWindow?.Hide();
+        try
+        {
+            _petWindow?.Hide();
+            AppLogger.Info("pet", "pet window hidden from tray");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("tray", "failed to hide pet from tray", ex);
+        }
     }
 
     private void OnTrayExitClick(object? sender, EventArgs e)
     {
-        ExitApplication();
+        try
+        {
+            ExitApplication();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("tray", "failed to exit from tray", ex);
+        }
     }
-
     private void ExitApplication()
     {
         AppLogger.Info("app", "exit requested");

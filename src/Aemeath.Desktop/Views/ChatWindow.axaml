@@ -1,4 +1,4 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:i="using:Avalonia.Input"
         xmlns:behaviors="using:Aemeath.Desktop.Behaviors"
@@ -185,9 +185,10 @@
       <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="12" Margin="0,14,0,0">
         <Grid RowDefinitions="Auto,Auto">
           <WrapPanel x:Name="AttachmentPanel" IsVisible="False" Margin="0,0,0,10"/>
-          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
             <Button x:Name="UploadButton" Classes="icon ghost" Width="50" Height="50"/>
-            <TextBox Grid.Column="1"
+            <Button Grid.Column="1" x:Name="McpToolsButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
+            <TextBox Grid.Column="2"
                      x:Name="InputBox"
                      Watermark="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
                      AcceptsReturn="False"
@@ -195,11 +196,15 @@
                      TextChanged="InputBox_OnTextChanged"
                      i:InputMethod.IsInputMethodEnabled="True"
                      behaviors:ImeFixBehavior.EnableImeCursorFix="True"
-                     Margin="10,0,0,0"
+                     FontFamily="{StaticResource AemiBodyFontFamily}"
+                     CaretBrush="{StaticResource AemiFocusBrush}"
+                     SelectionBrush="#FFD1E5"
+                     SelectionForegroundBrush="{StaticResource AemiTextPrimaryBrush}"
+                      Margin="10,0,0,0"
                      MinHeight="50"
                      MaxHeight="126"
                      VerticalContentAlignment="Center"/>
-            <Button Grid.Column="1"
+            <Button Grid.Column="2"
                     x:Name="VoiceRecordButton"
                     IsVisible="False"
                     Content="&#x6309;&#x4F4F;&#x8BF4;&#x8BDD;"
@@ -214,8 +219,8 @@
                     Background="#FFFFFF"
                     BorderBrush="#F3C2D4"
                     Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-            <Button Grid.Column="2" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
-            <Button Grid.Column="3" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="10,0,0,0"/>
+            <Button Grid.Column="3" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
+            <Button Grid.Column="4" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="10,0,0,0"/>
           </Grid>
         </Grid>
       </Border>

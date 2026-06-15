@@ -1,4 +1,4 @@
-﻿using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using System.Text;
@@ -217,6 +217,50 @@ public abstract class KernelMixinBase
         {
             _kernel.Plugins.AddFromObject(plugin);
         }
+    }
+
+    public void RegisterPlugin(KernelPlugin plugin)
+    {
+        if (_kernel is not null)
+        {
+            _kernel.Plugins.Add(plugin);
+        }
+    }
+
+    public void ReplacePlugin(KernelPlugin? plugin)
+    {
+        if (_kernel is null)
+        {
+            return;
+        }
+
+        ReplacePluginCore(plugin);
+    }
+
+    private void ReplacePluginCore(KernelPlugin? plugin)
+    {
+        if (_kernel is null)
+        {
+            return;
+        }
+
+        if (plugin is null)
+        {
+            var existing = _kernel.Plugins.FirstOrDefault(x => string.Equals(x.Name, "mcp", StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                _kernel.Plugins.Remove(existing);
+            }
+            return;
+        }
+
+        var existingPlugin = _kernel.Plugins.FirstOrDefault(x => string.Equals(x.Name, plugin.Name, StringComparison.OrdinalIgnoreCase));
+        if (existingPlugin is not null)
+        {
+            _kernel.Plugins.Remove(existingPlugin);
+        }
+
+        _kernel.Plugins.Add(plugin);
     }
 
     private static string FormatBytes(long bytes)

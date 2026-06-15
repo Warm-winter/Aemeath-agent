@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -11,6 +11,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Aemeath.Core.AI;
 using Aemeath.Core.Configuration;
+using Aemeath.Core.MCP;
 using Aemeath.Core.Tools;
 using Aemeath.Desktop.Services;
 using Aemeath.Pet.Effects;
@@ -44,6 +45,7 @@ public partial class ChatWindow : Window
     private int _pendingFrameIndex;
     private TextBlock? _pendingTextBlock;
     private bool _isSending;
+    private bool _scrollPending;
     private double _flickerPhase;
 
     private readonly Bitmap _assistantAvatar;
@@ -55,6 +57,10 @@ public partial class ChatWindow : Window
     private readonly DrawingImage _micIcon;
     private readonly DrawingImage _keyboardIcon;
     private readonly DrawingImage _uploadIcon;
+    private readonly DrawingImage _wrenchIcon;
+    private readonly DrawingImage _imageIcon;
+    private readonly DrawingImage _fileIcon;
+    private readonly McpServerStore _mcpServerStore = new();
     private readonly List<ChatMessageRecord> _displayMessages = [];
     private readonly List<ChatAttachment> _pendingAttachments = [];
     private readonly Dictionary<string, PendingToolAction> _pendingToolActions = new(StringComparer.OrdinalIgnoreCase);
@@ -133,9 +139,20 @@ public partial class ChatWindow : Window
         _uploadIcon = CreateVectorIcon(
             "M3830 5115 l0 -955 -965 0 -965 0 0 -85 0 -85 965 0 965 0 0 -965 0 -965 85 0 85 0 2 963 3 962 958 3 957 2 0 85 0 85 -960 0 -960 0 0 955 0 955 -85 0 -85 0 0 -955z",
             800, 800);
+        _wrenchIcon = CreateSvgTransformedVectorIcon(
+            "M4495 6174 c-530 -89 -947 -486 -1061 -1010 -12 -55 -17 -126 -17 -234 -1 -174 15 -278 63 -413 l29 -82 -222 -225 c-122 -124 -427 -432 -677 -685 -660 -665 -684 -692 -725 -775 -48 -102 -61 -187 -42 -288 20 -104 65 -192 139 -268 166 -173 426 -204 628 -74 44 28 570 551 1333 1326 l277 281 93 -27 c129 -39 264 -54 416 -47 333 14 620 139 853 372 192 191 304 399 353 657 21 108 21 326 1 440 -17 90 -58 234 -82 280 -17 34 -62 58 -106 58 -29 0 -65 -32 -375 -342 l-342 -341 -103 22 c-57 12 -152 32 -212 44 l-109 22 -38 160 c-21 88 -41 178 -44 200 -7 46 -47 1 442 496 230 233 243 248 243 283 0 54 -15 75 -73 100 -170 74 -442 104 -642 70z",
+            800, 800);
+        _imageIcon = CreateVectorIcon(
+            "M1953 5440 c-12 -5 -26 -18 -32 -29 -8 -14 -11 -424 -11 -1339 l0 -1319 23 -21 23 -22 1960 0 1961 0 21 23 22 23 0 1321 c0 1286 -1 1321 -19 1344 l-19 24 -1954 2 c-1113 1 -1962 -2 -1975 -7z m3795 -1362 l-3 -1193 -1830 0 -1830 0 -3 161 -2 161 87 79 c91 82 365 327 395 351 17 15 37 0 473 -355 82 -67 152 -121 157 -120 6 3 584 506 1051 917 l138 122 117 -108 c158 -145 962 -857 970 -860 4 -2 36 24 71 55 l63 58 -73 66 c-41 36 -265 236 -499 444 -234 208 -474 422 -533 476 -60 54 -112 98 -116 98 -4 0 -34 -24 -67 -53 -101 -92 -1106 -971 -1120 -982 -10 -7 -22 -1 -46 21 -26 24 -285 238 -549 452 l-27 22 -119 -108 c-65 -60 -174 -158 -243 -219 l-125 -111 -3 897 c-1 493 0 902 3 909 3 9 380 12 1835 12 l1830 0 -2 -1192z",
+            800, 800);
+        _fileIcon = CreateVectorIcon(
+            "M2425 5901 c-61 -27 -111 -89 -125 -152 -8 -40 -10 -507 -8 -1784 l3 -1730 28 -47 c18 -31 44 -57 75 -75 l47 -28 1555 0 c1505 0 1556 1 1593 19 44 22 83 69 103 123 11 31 13 295 14 1438 l0 1400 -428 428 -427 427 -1195 0 c-1134 0 -1197 -1 -1235 -19z m2265 -468 c0 -156 5 -294 10 -314 17 -61 52 -102 109 -131 l55 -28 313 0 313 0 0 -1335 0 -1335 -1490 0 -1490 0 0 1710 0 1710 1090 0 1090 0 0 -277z m413 -64 c103 -100 187 -185 187 -190 0 -5 -84 -9 -190 -9 l-189 0 -3 190 c-2 105 0 190 3 190 3 0 90 -81 192 -181z",
+            800, 800);
         UploadButton.Content = new AvaloniaImage { Source = _uploadIcon, Width = 18, Height = 18, Stretch = Stretch.Uniform };
+        McpToolsButton.Content = new AvaloniaImage { Source = _wrenchIcon, Width = 18, Height = 18, Stretch = Stretch.Uniform };
         VoiceButton.Content = new AvaloniaImage { Source = _micIcon, Width = 18, Height = 18, Stretch = Stretch.Uniform };
-        ToolTip.SetTip(UploadButton, "\u4e0a\u4f20\u6587\u4ef6\u6216\u56fe\u7247");
+        ToolTip.SetTip(UploadButton, "选择上传图片或文件");
+        ToolTip.SetTip(McpToolsButton, "快速开启或关闭 MCP 服务");
         ToolTip.SetTip(VoiceButton, "\u5207\u6362\u8bed\u97f3/\u952e\u76d8\u8f93\u5165");
         ToolTip.SetTip(SendButton, "\u53d1\u9001\u5230\u5c0f\u7231\u7ec8\u7aef");
         ToolTip.SetTip(NewSessionButton, "\u5f00\u542f\u65b0\u7684\u901a\u8baf\u6863\u6848");
@@ -166,7 +183,8 @@ public partial class ChatWindow : Window
         };
 
         SendButton.Click += async (_, _) => await SendAsync();
-        UploadButton.Click += async (_, _) => await PickAttachmentsAsync();
+        UploadButton.Click += (_, _) => ShowUploadMenu();
+        McpToolsButton.Click += (_, _) => ShowMcpToolsMenu();
         VoiceButton.Click += (_, _) => ToggleVoiceMode();
         VoiceRecordButton.AddHandler(PointerPressedEvent, VoiceRecordButton_OnPointerPressed, RoutingStrategies.Tunnel, true);
         VoiceRecordButton.AddHandler(PointerReleasedEvent, VoiceRecordButton_OnPointerReleased, RoutingStrategies.Tunnel, true);
@@ -254,6 +272,7 @@ public partial class ChatWindow : Window
         try
         {
             AppLogger.Info("chat", "send start");
+            PauseAmbientFlicker();
             EnsureCurrentSession();
             var userInput = string.IsNullOrWhiteSpace(input) ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002" : input;
             var visibleUserContent = BuildVisibleUserContent(userInput, attachments);
@@ -325,6 +344,7 @@ public partial class ChatWindow : Window
             _pendingTimer.Stop();
             _pendingTextBlock = null;
             _isSending = false;
+            ResumeAmbientFlicker();
             UpdateProviderQuickSwitchEnabled();
         }
     }
@@ -336,6 +356,10 @@ public partial class ChatWindow : Window
         CancellationToken cancellationToken = default)
     {
         var builder = new System.Text.StringBuilder();
+        var visibleText = string.Empty;
+        var lastFlush = DateTimeOffset.MinValue;
+        var timerStopped = false;
+
         await foreach (var chunk in _chatService.SendMessageStreamingAsync(prompt, attachments, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -345,12 +369,40 @@ public partial class ChatWindow : Window
             }
 
             builder.Append(chunk);
-            target.Text = SanitizeAssistantOutput(builder.ToString());
-            ScrollToBottom();
-            if (ShouldSuppressConfirmationReply(target.Text))
+            var current = builder.ToString();
+            if (ShouldSuppressConfirmationReply(current))
             {
                 break;
             }
+
+            var now = DateTimeOffset.UtcNow;
+            if ((now - lastFlush).TotalMilliseconds < 60 && current.Length - visibleText.Length < 24)
+            {
+                continue;
+            }
+
+            if (!timerStopped)
+            {
+                _pendingTimer.Stop();
+                timerStopped = true;
+            }
+
+            visibleText = SanitizeAssistantOutput(current);
+            target.Text = visibleText;
+            ScrollToBottom();
+            lastFlush = now;
+        }
+
+        if (!timerStopped)
+        {
+            _pendingTimer.Stop();
+        }
+
+        var finalText = SanitizeAssistantOutput(builder.ToString());
+        if (!string.Equals(target.Text, finalText, StringComparison.Ordinal))
+        {
+            target.Text = finalText;
+            ScrollToBottom();
         }
 
         return builder.ToString();
@@ -365,7 +417,7 @@ public partial class ChatWindow : Window
         _ = box;
     }
 
-    private async Task PickAttachmentsAsync()
+    private async Task PickAttachmentsAsync(bool imagesOnly)
     {
         if (_isSending)
         {
@@ -374,22 +426,9 @@ public partial class ChatWindow : Window
 
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "\u9009\u62e9\u8981\u53d1\u9001\u7ed9\u5c0f\u7231\u7684\u6587\u4ef6\u6216\u56fe\u7247",
+            Title = imagesOnly ? "选择要发送给小爱的图片" : "选择要发送给小爱的文件",
             AllowMultiple = true,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("\u56fe\u7247")
-                {
-                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp"],
-                    MimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"]
-                },
-                new FilePickerFileType("\u6587\u672c\u4e0e\u4ee3\u7801")
-                {
-                    Patterns = ["*.txt", "*.md", "*.markdown", "*.cs", "*.json", "*.xml", "*.xaml", "*.axaml", "*.yaml", "*.yml", "*.log", "*.csv", "*.tsv", "*.html", "*.css", "*.js", "*.ts", "*.py", "*.ps1", "*.bat"],
-                    MimeTypes = ["text/plain", "text/markdown", "application/json", "application/xml", "text/csv", "text/html", "text/css", "text/javascript"]
-                },
-                FilePickerFileTypes.All
-            ]
+            FileTypeFilter = BuildAttachmentFileTypes(imagesOnly)
         });
         if (files.Count == 0)
         {
@@ -439,6 +478,143 @@ public partial class ChatWindow : Window
                 : string.Empty;
     }
 
+
+    private void ShowUploadMenu()
+    {
+        if (_isSending)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+        var imageItem = new MenuItem
+        {
+            Header = "上传图片",
+            Icon = new AvaloniaImage { Source = _imageIcon, Width = 16, Height = 16, Stretch = Stretch.Uniform }
+        };
+        imageItem.Click += async (_, _) => await PickAttachmentsAsync(imagesOnly: true);
+
+        var fileItem = new MenuItem
+        {
+            Header = "上传文件",
+            Icon = new AvaloniaImage { Source = _fileIcon, Width = 16, Height = 16, Stretch = Stretch.Uniform }
+        };
+        fileItem.Click += async (_, _) => await PickAttachmentsAsync(imagesOnly: false);
+
+        menu.Items.Add(imageItem);
+        menu.Items.Add(fileItem);
+        menu.Open(UploadButton);
+    }
+
+    private void ShowMcpToolsMenu()
+    {
+        if (_isSending || _voiceHolding || _pendingToolActions.Count > 0)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            menu.Items.Add(new MenuItem { Header = aemiChatService.McpStatus, IsEnabled = false });
+            menu.Items.Add(new Separator());
+        }
+
+        var servers = _mcpServerStore.ListServers();
+        if (servers.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "暂无 MCP 服务", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var server in servers)
+            {
+                var detail = string.IsNullOrWhiteSpace(server.LastError)
+                    ? server.LastStatus ?? string.Empty
+                    : server.LastError;
+                var item = new MenuItem
+                {
+                    Header = $"{(server.Enabled ? "√" : "□")} {server.DisplayName} · {server.Transport.ToString().ToLowerInvariant()} · {BuildMcpShortStatus(server)}"
+                };
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    ToolTip.SetTip(item, detail);
+                }
+
+                item.Click += (_, _) =>
+                {
+                    _mcpServerStore.SetEnabled(server.Id, !server.Enabled);
+                    if (_chatService is AemiChatService service)
+                    {
+                        service.ReloadMcpTools();
+                        ProviderSwitchStatusText.Text = "MCP 工具正在后台刷新。";
+                    }
+                    else
+                    {
+                        ProviderSwitchStatusText.Text = $"MCP 服务已{(!server.Enabled ? "开启" : "关闭")}：{server.DisplayName}";
+                    }
+                };
+                menu.Items.Add(item);
+            }
+        }
+
+        menu.Items.Add(new Separator());
+        var configItem = new MenuItem { Header = "打开 MCP 配置" };
+        configItem.Click += (_, _) => new McpConfigWindow(_mcpServerStore, () =>
+        {
+            if (_chatService is AemiChatService service)
+            {
+                service.ReloadMcpTools();
+            }
+        }).ShowDialog(this);
+        menu.Items.Add(configItem);
+        menu.Open(McpToolsButton);
+    }
+
+    private static string BuildMcpShortStatus(McpServerConfig server)
+    {
+        if (!server.Enabled)
+        {
+            return "关闭";
+        }
+
+        if (string.Equals(server.LastStatus, "ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ok";
+        }
+
+        if (string.IsNullOrWhiteSpace(server.LastError))
+        {
+            return server.LastStatus ?? "未加载";
+        }
+
+        return server.LastError.Contains("超时", StringComparison.OrdinalIgnoreCase)
+            ? "加载超时"
+            : "连接失败";
+    }
+    private static IReadOnlyList<FilePickerFileType> BuildAttachmentFileTypes(bool imagesOnly)
+    {
+        var imageType = new FilePickerFileType("图片")
+        {
+            Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp"],
+            MimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"]
+        };
+
+        if (imagesOnly)
+        {
+            return [imageType];
+        }
+
+        return
+        [
+            new FilePickerFileType("文本与代码")
+            {
+                Patterns = ["*.txt", "*.md", "*.markdown", "*.cs", "*.json", "*.xml", "*.xaml", "*.axaml", "*.yaml", "*.yml", "*.log", "*.csv", "*.tsv", "*.html", "*.css", "*.js", "*.ts", "*.py", "*.ps1", "*.bat"],
+                MimeTypes = ["text/plain", "text/markdown", "application/json", "application/xml", "text/csv", "text/html", "text/css", "text/javascript"]
+            },
+            FilePickerFileTypes.All
+        ];
+    }
     private ChatAttachment? TryCreateAttachment(string path, out string? error)
     {
         error = null;
@@ -791,6 +967,7 @@ public partial class ChatWindow : Window
         try
         {
             AppLogger.Info("chat", "voice send start");
+            PauseAmbientFlicker();
             EnsureCurrentSession();
             var userMessage = new ChatMessageRecord { Role = "user", Content = text, Timestamp = DateTimeOffset.UtcNow };
             _displayMessages.Add(userMessage);
@@ -855,6 +1032,7 @@ public partial class ChatWindow : Window
             _pendingTimer.Stop();
             _pendingTextBlock = null;
             _isSending = false;
+            ResumeAmbientFlicker();
             UpdateProviderQuickSwitchEnabled();
         }
     }
@@ -1484,6 +1662,7 @@ public partial class ChatWindow : Window
         _isSending = true;
         RaiseActivityChanged(ChatActivityKind.Sending);
         UpdateProviderQuickSwitchEnabled();
+        PauseAmbientFlicker();
         var pending = AddMessageBubble(_displayMessages.Count, true, string.Empty, true);
         _pendingTextBlock = pending;
         _pendingFrameIndex = 0;
@@ -1523,6 +1702,7 @@ public partial class ChatWindow : Window
             _pendingTimer.Stop();
             _pendingTextBlock = null;
             _isSending = false;
+            ResumeAmbientFlicker();
             UpdateProviderQuickSwitchEnabled();
         }
     }
@@ -1737,7 +1917,8 @@ public partial class ChatWindow : Window
         var enabled = !forceDisabled && CanSwitchProviderOrModel();
         ProviderQuickSwitchBox.IsEnabled = enabled;
         ModelQuickSwitchBox.IsEnabled = enabled;
-        UploadButton.IsEnabled = !forceDisabled && !_isSending && !_voiceHolding;
+        UploadButton.IsEnabled = !forceDisabled && !_isSending && !_voiceHolding && _pendingToolActions.Count == 0;
+        McpToolsButton.IsEnabled = enabled && _pendingToolActions.Count == 0;
     }
 
     private bool TryReloadChatServiceFromSettings(out string? error)
@@ -1760,11 +1941,38 @@ public partial class ChatWindow : Window
         }
     }
 
+    private void PauseAmbientFlicker()
+    {
+        _flickerTimer.Stop();
+        BackgroundContainer.Opacity = 1;
+        GlowLayerPink.Opacity = 0.9;
+        GlowLayerBlue.Opacity = 0.9;
+        GlowLayerWhite.Opacity = 0.52;
+    }
+
+    private void ResumeAmbientFlicker()
+    {
+        _flickerTimer.Start();
+    }
+
     private void ScrollToBottom()
     {
+        if (_scrollPending)
+        {
+            return;
+        }
+
+        _scrollPending = true;
         Dispatcher.UIThread.Post(() =>
         {
-            ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, double.MaxValue);
+            try
+            {
+                ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, double.MaxValue);
+            }
+            finally
+            {
+                _scrollPending = false;
+            }
         }, DispatcherPriority.Background);
     }
 
@@ -1798,7 +2006,7 @@ public partial class ChatWindow : Window
             try
             {
                 var bitmap = new Bitmap(path);
-                ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.28 };
+                ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
                 return;
             }
             catch
@@ -1806,7 +2014,16 @@ public partial class ChatWindow : Window
             }
         }
 
-        ChatBackgroundHost.Background = new SolidColorBrush(Color.Parse("#24141D3A"));
+        try
+        {
+            using var stream = AssetLoader.Open(new Uri("avares://Aemeath-agent/Assets/static/chat-background-default.png"));
+            var bitmap = new Bitmap(stream);
+            ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
+        }
+        catch
+        {
+            ChatBackgroundHost.Background = new SolidColorBrush(Color.Parse("#FFFFFFFF"));
+        }
     }
 
     private static Bitmap LoadBitmap(string uri)
@@ -1824,6 +2041,23 @@ public partial class ChatWindow : Window
             Brush = new SolidColorBrush(Colors.White)
         };
         var group = new DrawingGroup();
+        group.Children.Add(drawing);
+        return new DrawingImage(group);
+    }
+
+    private static DrawingImage CreateSvgTransformedVectorIcon(string pathData, double width, double height)
+    {
+        var geometry = StreamGeometry.Parse(pathData);
+        var drawing = new GeometryDrawing
+        {
+            Geometry = geometry,
+            Brush = new SolidColorBrush(Colors.White)
+        };
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(width / 8000d, -height / 8000d));
+        transform.Children.Add(new TranslateTransform(0, height));
+
+        var group = new DrawingGroup { Transform = transform };
         group.Children.Add(drawing);
         return new DrawingImage(group);
     }
