@@ -138,13 +138,25 @@ public abstract class KernelMixinBase
     {
         try
         {
+            if (!File.Exists(attachment.Path))
+            {
+                textBuilder.AppendLine($"图片文件不存在：{attachment.Path}");
+                return;
+            }
+
             var bytes = await File.ReadAllBytesAsync(attachment.Path, cancellationToken);
+            if (bytes.Length == 0)
+            {
+                textBuilder.AppendLine("图片文件为空。");
+                return;
+            }
+
             contentItems.Add(new ImageContent(bytes, attachment.MimeType));
-            textBuilder.AppendLine("这是一张随消息一同发送的图片，请结合图片内容回答。");
+            textBuilder.AppendLine($"已附加图片内容（{FormatBytes(bytes.Length)}），请查看并结合图片回答。");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            textBuilder.AppendLine($"图片读取失败：{ex.Message}");
+            textBuilder.AppendLine($"图片读取失败：{ex.Message}，路径：{attachment.Path}");
         }
     }
 

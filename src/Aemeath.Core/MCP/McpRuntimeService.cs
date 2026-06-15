@@ -11,9 +11,9 @@ namespace Aemeath.Core.MCP;
 public sealed class McpRuntimeService : IAsyncDisposable
 {
     private static readonly TimeSpan BackgroundStdioTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan BackgroundHttpTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan BackgroundHttpTimeout = TimeSpan.FromSeconds(150);
     private static readonly TimeSpan ManualStdioTimeout = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan ManualHttpTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan ManualHttpTimeout = TimeSpan.FromSeconds(180);
 
     private readonly McpServerStore _store;
     private readonly Dictionary<string, McpClient> _clients = new(StringComparer.OrdinalIgnoreCase);
