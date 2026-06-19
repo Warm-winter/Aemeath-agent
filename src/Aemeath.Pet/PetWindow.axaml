@@ -11,7 +11,7 @@
         IsHitTestVisible="True"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
-        SystemDecorations="None">
+        WindowDecorations="None">
 
     <Grid Name="PetGrid" Background="Transparent">
         <Image Name="PetImage"

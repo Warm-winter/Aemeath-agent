@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Aemeath.Core.AI;
 using Aemeath.Core.Configuration;
@@ -1011,23 +1012,21 @@ public partial class ConfigWindow : Window
 
     private async Task PickAvatarAsync()
     {
-#pragma warning disable CS0618
-        var dialog = new OpenFileDialog
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
+            Title = "选择头像图片",
             AllowMultiple = false,
-            Filters =
+            FileTypeFilter = new List<FilePickerFileType>
             {
-                new FileDialogFilter { Name = "图片", Extensions = { "png", "jpg", "jpeg", "webp" } }
+                new("图片") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.webp" } }
             }
-        };
-        var files = await dialog.ShowAsync(this);
-#pragma warning restore CS0618
-        if (files is not { Length: > 0 })
+        });
+        if (files is not { Count: > 0 })
         {
             return;
         }
 
-        var output = CropToCircularAvatar(files[0]);
+        var output = CropToCircularAvatar(files[0].TryGetLocalPath() ?? files[0].Name);
         AvatarCustomRadio.IsChecked = true;
         _settingsService.Current.CustomUserAvatarPath = output;
         SetPreviewImage(AvatarPreviewImage, output);
@@ -1036,23 +1035,21 @@ public partial class ConfigWindow : Window
 
     private async Task PickChatBackgroundAsync()
     {
-#pragma warning disable CS0618
-        var dialog = new OpenFileDialog
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
+            Title = "选择聊天背景图",
             AllowMultiple = false,
-            Filters =
+            FileTypeFilter = new List<FilePickerFileType>
             {
-                new FileDialogFilter { Name = "图片", Extensions = { "png", "jpg", "jpeg", "webp" } }
+                new("图片") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.webp" } }
             }
-        };
-        var files = await dialog.ShowAsync(this);
-#pragma warning restore CS0618
-        if (files is not { Length: > 0 })
+        });
+        if (files is not { Count: > 0 })
         {
             return;
         }
 
-        var output = CropToChatBackground(files[0]);
+        var output = CropToChatBackground(files[0].TryGetLocalPath() ?? files[0].Name);
         _settingsService.Current.ChatBackgroundImagePath = output;
         SetPreviewImage(ChatBackgroundPreviewImage, output);
         await SaveNonProviderSettingsAsync();

@@ -57,7 +57,7 @@ public class SettingsService
 
                 // Azure 语音密钥同样走 DPAPI 解密（SEC-005）。旧版本明文存储时，
                 // TryDecrypt 解密失败会原样返回，保持向后兼容。
-                settings.AzureSpeechKey = TryDecrypt(settings.AzureSpeechKey);
+                settings.AzureSpeechKey = TryDecrypt(settings.AzureSpeechKey ?? string.Empty);
 
                 settings.ApiKeys = settings.ApiKeys
                     .GroupBy(kvp => NormalizeProvider(kvp.Key))
@@ -94,7 +94,7 @@ public class SettingsService
             SystemPrompt = _settings.SystemPrompt,
             EnableParticleEffects = _settings.EnableParticleEffects,
             EnableVoiceInput = _settings.EnableVoiceInput,
-            AzureSpeechKey = TryEncrypt(_settings.AzureSpeechKey),
+            AzureSpeechKey = TryEncrypt(_settings.AzureSpeechKey ?? string.Empty),
             AzureSpeechRegion = _settings.AzureSpeechRegion,
             UserAvatarType = _settings.UserAvatarType,
             CustomUserAvatarPath = _settings.CustomUserAvatarPath,

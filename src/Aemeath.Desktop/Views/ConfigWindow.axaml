@@ -185,17 +185,17 @@
                       </StackPanel>
                       <StackPanel Grid.Column="1" Spacing="8" Margin="12,0,0,0">
                         <TextBlock Text="提供商名称" Classes="subtle"/>
-                        <TextBox x:Name="ProviderNameBox" Watermark="openai / deepseek / custom"/>
+                        <TextBox x:Name="ProviderNameBox" PlaceholderText="openai / deepseek / custom"/>
                       </StackPanel>
                     </Grid>
                     <TextBlock Text="API Key" Classes="subtle"/>
                     <TextBox x:Name="ApiKeyBox" PasswordChar="*"/>
                     <TextBlock Text="OpenAI 兼容 URL" Classes="subtle"/>
-                    <TextBox x:Name="EndpointBox" Watermark="https://api.openai.com/v1"/>
+                    <TextBox x:Name="EndpointBox" PlaceholderText="https://api.openai.com/v1"/>
                     <TextBlock Text="默认模型" Classes="subtle"/>
                     <ComboBox x:Name="DefaultModelBox"/>
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBox x:Name="ManualModelBox" Watermark="手动添加模型 ID"/>
+                      <TextBox x:Name="ManualModelBox" PlaceholderText="手动添加模型 ID"/>
                       <Button Grid.Column="1" x:Name="AddManualModelButton" Content="添加" Classes="ghost" Margin="8,0,0,0"/>
                     </Grid>
                     <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="12" MinHeight="130">

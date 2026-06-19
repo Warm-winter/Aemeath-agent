@@ -182,7 +182,7 @@
             <Button Grid.Column="1" x:Name="McpToolsButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
             <TextBox Grid.Column="2"
                      x:Name="InputBox"
-                     Watermark="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
+                     PlaceholderText="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
                      AcceptsReturn="False"
                      TextWrapping="Wrap"
                      TextChanged="InputBox_OnTextChanged"

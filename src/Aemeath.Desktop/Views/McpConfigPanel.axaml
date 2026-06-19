@@ -63,11 +63,11 @@
               <Grid ColumnDefinitions="*,*">
                 <StackPanel Spacing="4">
                   <TextBlock Text="服务 ID" Classes="subtle"/>
-                  <TextBox x:Name="ServerIdBox" Watermark="filesystem"/>
+                  <TextBox x:Name="ServerIdBox" PlaceholderText="filesystem"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
                   <TextBlock Text="显示名称" Classes="subtle"/>
-                  <TextBox x:Name="ServerNameBox" Watermark="文件系统"/>
+                  <TextBox x:Name="ServerNameBox" PlaceholderText="文件系统"/>
                 </StackPanel>
               </Grid>
               <Grid ColumnDefinitions="*,*">
@@ -77,12 +77,12 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
                   <TextBlock Text="URL（SSE / HTTP）" Classes="subtle"/>
-                  <TextBox x:Name="UrlBox" Watermark="https://example.com/mcp"/>
+                  <TextBox x:Name="UrlBox" PlaceholderText="https://example.com/mcp"/>
                 </StackPanel>
               </Grid>
               <StackPanel Spacing="4">
                 <TextBlock Text="命令 Command（stdio）" Classes="subtle"/>
-                <TextBox x:Name="CommandBox" Watermark="bun / uvx / npx / 可执行文件路径"/>
+                <TextBox x:Name="CommandBox" PlaceholderText="bun / uvx / npx / 可执行文件路径"/>
               </StackPanel>
               <StackPanel Spacing="4">
                 <TextBlock Text="参数 Args（每行一个）" Classes="subtle"/>
@@ -90,7 +90,7 @@
               </StackPanel>
               <StackPanel Spacing="4">
                 <TextBlock Text="工作目录（stdio，可空）" Classes="subtle"/>
-                <TextBox x:Name="WorkingDirectoryBox" Watermark="C:\path\to\project"/>
+                <TextBox x:Name="WorkingDirectoryBox" PlaceholderText="C:\path\to\project"/>
               </StackPanel>
               <Grid ColumnDefinitions="*,*">
                 <StackPanel Spacing="4">
@@ -122,7 +122,7 @@
           <TextBlock Text="粘贴标准 { &quot;mcpServers&quot;: { ... } } 配置，一键导入多个服务。" Classes="muted"/>
         </StackPanel>
         <Button Grid.Column="1" x:Name="ImportJsonButton" Content="导入" Classes="ghost" MinWidth="80" VerticalAlignment="Center"/>
-        <TextBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="ImportJsonBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="0,10,0,0" Watermark="粘贴 JSON 配置…"/>
+        <TextBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="ImportJsonBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="0,10,0,0" PlaceholderText="粘贴 JSON 配置…"/>
       </Grid>
     </Border>
 

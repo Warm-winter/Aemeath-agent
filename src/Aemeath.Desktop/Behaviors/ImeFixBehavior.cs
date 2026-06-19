@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Runtime.InteropServices;
 
 namespace Aemeath.Desktop.Behaviors;
@@ -55,12 +57,35 @@ public static class ImeFixBehavior
             textBox.AddHandler(InputElement.TextInputEvent, OnTextInput, RoutingStrategies.Tunnel);
             textBox.AddHandler(InputElement.KeyUpEvent, OnKeyUp, RoutingStrategies.Tunnel);
             textBox.GotFocus += OnGotFocus;
+            // composition 期间方向键常被 IME 拦截，KeyUp 收不到；改监听 CaretIndex 变化兜底。
+            textBox.PropertyChanged += OnPropertyChanged;
             return;
         }
 
         textBox.RemoveHandler(InputElement.TextInputEvent, OnTextInput);
         textBox.RemoveHandler(InputElement.KeyUpEvent, OnKeyUp);
         textBox.GotFocus -= OnGotFocus;
+        textBox.PropertyChanged -= OnPropertyChanged;
+    }
+
+    /// <summary>CaretIndex 变化时，若处于 IME composition 期间，强制刷新竖线位置。</summary>
+    private static void OnPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (sender is not TextBox tb || !tb.IsFocused)
+        {
+            return;
+        }
+
+        if (e.Property != TextBox.CaretIndexProperty)
+        {
+            return;
+        }
+
+        // 仅在 composition 期间介入；纯文本输入时 Avalonia 原生 caret 正常，不干预。
+        if (IsImeComposing())
+        {
+            RefreshCaretVisual(tb);
+        }
     }
 
     /// <summary>
@@ -116,7 +141,7 @@ public static class ImeFixBehavior
     /// <summary>
     /// When the TextBox gains focus, do a one-time caret visual refresh.
     /// </summary>
-    private static void OnGotFocus(object? sender, GotFocusEventArgs e)
+    private static void OnGotFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is not TextBox tb)
         {
@@ -145,19 +170,35 @@ public static class ImeFixBehavior
 
     /// <summary>
     /// Forces the TextBox to re-render its caret at the current CaretIndex position.
-    /// Uses a two-phase approach: first invalidate layout, then re-set CaretIndex
-    /// after the layout pass completes.
+    /// 用了两条路径，互为补充：
+    /// 1) 取到 TextBox 内部的 TextPresenter，调用其 caret 定位/重绘方法——这是根因修复
+    ///    （composition 期间 TextPresenter 的 _caretBounds 不会随 CaretIndex 自动更新）。
+    /// 2) 退路：InvalidateMeasure/Arrange/Visual + 重设 CaretIndex（旧逻辑，部分场景仍有效）。
     /// </summary>
     private static void RefreshCaretVisual(TextBox textBox)
     {
         var idx = textBox.CaretIndex;
 
-        // Force layout recalculation which triggers caret position update
+        var presenter = FindTextPresenter(textBox);
+        if (presenter is not null)
+        {
+            try
+            {
+                // 让 presenter 按 CaretIndex 重新计算 caret 位置并重绘竖线。
+                presenter.MoveCaretToTextPosition(idx);
+            }
+            catch
+            {
+                // MoveCaretToTextPosition 不可用时，退到重绘
+            }
+            presenter.InvalidateVisual();
+        }
+
+        // 退路：强制布局 + 重设 CaretIndex，兼容旧路径
         textBox.InvalidateMeasure();
         textBox.InvalidateArrange();
         textBox.InvalidateVisual();
 
-        // Re-apply caret index after layout to force the caret adorner to update
         Dispatcher.UIThread.Post(() =>
         {
             if (textBox.IsFocused)
@@ -165,6 +206,12 @@ public static class ImeFixBehavior
                 textBox.CaretIndex = idx;
             }
         }, DispatcherPriority.Render);
+    }
+
+    /// <summary>从 TextBox 的可视化子树里找到内部的 TextPresenter。</summary>
+    private static TextPresenter? FindTextPresenter(TextBox textBox)
+    {
+        return textBox.GetVisualDescendants().OfType<TextPresenter>().FirstOrDefault();
     }
 
     /// <summary>
