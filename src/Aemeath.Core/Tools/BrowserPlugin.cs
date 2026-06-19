@@ -248,8 +248,10 @@ public class BrowserPlugin
 
             var psi = new ProcessStartInfo
             {
+                // 用 -EncodedCommand（UTF-16LE 的 Base64）传命令，彻底避免字符串拼接成
+                // -Command 时的引号/反引号/子表达式/管道符注入（SEC-001）。
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{command.Replace("\"", "\\\"")}\"",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -EncodedCommand {ToEncodedCommand(command)}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -261,6 +263,15 @@ public class BrowserPlugin
             {
                 return "执行失败：无法启动 PowerShell";
             }
+
+            // 先开始异步读取 stdout/stderr，再 WaitForExit，避免子进程输出缓冲区写满后
+            // 阻塞、导致 WaitForExit 死锁（LOGIC-014）。
+            var stdoutBuilder = new System.Text.StringBuilder();
+            var stderrBuilder = new System.Text.StringBuilder();
+            process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdoutBuilder.AppendLine(e.Data); };
+            process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderrBuilder.AppendLine(e.Data); };
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
 
             if (!process.WaitForExit(15000))
             {
@@ -275,8 +286,10 @@ public class BrowserPlugin
                 return "执行失败：命令超时（15秒）";
             }
 
-            var stdout = process.StandardOutput.ReadToEnd().Trim();
-            var stderr = process.StandardError.ReadToEnd().Trim();
+            // 等待异步读取完成，确保缓冲区全部消费
+            process.WaitForExit();
+            var stdout = stdoutBuilder.ToString().Trim();
+            var stderr = stderrBuilder.ToString().Trim();
             if (process.ExitCode == 0)
             {
                 return string.IsNullOrWhiteSpace(stdout) ? "命令执行成功（无输出）" : stdout;
@@ -299,20 +312,29 @@ public class BrowserPlugin
             return false;
         }
 
-        var normalized = command.Trim().ToLowerInvariant();
+        // 统一小写后做分词匹配，覆盖 PowerShell 内置别名（SEC-002）：
+        // ri=Remove-Item, sc=Set-Content, ni=New-Item, mi=Move-Item, cp/Copy-Item,
+        // del/erase/rd/rmdir 等。用带边界的匹配避免误伤普通单词。
+        var normalized = " " + command.Trim().ToLowerInvariant() + " ";
         var riskyTokens = new[]
         {
-            "remove-item", " rm ", " rm-", " del ", " erase ", " rmdir", " rd ",
-            "clear-content", "format-volume", "format ", "shutdown", "restart-computer",
-            "stop-computer", "stop-process", "taskkill", "remove-aduser", "remove-localuser"
+            "remove-item", " ri ", " ri;", " rm ", " rm;", " del ", " erase ",
+            " rmdir", " rd ", "clear-content", "clear-item",
+            "set-content", " sc ", "out-null", "format-volume", "format ",
+            "shutdown", "restart-computer", "stop-computer", "stop-process",
+            "taskkill", "remove-aduser", "remove-localuser", "new-item -force",
+            "invoke-expression", "iex ", "invoke-webrequest", "iwr ",
+            "start-process", "cmd /c", "powershell -"
         };
 
-        return riskyTokens.Any(token => normalized.Contains(token, StringComparison.OrdinalIgnoreCase))
-               || normalized.StartsWith("rm ", StringComparison.OrdinalIgnoreCase)
-               || normalized.StartsWith("del ", StringComparison.OrdinalIgnoreCase)
-               || normalized.StartsWith("erase ", StringComparison.OrdinalIgnoreCase)
-               || normalized.StartsWith("rmdir ", StringComparison.OrdinalIgnoreCase)
-               || normalized.StartsWith("rd ", StringComparison.OrdinalIgnoreCase);
+        return riskyTokens.Any(token => normalized.Contains(token));
+    }
+
+    /// <summary>把命令文本编码为 PowerShell -EncodedCommand 需要的 UTF-16LE Base64。</summary>
+    private static string ToEncodedCommand(string command)
+    {
+        var utf16 = System.Text.Encoding.Unicode.GetBytes(command);
+        return Convert.ToBase64String(utf16);
     }
 
     private static string? ResolveAppExecutable(string appNameOrPath)

@@ -22,13 +22,54 @@ public class FileSystemPlugin
 
         try
         {
-            var full = Path.GetFullPath(path);
-            return Path.IsPathRooted(full);
+            var full = Path.GetFullPath(path.Trim());
+            // 必须是绝对路径，且落在允许的白名单根目录内（SEC-003）：
+            // 用户主目录（文档/下载/桌面等日常文件）+ 临时目录。
+            var allowedRoots = GetAllowedRoots();
+            var allowed = allowedRoots.Any(root =>
+                full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(full, root, StringComparison.OrdinalIgnoreCase));
+
+            if (!allowed)
+            {
+                return false;
+            }
+
+            // 明确禁止进入应用私有数据目录（settings/记忆/mcp 配置含敏感凭据）
+            var appData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Aemeath");
+            if (full.StartsWith(appData + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(full, appData, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
         catch
         {
             return false;
         }
+    }
+
+    /// <summary>文件访问白名单根目录：用户主目录 + 系统临时目录。</summary>
+    private static List<string> GetAllowedRoots()
+    {
+        var roots = new List<string>();
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            roots.Add(Path.GetFullPath(userProfile));
+        }
+
+        var temp = Path.GetFullPath(Path.GetTempPath());
+        if (!roots.Any(r => string.Equals(r, temp, StringComparison.OrdinalIgnoreCase)))
+        {
+            roots.Add(temp);
+        }
+
+        return roots;
     }
 
     [KernelFunction("read_file")]

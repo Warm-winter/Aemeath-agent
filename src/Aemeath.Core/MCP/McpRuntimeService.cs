@@ -189,7 +189,7 @@ public sealed class McpRuntimeService : IAsyncDisposable
         {
             // 短暂等待后重试一次，针对 SSE 首次握手偶发超时
             await Task.Delay(1500, cancellationToken);
-            var retryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var retryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             retryCts.CancelAfter(connectTimeout);
             return await CreateClientAsync(server, connectTimeout, stderr, retryCts.Token);
         }
@@ -437,10 +437,10 @@ public sealed class McpRuntimeService : IAsyncDisposable
     {
         var target = server.Transport == McpTransportType.Stdio
             ? $"{server.Command} {string.Join(' ', server.Args)}".Trim()
-            : server.Url ?? string.Empty;
+            : RedactUrlSecrets(server.Url) ?? string.Empty;
         var message = exception is TimeoutException or OperationCanceledException
             ? $"{phase}超时（{timeout.TotalSeconds:0} 秒）"
-            : $"{phase}失败：{exception.Message}";
+            : $"{phase}失败：{RedactText(exception.Message)}";
 
         if (!string.IsNullOrWhiteSpace(target))
         {
@@ -448,6 +448,50 @@ public sealed class McpRuntimeService : IAsyncDisposable
         }
 
         return message + FormatStdio(stderr);
+    }
+
+    /// <summary>抹掉 URL 查询串中的敏感参数（token/key/secret 等），避免凭据被写进错误信息落盘（SEC-008）。</summary>
+    private static string? RedactUrlSecrets(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return url;
+        }
+
+        var q = url.IndexOf('?');
+        if (q < 0)
+        {
+            return url;
+        }
+
+        var path = url[..q];
+        var query = url[(q + 1)..];
+        var sensitiveKeys = new[] { "token", "key", "secret", "auth", "password", "apikey", "api_key", "access_token" };
+        var pairs = query.Split('&');
+        var redacted = false;
+        for (int i = 0; i < pairs.Length; i++)
+        {
+            var eq = pairs[i].IndexOf('=');
+            var k = eq >= 0 ? pairs[i][..eq] : pairs[i];
+            if (sensitiveKeys.Any(s => k.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            {
+                pairs[i] = $"{k}=***";
+                redacted = true;
+            }
+        }
+
+        return redacted ? $"{path}?{string.Join('&', pairs)}" : url;
+    }
+
+    /// <summary>抹掉异常文本里常见的凭据模式（Bearer xxx、api-key=xxx 等），减少敏感信息泄漏（SEC-015/SEC-008）。</summary>
+    private static string RedactText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text ?? string.Empty;
+        }
+
+        return Regex.Replace(text, "(?i)(bearer|token|api[_-]?key|secret|password)[\\s=:]+[^\\s,;]+", "$1=***");
     }
 
     private static string FormatStdio(StdioErrorBuffer stderr)

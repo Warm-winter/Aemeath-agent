@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Aemeath.Core.MCP;
 using System;
 using System.Collections.Generic;
@@ -96,13 +97,14 @@ public partial class McpConfigPanel : UserControl
     /// <summary>更新顶部整体状态条文字（由 ConfigWindow 根据实时 McpStatus 喂入）。</summary>
     public void UpdateOverallStatus(string text)
     {
-        OverallStatusText.Text = string.IsNullOrWhiteSpace(text) ? "未加载" : text;
+        // McpStatusChanged 可能在后台线程触发，UI 文本必须切回 UI 线程设置（CON-009）。
+        Dispatcher.UIThread.Post(() => OverallStatusText.Text = string.IsNullOrWhiteSpace(text) ? "未加载" : text);
     }
 
     /// <summary>刷新依赖状态文字（由 ConfigWindow 喂入）。</summary>
     public void UpdateDependencyStatus(string text)
     {
-        McpDependencyStatusText.Text = string.IsNullOrWhiteSpace(text) ? "尚未检测" : text;
+        Dispatcher.UIThread.Post(() => McpDependencyStatusText.Text = string.IsNullOrWhiteSpace(text) ? "尚未检测" : text);
     }
 
     /// <summary>重新拉取服务卡片列表并刷新状态徽章。</summary>

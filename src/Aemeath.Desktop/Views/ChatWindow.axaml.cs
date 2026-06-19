@@ -52,6 +52,9 @@ public partial class ChatWindow : Window
     private readonly Bitmap _assistantAvatar;
     private readonly Bitmap _maleAvatar;
     private readonly Bitmap _femaleAvatar;
+    private Bitmap? _customUserAvatar;
+    private string? _customUserAvatarPath;
+    private Bitmap? _chatBackgroundBitmap;
     private readonly DrawingImage _copyIcon;
     private readonly DrawingImage _deleteIcon;
     private readonly DrawingImage _retryIcon;
@@ -1999,12 +2002,26 @@ public partial class ChatWindow : Window
 
         if (type == "custom" && !string.IsNullOrWhiteSpace(_settingsService.Current.CustomUserAvatarPath) && File.Exists(_settingsService.Current.CustomUserAvatarPath))
         {
-            try
+            // 缓存自定义头像 Bitmap，避免每条消息气泡都重新加载并泄漏旧实例（RES-006）。
+            var path = _settingsService.Current.CustomUserAvatarPath;
+            if (_customUserAvatar is null || _customUserAvatarPath != path)
             {
-                return new Bitmap(_settingsService.Current.CustomUserAvatarPath);
+                try
+                {
+                    _customUserAvatar?.Dispose();
+                    _customUserAvatar = new Bitmap(path);
+                    _customUserAvatarPath = path;
+                }
+                catch
+                {
+                    _customUserAvatar = null;
+                    _customUserAvatarPath = null;
+                }
             }
-            catch
+
+            if (_customUserAvatar is not null)
             {
+                return _customUserAvatar;
             }
         }
 
@@ -2018,8 +2035,7 @@ public partial class ChatWindow : Window
         {
             try
             {
-                var bitmap = new Bitmap(path);
-                ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
+                SetChatBackground(new Bitmap(path));
                 return;
             }
             catch
@@ -2030,13 +2046,23 @@ public partial class ChatWindow : Window
         try
         {
             using var stream = AssetLoader.Open(new Uri("avares://Aemeath-agent/Assets/static/chat-background-default.png"));
-            var bitmap = new Bitmap(stream);
-            ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
+            SetChatBackground(new Bitmap(stream));
         }
         catch
         {
             ChatBackgroundHost.Background = new SolidColorBrush(Color.Parse("#FFFFFFFF"));
         }
+    }
+
+    /// <summary>设置聊天背景图：释放上一次缓存的 Bitmap，避免反复切换造成非托管内存累积（RES-008）。</summary>
+    private void SetChatBackground(Bitmap bitmap)
+    {
+        if (!ReferenceEquals(_chatBackgroundBitmap, bitmap))
+        {
+            _chatBackgroundBitmap?.Dispose();
+        }
+        _chatBackgroundBitmap = bitmap;
+        ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
     }
 
     private static Bitmap LoadBitmap(string uri)

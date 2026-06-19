@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 
 namespace Aemeath.Core.AI;
 
-public class AemiChatService : IChatService
+public class AemiChatService : IChatService, IAsyncDisposable
 {
     private readonly SettingsService _settingsService;
     private KernelMixinBase? _currentKernel;
@@ -188,8 +188,16 @@ public class AemiChatService : IChatService
         }
 
         await kernel.InitializeAsync(apiKey, keyInfo?.Endpoint);
-        var response = await kernel.SendMessageAsync(message, cancellationToken);
-        return FormatAemiResponse(response);
+        try
+        {
+            var response = await kernel.SendMessageAsync(message, cancellationToken);
+            return FormatAemiResponse(response);
+        }
+        finally
+        {
+            // 用完即释放临时 Kernel 的 HttpClient（RES-003）。
+            kernel.Dispose();
+        }
     }
 
     public IAsyncEnumerable<string> SendMessageStreamingAsync(
@@ -309,6 +317,28 @@ public class AemiChatService : IChatService
     public void ClearHistory()
     {
         _currentKernel?.ClearHistory();
+    }
+
+    /// <summary>释放持有的 Kernel、MCP 运行时、信号量等资源（RES-002）。</summary>
+    public async ValueTask DisposeAsync()
+    {
+        _mcpReloadCts?.Cancel();
+        _mcpReloadCts?.Dispose();
+        _mcpReloadCts = null;
+
+        try
+        {
+            await _mcpRuntime.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // 释放阶段忽略 MCP 运行时异常
+        }
+
+        (_currentKernel as IDisposable)?.Dispose();
+        _currentKernel = null;
+
+        _mcpReloadLock.Dispose();
     }
 
     public Task<bool> SwitchProviderAsync(string providerName, string apiKey, string? endpoint = null)

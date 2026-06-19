@@ -69,13 +69,22 @@ public sealed class McpServerStore
     public bool DeleteServer(string id)
     {
         var path = GetServerPath(NormalizeId(id));
-        if (!File.Exists(path))
+        // 加锁，避免与并发的 SaveServer/LoadFile 竞态（CON-007）。
+        _fileLock.Wait();
+        try
         {
-            return false;
-        }
+            if (!File.Exists(path))
+            {
+                return false;
+            }
 
-        File.Delete(path);
-        return true;
+            File.Delete(path);
+            return true;
+        }
+        finally
+        {
+            _fileLock.Release();
+        }
     }
 
     public void SetEnabled(string id, bool enabled)

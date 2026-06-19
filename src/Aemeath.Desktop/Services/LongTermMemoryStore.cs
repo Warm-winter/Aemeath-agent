@@ -166,8 +166,26 @@ public sealed class LongTermMemoryStore
             }
 
             var text = sb.ToString().Trim();
-            return text.Length <= maxChars ? text : text[..maxChars];
+            return TruncateSafe(text, maxChars);
         }
+    }
+
+    /// <summary>按 char 截断时避免落在 UTF-16 代理对中间产生孤立代理（DATA-007）。</summary>
+    private static string TruncateSafe(string text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
+        {
+            return text;
+        }
+
+        var cut = maxChars;
+        // 若截断点是高代理（代理对的第一个 char），向前退一格，避免孤立代理
+        if (cut > 0 && char.IsHighSurrogate(text[cut - 1]))
+        {
+            cut--;
+        }
+
+        return text[..cut];
     }
 
     private static void AddEntry(
@@ -226,16 +244,57 @@ public sealed class LongTermMemoryStore
             var json = File.ReadAllText(_filePath);
             return JsonSerializer.Deserialize<LongTermMemoryDatabase>(json) ?? new LongTermMemoryDatabase();
         }
-        catch
+        catch (Exception ex)
         {
+            // 数据损坏时不再静默丢弃（DATA-001）：把损坏文件备份成 .corrupt，
+            // 便于用户找回/修复，同时记日志。返回空库让程序继续可用。
+            BackupCorruptFile();
+            AppLogger.Error("memory", "长期记忆文件反序列化失败，已备份损坏文件", ex);
             return new LongTermMemoryDatabase();
         }
     }
 
+    /// <summary>把损坏的记忆文件备份成 .corrupt（带序号避免覆盖），而非直接覆盖丢失。</summary>
+    private void BackupCorruptFile()
+    {
+        try
+        {
+            if (!File.Exists(_filePath))
+            {
+                return;
+            }
+
+            var dir = Path.GetDirectoryName(_filePath) ?? string.Empty;
+            var name = Path.GetFileNameWithoutExtension(_filePath);
+            var ext = Path.GetExtension(_filePath);
+            var backup = Path.Combine(dir, $"{name}.corrupt{ext}");
+            var seq = 1;
+            while (File.Exists(backup))
+            {
+                backup = Path.Combine(dir, $"{name}.corrupt-{seq}{ext}");
+                seq++;
+            }
+
+            File.Move(_filePath, backup, overwrite: false);
+        }
+        catch
+        {
+            // 备份失败也不能阻塞主流程
+        }
+    }
+
+    private static readonly JsonSerializerOptions SaveOptions = new() { WriteIndented = true };
+
     private void Save(LongTermMemoryDatabase db)
     {
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        File.WriteAllText(_filePath, JsonSerializer.Serialize(db, options));
+        // 原子写：先写临时文件再 Move，避免写入中途崩溃导致 JSON 截断、
+        // 下次 Load 失败而丢记忆（DATA-002）。
+        var json = JsonSerializer.Serialize(db, SaveOptions);
+        var dir = Path.GetDirectoryName(_filePath) ?? string.Empty;
+        Directory.CreateDirectory(dir);
+        var tempPath = _filePath + ".tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, _filePath, overwrite: true);
     }
 
     private static LongTermMemoryEntry Clone(LongTermMemoryEntry entry)

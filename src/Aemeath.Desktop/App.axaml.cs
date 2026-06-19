@@ -310,6 +310,19 @@ public partial class App : Application
         CloseWindow(_petWindow, "pet");
         _petWindow = null;
 
+        // 释放 AI/MCP 运行时资源（HttpClient、MCP 子进程等）后再关闭应用（RES-002）。
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            try
+            {
+                aemiChatService.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("app", "chat service dispose failed", ex);
+            }
+        }
+
         _desktop?.Shutdown();
     }
 

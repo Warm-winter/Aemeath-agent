@@ -1062,17 +1062,30 @@ public partial class ConfigWindow : Window
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
+            ReleaseImageSource(target);
             target.Source = null;
             return;
         }
 
         try
         {
+            ReleaseImageSource(target);
             target.Source = new Bitmap(path);
         }
         catch
         {
+            ReleaseImageSource(target);
             target.Source = null;
+        }
+    }
+
+    /// <summary>释放 Image 上旧的 Bitmap 源，避免反复更换预览图造成非托管内存累积（RES-007）。</summary>
+    private static void ReleaseImageSource(Avalonia.Controls.Image target)
+    {
+        if (target.Source is Bitmap old)
+        {
+            target.Source = null;
+            old.Dispose();
         }
     }
 
@@ -1095,6 +1108,7 @@ public partial class ConfigWindow : Window
         try
         {
             using var stream = AssetLoader.Open(new Uri(uri));
+            ReleaseImageSource(target);
             target.Source = new Bitmap(stream);
         }
         catch

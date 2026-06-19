@@ -182,6 +182,7 @@ public sealed class McpDependencyService
                     throw new InvalidOperationException("压缩包中未找到 uv.exe");
                 }
 
+                TryDeleteFile(archivePath);
                 return InstallOneResult.Ok(uvPath, mirror.Name);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -230,6 +231,7 @@ public sealed class McpDependencyService
                     throw new InvalidOperationException("压缩包中未找到 bun.exe");
                 }
 
+                TryDeleteFile(archivePath);
                 return InstallOneResult.Ok(bunPath, mirror.Name);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -374,6 +376,29 @@ public sealed class McpDependencyService
             await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
         }
 
+        // 尝试从响应头补全 sha（SEC-011），部分镜像会在 X-Checksum-SHA256 / X-SHA256 头给出。
+        if (string.IsNullOrWhiteSpace(expectedSha256))
+        {
+            foreach (var header in new[] { "X-Checksum-SHA256", "X-SHA256", "ETag" })
+            {
+                var v = response.Headers.TryGetValues(header, out var vals) ? vals.FirstOrDefault() : null;
+                if (!string.IsNullOrWhiteSpace(v))
+                {
+                    var clean = v.Trim().Trim('"');
+                    if (clean.Length >= 64 && clean.All(c => "0123456789abcdefABCDEF".IndexOf(c) >= 0))
+                    {
+                        expectedSha256 = clean;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(expectedSha256))
+            {
+                System.Diagnostics.Debug.WriteLine($"[mcp-dep] {uri} 未提供 SHA256，已跳过完整性校验（供应链风险）");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(expectedSha256))
         {
             var actual = await ComputeSha256Async(tempPath, cancellationToken).ConfigureAwait(false);
@@ -475,6 +500,24 @@ public sealed class McpDependencyService
         await using var stream = File.OpenRead(path);
         var hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>安全删除临时下载文件，失败不影响安装结果（RES-013）。</summary>
+    private static void TryDeleteFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
+            // 临时文件清理失败不阻断安装流程
+        }
     }
 
     private static Uri EnsureTrailingSlash(string url)

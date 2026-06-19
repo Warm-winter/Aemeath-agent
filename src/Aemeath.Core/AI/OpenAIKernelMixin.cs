@@ -8,11 +8,14 @@ namespace Aemeath.Core.AI;
 /// <summary>
 /// OpenAI-compatible provider implementation.
 /// </summary>
-public sealed class OpenAIKernelMixin : KernelMixinBase
+public sealed class OpenAIKernelMixin : KernelMixinBase, IDisposable
 {
     private string? _apiKey;
     private string? _endpoint;
     private string _modelId = "gpt-4o";
+    // \u6301\u6709 HttpClient \u4ee5\u4fbf\u5728\u91cd\u65b0\u521d\u59cb\u5316/\u91ca\u653e\u65f6\u56de\u6536\u5e95\u5c42 socket\uff08RES-001\uff09\u3002
+    private HttpClient? _httpClient;
+    private bool _disposed;
 
     public OpenAIKernelMixin(string systemPrompt) : base(systemPrompt)
     {
@@ -39,7 +42,9 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
             throw new InvalidOperationException("API Key \u672a\u8bbe\u7f6e");
         }
 
-        var httpClient = CreateOpenAIHttpClient();
+        // \u91cd\u65b0\u521d\u59cb\u5316\u524d\u91ca\u653e\u4e0a\u4e00\u4efd HttpClient\uff0c\u907f\u514d\u5207\u6362\u6a21\u578b/\u63d0\u4f9b\u5546\u65f6\u7d2f\u79ef socket\uff08RES-001\uff09\u3002
+        _httpClient?.Dispose();
+        _httpClient = CreateOpenAIHttpClient();
         if (!string.IsNullOrEmpty(_endpoint))
         {
 #pragma warning disable SKEXP0010
@@ -47,7 +52,7 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
                 modelId: _modelId,
                 apiKey: _apiKey!,
                 endpoint: new Uri(_endpoint!),
-                httpClient: httpClient);
+                httpClient: _httpClient);
 #pragma warning restore SKEXP0010
         }
         else
@@ -56,7 +61,7 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
             builder.AddOpenAIChatCompletion(
                 modelId: _modelId,
                 apiKey: _apiKey!,
-                httpClient: httpClient);
+                httpClient: _httpClient);
 #pragma warning restore SKEXP0010
         }
 
@@ -74,5 +79,17 @@ public sealed class OpenAIKernelMixin : KernelMixinBase
             _isInitialized = false;
             InitializeAsync(_apiKey!, _endpoint).GetAwaiter().GetResult();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _httpClient?.Dispose();
+        _httpClient = null;
     }
 }

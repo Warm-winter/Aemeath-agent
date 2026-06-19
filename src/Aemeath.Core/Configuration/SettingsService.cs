@@ -55,6 +55,10 @@ public class SettingsService
                     MigrateProviderModels(key, settings.DefaultModel);
                 }
 
+                // Azure 语音密钥同样走 DPAPI 解密（SEC-005）。旧版本明文存储时，
+                // TryDecrypt 解密失败会原样返回，保持向后兼容。
+                settings.AzureSpeechKey = TryDecrypt(settings.AzureSpeechKey);
+
                 settings.ApiKeys = settings.ApiKeys
                     .GroupBy(kvp => NormalizeProvider(kvp.Key))
                     .ToDictionary(g => g.Key, g => g.Last().Value);
@@ -90,7 +94,7 @@ public class SettingsService
             SystemPrompt = _settings.SystemPrompt,
             EnableParticleEffects = _settings.EnableParticleEffects,
             EnableVoiceInput = _settings.EnableVoiceInput,
-            AzureSpeechKey = _settings.AzureSpeechKey,
+            AzureSpeechKey = TryEncrypt(_settings.AzureSpeechKey),
             AzureSpeechRegion = _settings.AzureSpeechRegion,
             UserAvatarType = _settings.UserAvatarType,
             CustomUserAvatarPath = _settings.CustomUserAvatarPath,
@@ -387,8 +391,11 @@ public class SettingsService
             var encrypted = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
             return Convert.ToBase64String(encrypted);
         }
-        catch
+        catch (Exception ex)
         {
+            // DPAPI 加密失败时不再静默降级为明文（SEC-006）：留可观测痕迹，
+            // 便于排查。仍返回原值以避免设置整体无法保存。
+            System.Diagnostics.Debug.WriteLine($"[settings] DPAPI 加密失败，凭据将以明文落盘：{ex.Message}");
             return plain;
         }
     }
@@ -407,6 +414,7 @@ public class SettingsService
         }
         catch
         {
+            // 解密失败：通常是旧版本明文存储或换用户/换机器导致，原样返回保持可用。
             return cipher;
         }
     }
