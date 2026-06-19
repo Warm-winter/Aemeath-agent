@@ -252,6 +252,27 @@ public sealed class McpServerStore
             server.Env ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             server.Headers ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             server.Args ??= [];
+
+            // 历史遗留：env/headers 里的 Windows 路径可能被二次序列化成双反斜杠
+            // （例如 MEMORY_FILE_PATH = C:\\Users\\ASUS\\...）。这里把盘符路径里
+            // 连续的反斜杠折叠回单个，让损坏的旧配置在加载时自动恢复正常路径。
+            // 只对 Windows 盘符绝对路径（如 C:\、D:\）生效，避免误伤 UNC 路径（\\server）。
+            if (server.Env.Count > 0)
+            {
+                server.Env = server.Env.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => NormalizeWindowsPath(kvp.Value),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
+            if (server.Headers.Count > 0)
+            {
+                server.Headers = server.Headers.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => NormalizeWindowsPath(kvp.Value),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
             return server;
         }
         catch
@@ -265,6 +286,32 @@ public sealed class McpServerStore
     }
 
     private string GetServerPath(string id) => Path.Combine(_serversDirectory, NormalizeId(id) + ".json");
+
+    /// <summary>
+    /// 修复历史二次序列化损坏的 Windows 路径：把盘符绝对路径（如 C:\...）里
+    /// 连续的反斜杠折叠为单个。仅对以「盘符:\」开头的值生效，UNC 路径和其它值原样返回。
+    /// </summary>
+    private static string NormalizeWindowsPath(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value ?? string.Empty;
+        }
+
+        // 只处理 Windows 盘符绝对路径：形如 C:\ 或 D:\
+        if (value.Length < 3 ||
+            !char.IsLetter(value[0]) ||
+            value[1] != ':' ||
+            value[2] != '\\')
+        {
+            return value;
+        }
+
+        // 把 2 个及以上连续反斜杠折叠为单个
+        return BackslashRunRegex.Replace(value, "\\");
+    }
+
+    private static readonly Regex BackslashRunRegex = new("\\\\{2,}", RegexOptions.Compiled);
 
     public static string NormalizeId(string value)
     {

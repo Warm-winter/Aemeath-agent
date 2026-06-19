@@ -2,173 +2,120 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 项目概述
+## 项目概览
 
-Aemeath Agent 是一个基于 .NET 8 + Avalonia 的 Windows AI 桌宠助手，面向《鸣潮》游戏玩家，以"爱弥斯"角色为主题。项目结合了桌宠交互、AI 对话、本地知识库、长期记忆、语音识别和 MCP 工具能力。
+Aemeath 是一个面向鸣潮玩家的「爱弥斯」主题 Windows AI 桌宠助手（.NET 8 + Avalonia UI）。角色名为「小爱」。核心形态是一个桌面宠物窗口，双击打开聊天窗口，并集成 Semantic Kernel 工具、本地知识库、长期记忆、MCP 插件和语音输入。
+
+**永远用中文与用户交流**（用户全局指令）。
 
 ## 常用命令
 
-### 构建与运行
-
 ```powershell
-# 恢复依赖
+# 还原 + 调试构建（提交前建议先跑通）
 dotnet restore Aemeath.sln
-
-# 调试构建
 dotnet build Aemeath.sln -c Debug
 
-# 发布版本构建
-dotnet build Aemeath.sln -c Release
-
-# 发布自包含可执行文件
+# 发布自包含版本（win-x64），输出到 publish/Aemeath.Desktop/
 dotnet publish src/Aemeath.Desktop/Aemeath.Desktop.csproj -c Release -r win-x64 --self-contained true -o publish/Aemeath.Desktop
 
-# 或使用项目脚本（包含完整流程）
+# 一键构建+发布（Windows bat 脚本，内部执行 restore → build Release → publish）
 build.bat
+build.bat --no-pause   # CI 环境用
 ```
 
-### 运行程序
+- **没有测试项目**。README 中提到的 `dotnet test Aemeath.sln` 只是预留基线命令，当前不会运行任何测试。验证改动靠 `dotnet build` + 运行应用。
+- 启动入口是 `src/Aemeath.Desktop/Program.cs`，输出程序集名 `Aemeath-agent`（不是项目名）。发布后可执行文件为 `publish/Aemeath.Desktop/Aemeath-agent.exe`。
+- 构建需要 .NET SDK 8.0+，Windows 10/11 x64。Whisper/Speech 依赖带 RID 图（`UseRidGraph=true`）。
 
-```powershell
-# 调试运行
-dotnet run --project src/Aemeath.Desktop/Aemeath.Desktop.csproj
+## 解决方案结构（4 个项目）
 
-# 发布后运行
-publish\Aemeath.Desktop\Aemeath-agent.exe
+```
+Aemeath.Core    —— AI、设置、知识库、MCP、Semantic Kernel 工具插件（无 UI 依赖）
+Aemeath.Desktop —— Avalonia 主程序：聊天窗口、配置窗口、托盘、长期记忆、日志
+Aemeath.Pet     —— 桌宠窗口、GIF 动画、鼠标跟随、边缘吸附、交互
+Aemeath.Speech  —— 录音 + Whisper.net 语音识别
 ```
 
-## 架构设计
+引用方向：`Desktop → {Core, Pet, Speech}`，`Pet → Core`，`Speech` 独立。UI 代码主要在 Desktop 和 Pet，Core 应保持无 Avalonia 依赖。
 
-### 项目结构
+包版本集中在根目录 `Directory.Packages.props`（ centrally managed）。改版本改这里，不要在单个 csproj 里写 `Version`。全局编译属性在 `Directory.Build.props`（`net8.0-windows`、`Nullable=enable`、`ImplicitUsings=enable`）。
 
-- **Aemeath.Core**：AI 核心逻辑、配置管理、知识库、MCP 集成、工具插件系统
-- **Aemeath.Desktop**：Avalonia 主应用、聊天窗口、设置中心、MCP 配置界面
-- **Aemeath.Pet**：桌宠窗口、GIF 动画播放、跟随与交互逻辑
-- **Aemeath.Speech**：语音录音、Windows 语音 API、Whisper.net 转写
+## 运行时数据与隐私约定（重要）
 
-### AI 服务架构
+所有用户数据落在 `%AppData%\Aemeath\`：
 
-#### 核心抽象层
+| 文件 | 内容 | 由谁管理 |
+|------|------|---------|
+| `settings.json` | 全部设置 + 各 Provider 的 API Key（DPAPI 加密） | `SettingsService` |
+| `long_term_memory.json` | 长期记忆 | `LongTermMemoryStore` |
+| `mcp_servers.json` / `mcp_memory*.json` | MCP 服务配置与记忆 | `McpServerStore` |
+| `tools/bin/uv.exe`, `bun.exe` | 运行时下载的 MCP 依赖 | `McpDependencyService` |
 
-- **`KernelMixinBase`**：所有 AI 服务的基类，封装 Semantic Kernel 的初始化、消息发送（流式和非流式）、附件处理（文本、图片）、插件注册。所有具体实现继承此类。
+**API Key 用 Windows DPAPI（`ProtectedData`，CurrentUser 范围）加密后再写盘**，读出来时解密。`SettingsService.Save()` 会重加密所有 key。这些文件名都在 `.gitignore` 中，禁止提交真实 key / 记忆 / 发布产物。
 
-- **`AemiChatService`**：主聊天服务实现，整合所有功能：
-  - Provider 管理与动态切换
-  - 本地知识库自动注入
-  - 工具插件注册（文件系统、浏览器、截图、提醒、知识库、MCP）
-  - 响应格式化（移除 `<think>` 等内部推理标签）
-  - 长期记忆总结（使用独立 Kernel 实例）
+日志写到 `<AppContext.BaseDirectory>/log/yyyyMMdd.log`（`AppLogger`，全静态、带锁、静默吞异常）。
 
-#### Provider 支持
+## 核心架构
 
-项目通过 OpenAI-compatible 接口支持多个 LLM 服务商。关键实现：
+### 应用启动与窗口编排（`App.axaml.cs`）
 
-- **`OpenAIKernelMixin`**：基于 `Microsoft.SemanticKernel.Connectors.OpenAI`，支持自定义 Endpoint
-- **`AnthropicKernelMixin`**（如存在）：Anthropic 专用适配
-- **`OpenAIResponseNormalizationHandler`**：处理非标准响应格式，确保兼容性
+`App` 是单例编排中心，构造 `SettingsService` → `AemiChatService`，并持有 Pet/Chat/Config 三个窗口的引用，懒加载、可重入地 Show/Activate。
 
-配置存储在 `Settings.ApiKeys`（Dictionary<string, ApiKey>），支持多 Provider 并行配置。
+- **主窗口是 `PetWindow`**（桌宠），不是聊天窗口。聊天/配置通过桌宠的双击/右键菜单触发。
+- **单实例**：`Program.cs` 用命名 Mutex `Local\Aemeath.Desktop.SingleInstance` 防止多开。
+- **聊天活动 → 桌宠状态联动**：`ChatWindow` 通过 `ActivityChanged` 事件把 Sending/VoiceListening/ToolWaiting/Completed/Failed 等状态传给 `App`，`App` 再调用 `PetWindow.SetActivityState` / `PlayTemporaryStateAsync` 让桌宠播放对应动画（执行任务=Running、聆听=Waiting、任务完成=Review、失败=Failed）。改聊天流程时注意这条联动链。
+- MCP 工具在启动后**后台异步加载**（`StartMcpBackgroundReload`），不阻塞 UI；状态经 `McpStatusChanged` 事件上报。
 
-### 本地知识库系统
+### AI 抽象（`Aemeath.Core/AI/`）
 
-- **资源文件**：`Aemeath.Core/Knowledge/knowledge_base.zh-CN.json`（EmbeddedResource）
-- **检索逻辑**：`KnowledgeBaseService` 使用简单关键词匹配，在用户消息发送前自动注入相关条目
-- **注入策略**：
-  - 用户消息先经过 `EnrichMessageWithKnowledge` 预处理
-  - 自动命中的知识库条目会添加到消息前缀
-  - System Prompt 提示模型优先依据本地知识库，资料不足时明确说明而非编造
+- `IChatService` 是接口，`AemiChatService` 是唯一实现，聚合了 settings、知识库、工具确认、MCP 运行时。
+- `KernelMixinBase`（抽象）封装 Semantic Kernel。可用实现只有 `OpenAIKernelMixin`——所有 Provider 走 **OpenAI-compatible** 协议（`AddOpenAIChatCompletion`，可选自定义 endpoint）。仓库里的 `AnthropicKernelMixin` 只是占位，构造可用但 `InitializeAsync`/`BuildKernel` 抛 `NotSupportedException`，引导用户走 OpenAI 兼容协议；不要把它当成可用的 Provider 实现。
+- **工具自动调用**：用 `ToolCallBehavior.AutoInvokeKernelFunctions`，注册的 KernelFunction 会被模型直接调用。相关代码用 `#pragma warning disable SKEXP0001/SKEXP0010` 关掉实验性 API 警告——这是有意的，不要去掉这些 pragma。
+- **附件处理**：`KernelMixinBase.BuildUserContentItemsAsync` 把文本附件内联（截断到 12 万字符）、图片转 `ImageContent`、其它文件只附路径。聊天页负责收集 `ChatAttachment`。
+- **知识库注入**：每条用户消息发送前，`EnrichMessageWithKnowledge` 会在前面拼上本地知识库命中片段和检索规则。系统提示词在 `Prompts/AemiSystemPrompt.cs`（Default / Professional 两套）。
+- **响应清洗**：`FormatAemiResponse` 会剥离 `<think>` 块、`/think`、` ```think ` 等推理模型残留。MCP 等待标记也会在 `ChatWindow` 中被正则清掉（见下）。
 
-### 工具插件系统
+### 工具确认机制（高风险操作，跨 Core/Desktop）
 
-基于 Semantic Kernel 的 Plugin 机制，所有工具通过 `[KernelFunction]` 特性暴露给 LLM：
+这是项目里最需要注意的跨层约定：
 
-- **`FileSystemPlugin`**：文件读写、删除、移动、目录操作（需确认）
-- **`BrowserPlugin`**：打开应用、网页、搜索（优先本地应用，回退网页）
-- **`ScreenshotPlugin`**：全屏或区域截图
-- **`ReminderPlugin`**：定时提醒
-- **`KnowledgeBasePlugin`**：供 LLM 主动调用 `knowledge_search`
-- **`McpChatPlugin`**：MCP 工具代理层
+1. 工具插件（`FileSystemPlugin`、`BrowserPlugin`）遇到删除/覆盖/清空类操作时，**不直接执行**，而是调用 `ToolConfirmationService.RequestConfirmation(title, desc, execute)`。
+2. 该方法把待执行动作存入内存，返回一个标记字符串 `AEMEATH_PENDING_CONFIRMATION:<guid>`，这个字符串会作为「工具结果」回到模型回复里。
+3. `ChatWindow` 订阅 `PendingActionCreated` 事件，弹出确认卡片；同时用正则把 `PendingMarkerPrefix` 从显示文本里抹掉（不让用户看到内部标记）。
+4. 用户点确认 → `Confirm(id)` → 执行原始闭包；点取消 → `Cancel(id)`。
 
-#### 高风险操作确认机制
+**改任何工具插件或聊天渲染逻辑时，都要保证这条标记链不断**：标记必须能流回 UI、UI 必须能识别并渲染卡片、确认后必须能找到并执行闭包。
 
-- **`ToolConfirmationService`**：追踪待确认操作（`PendingToolAction`）
-- 删除、覆盖、清空等高风险操作会先返回确认请求，UI 显示确认卡，用户确认后才执行
-- 工具插件通过构造函数注入 `ToolConfirmationService` 实现此机制
+### 桌宠动画状态机（`Aemeath.Pet/`）
 
-### MCP (Model Context Protocol) 集成
+`PetWindow` 维护一个分层状态优先级：**临时状态 > 活动状态(activity) > 跟随/待机基础状态**。
 
-- **`McpRuntimeService`**：管理外部 MCP Servers 的生命周期
-  - 从用户配置文件加载 Server 列表（默认路径或用户指定）
-  - 启动 `uv` / `bun` 进程连接 MCP Server
-  - 动态构建 `KernelPlugin`，将 MCP tools 转为 Semantic Kernel functions
-  - 支持异步重载（后台加载，超时 130 秒）
-  
-- **依赖下载机制**：
-  - `McpDependencyService` 负责检测和下载 `uv.exe` / `bun.exe`
-  - 支持多个国内镜像源自动降级下载
-  - 下载到 `%AppData%\Aemeath\tools\bin`
-  - 用户通过 **设置中心 -> MCP 配置 -> 检测/下载 MCP 依赖** 触发
+- GIF 资源在 `assets/animations/pet/*.gif`，通过 `avares://Aemeath.Pet/Assets/animations/pet/...` 加载，状态映射在 `LoadGifAssetsAsync`。
+- `PetState` 枚举：Idle / Follow / FollowLeft / Click / Wave / Jump / Failed / Waiting / Running / Review 等。
+- 跟随鼠标用 `FollowService` + 20ms `DispatcherTimer`；单击/双击用 350~360ms 延迟去抖判定（双击打开聊天，单击播放 Click 动画）。
+- 拖拽用 Win32 `GetCursorPos` 取全局光标坐标（Avalonia 坐标系不够用），并 `ClampToScreen` / `SnapToEdgeIfNeeded` / `DockToNearestEdge` 做边缘吸附。
+- 右键菜单（`OnContextRequested`）大量直接修改 `SettingsService.Current` 并 `Save()`——桌宠是改设置的一条主路径。
 
-### 配置与持久化
+### 长期记忆（`LongTermMemoryStore`）
 
-- **配置存储**：`%AppData%\Aemeath\`
-  - `appsettings.json`：主配置文件（Provider、模型、桌宠设置等）
-  - API Key 使用 Windows DPAPI 加密（`System.Security.Cryptography.ProtectedData`）
-  - MCP Servers 配置独立文件
-  - 长期记忆 JSON 文件
+JSON 存储，分 `global` 和 `session` 两个 scope。`SaveSummary` 由 `ChatSessionStore` 在对话进行到一定轮次后触发（用 `IChatService.SummarizeAsync` 让模型压缩），把 summary/fact/task/preference 写入。`BuildPromptBlock` 在发送时拼回系统上下文。
 
-- **`SettingsService`**：单例管理配置的加载、保存、更新
+### MCP（`Aemeath.Core/MCP/`）
 
-### 响应格式化
+- `McpRuntimeService` 支持 stdio / SSE / HTTP 三种 transport，通过 `ModelContextProtocol` 客户端连接。
+- 工具被包装成名为 `mcp_<server>_<tool>` 的 KernelFunction，统一接收一个 `argumentsJson` 字符串参数（避免强类型签名问题）。函数名有去重和大小写规范化（`NormalizeFunctionName`）。
+- **加载是分超时档位的**：后台加载（stdio 30s / http 150s）与手动测试（stdio 60s / http 180s）不同，见 `GetTimeout`。stdio 失败会捕获 stderr 摘要拼进错误信息。
+- uv.exe / bun.exe 体积大不进 Git，首次使用由 `McpDependencyService` 从国内镜像下载到 `%AppData%\Aemeath\tools\bin`。`Aemeath.Desktop.csproj` 用 `Condition="Exists(...)"` 条件引用 `bin\*.exe`——本地没有也能构建。
 
-`AemiChatService.FormatAemiResponse` 清理 LLM 原始输出：
-- 移除 `<think>...</think>` 块
-- 移除 `/think.../endthink` 块
-- 移除 ` ```think...``` ` 块
-- 确保用户看到的回复更像角色对话，而非系统日志
+## UI 约定
 
-### 长期记忆
+- 颜色/组件令牌集中在 `Aemeath.Desktop/Services/AemiUi.cs`（静态助手），主样式在 `Styles/AemeathTheme.axaml`。新增 UI 尽量复用这些令牌，保持「爱弥斯粉」视觉一致性。
+- **响应必须是纯文本，禁止 Markdown**（见系统提示词「回复格式限制」）。聊天渲染层也按纯文本处理。
+- 角色口吻要点：自称「小爱」（第三人称），称呼用户「漂泊者」，不主动暴露工具编号/函数名/命令/.exe 名等内部技术痕迹。
+- `Behaviors/ImeFixBehavior.cs` 是中文输入法光标修复，`ChatWindow` 体量很大（2300+ 行），改动前先定位相关方法。
 
-- 对话进行一段时间后，UI 层触发总结请求
-- `AemiChatService.SummarizeAsync` 使用独立的临时 Kernel 实例执行总结
-- 总结结果保存到本地 JSON 文件，下次对话可加载
+## 提交与文件注意
 
-## 开发注意事项
-
-### 依赖管理
-
-- 使用 **Central Package Management**（`Directory.Packages.props`），所有 `<PackageReference>` 不带 Version
-- 主要依赖：
-  - Avalonia 11.2.1
-  - Microsoft.SemanticKernel 1.20.0
-  - ModelContextProtocol.Core 1.3.0
-  - Whisper.net 1.8.1
-
-### Git 排除规则
-
-不要提交以下内容：
-- `/bin/`, `publish/`, 各项目的 `bin/obj`
-- API Key、Token、环境变量文件
-- 长期记忆 JSON、日志、缓存
-- MCP 配置和记忆文件
-- `uv.exe`, `bun.exe` 等大体积运行时二进制
-
-### Semantic Kernel 特性抑制
-
-项目 `.csproj` 中包含 `<NoWarn>$(NoWarn);SKEXP0010</NoWarn>` 以抑制 Semantic Kernel 实验性 API 警告（`ToolCallBehavior`）。
-
-### 多语言与角色化
-
-- 所有用户可见文本使用中文
-- System Prompt 设计为角色化对话（`AemiSystemPrompt.Default` / `Professional`）
-- 避免在回复中暴露工具编号、命令细节、可执行文件名等技术痕迹
-
-## 资源与资产
-
-- **静态资源**：`assets/static/` - 图标、头像、背景图
-- **桌宠动画**：`assets/animations/pet/` - 待机、移动、点击 GIF
-- **第三方授权**：`assets/notices/` - 资源来源与致谢
-
-## 测试
-
-当前解决方案暂无独立测试项目，`dotnet test Aemeath.sln` 作为后续测试接入的基线命令。
+- `.gitignore` 已排除 `bin/ obj/ publish/ /bin/ *.exe`（但放行 `tools/**/*.iss`）、`settings.json`、`long_term_memory.json`、`mcp_servers.json`、`*.log` 等。**不要把真实 API Key、用户记忆、发布产物、大体积二进制提交进仓库。**
+- Inno Setup 脚本在 `tools/installer.iss`（可选，做安装包用）。
+- 最近提交信息多为中文，描述修复内容，风格可保持一致。

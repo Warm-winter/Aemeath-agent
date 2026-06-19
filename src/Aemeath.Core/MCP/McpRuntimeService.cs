@@ -115,17 +115,37 @@ public sealed class McpRuntimeService : IAsyncDisposable
         bool manualTest,
         CancellationToken cancellationToken)
     {
+        // stdio：在真正启动子进程之前，先探测 command 是否真实存在。
+        // 这样缺失的命令（例如本机未安装的 odr.exe）不会走到「进程退出码 1 + GBK 乱码 stderr」
+        // 的崩溃路径，而是给出一条清晰、可读的中文提示，且不占用 30s 超时。
+        if (server.Transport == McpTransportType.Stdio && !IsCommandAvailable(server.Command))
+        {
+            var commandDisplay = string.IsNullOrWhiteSpace(server.Command) ? "(空)" : server.Command;
+            server.LastStatus = "error";
+            server.LastError = $"找不到命令对应的可执行文件：{commandDisplay}。" +
+                               $"该 MCP 服务需要先安装 {commandDisplay}，否则请在配置中关闭此服务。";
+            _store.SaveServer(server);
+            return McpServerLoadResult.Fail(server, server.LastError);
+        }
+
         var timeout = GetTimeout(server.Transport, manualTest);
         var stderr = new StdioErrorBuffer();
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
+
+        // 分级超时：把总预算拆成「建立连接」和「列举工具」两段。
+        // 这样 SSE/HTTP 首次握手偶发慢不会把全部时间都耗在 CreateAsync 上，
+        // 导致后续 ListToolsAsync 没机会执行就整体超时。
+        var connectTimeout = TimeSpan.FromTicks(timeout.Ticks * 40 / 100);
+        var listTimeout = TimeSpan.FromTicks(timeout.Ticks * 60 / 100);
 
         try
         {
-            var client = await CreateClientAsync(server, timeout, stderr, timeoutCts.Token);
+            // 连接级重试：HTTP/SSE 首次 initialize 握手偶发失败时重试 1 次
+            var client = await CreateClientWithRetryAsync(server, connectTimeout, stderr, cancellationToken);
             try
             {
-                var tools = await ListToolsAsync(client, server, stderr, timeoutCts.Token);
+                using var listCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                listCts.CancelAfter(listTimeout);
+                var tools = await ListToolsAsync(client, server, stderr, listCts.Token);
                 server.LastStatus = "ok";
                 server.LastError = null;
                 _store.SaveServer(server);
@@ -143,6 +163,35 @@ public sealed class McpRuntimeService : IAsyncDisposable
             server.LastError = BuildFailureMessage(server, ex, stderr, timeout, manualTest ? "测试连接" : "后台加载");
             _store.SaveServer(server);
             return McpServerLoadResult.Fail(server, server.LastError);
+        }
+    }
+
+    /// <summary>
+    /// 建立 MCP 客户端，HTTP/SSE 传输在首次握手超时/取消时重试 1 次。
+    /// stdio 传输不重试（子进程失败通常是配置问题，重试无意义）。
+    /// </summary>
+    private async Task<McpClient> CreateClientWithRetryAsync(
+        McpServerConfig server,
+        TimeSpan connectTimeout,
+        StdioErrorBuffer stderr,
+        CancellationToken cancellationToken)
+    {
+        using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectCts.CancelAfter(connectTimeout);
+
+        try
+        {
+            return await CreateClientAsync(server, connectTimeout, stderr, connectCts.Token);
+        }
+        catch (Exception ex) when (server.Transport != McpTransportType.Stdio &&
+                                   (ex is TimeoutException or OperationCanceledException) &&
+                                   !cancellationToken.IsCancellationRequested)
+        {
+            // 短暂等待后重试一次，针对 SSE 首次握手偶发超时
+            await Task.Delay(1500, cancellationToken);
+            var retryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            retryCts.CancelAfter(connectTimeout);
+            return await CreateClientAsync(server, connectTimeout, stderr, retryCts.Token);
         }
     }
 
@@ -321,6 +370,63 @@ public sealed class McpRuntimeService : IAsyncDisposable
         => transport == McpTransportType.Stdio
             ? manualTest ? ManualStdioTimeout : BackgroundStdioTimeout
             : manualTest ? ManualHttpTimeout : BackgroundHttpTimeout;
+
+    /// <summary>
+    /// 判断 stdio 命令对应的可执行文件是否真实存在。
+    /// 支持绝对路径、相对路径，以及在 PATH 中按 PATHEXT 匹配（Windows 上 odr.exe 这类裸命令名）。
+    /// 无法确认存在时返回 false，让调用方给出清晰提示而非走子进程崩溃路径。
+    /// </summary>
+    private static bool IsCommandAvailable(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        // 绝对路径或带目录的相对路径：直接看文件在不在
+        if (Path.IsPathRooted(command) || command.Contains(Path.DirectorySeparatorChar) || command.Contains(Path.AltDirectorySeparatorChar))
+        {
+            return File.Exists(command);
+        }
+
+        // 裸命令名：在 PATH 各目录里按 PATHEXT 找
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var pathExt = Environment.GetEnvironmentVariable("PATHEXT");
+        var extensions = string.IsNullOrWhiteSpace(pathExt)
+            ? new[] { ".exe", ".bat", ".cmd", ".com" }
+            : pathExt.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var name = command.Trim();
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (string.IsNullOrWhiteSpace(dir))
+            {
+                continue;
+            }
+
+            foreach (var ext in extensions)
+            {
+                try
+                {
+                    if (File.Exists(Path.Combine(dir, name + ext)) || File.Exists(Path.Combine(dir, name)))
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // 非法路径段忽略，继续探测下一段
+                }
+            }
+        }
+
+        return false;
+    }
 
     private static string BuildFailureMessage(
         McpServerConfig server,

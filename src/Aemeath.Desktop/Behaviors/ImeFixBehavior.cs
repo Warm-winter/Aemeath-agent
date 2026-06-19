@@ -80,9 +80,14 @@ public static class ImeFixBehavior
     /// <summary>
     /// KeyUp fires after a key is released. We check:
     /// 1. Is it an arrow key (Left/Right/Home/End)?
-    /// If true, refresh the caret visual regardless of IME state.
-    /// This fixes the case where arrow keys don't update the visual caret position,
-    /// even during IME composition.
+    /// 2. Is IME currently NOT composing?
+    /// If both true, refresh the caret visual — this fixes the case where
+    /// arrow keys after IME commit don't update the visual caret position.
+    ///
+    /// 注意：输入法组合（候选框打开）期间必须「不干预」。
+    /// 早期版本（提交 7b25014）曾尝试在组合期间也强制刷新光标，结果反而破坏了 Avalonia
+    /// 原生的光标跟随行为——表现为候选框打开时按方向键，显示光标卡住不动。
+    /// 这里恢复首版行为：组合期间直接 return，把光标渲染交还给 Avalonia 自己处理。
     /// </summary>
     private static void OnKeyUp(object? sender, KeyEventArgs e)
     {
@@ -99,7 +104,12 @@ public static class ImeFixBehavior
             return;
         }
 
-        // Always refresh caret visual for arrow keys, even during IME composition
+        // If IME is currently composing, don't interfere
+        if (IsImeComposing())
+        {
+            return;
+        }
+
         ScheduleCaretRefresh(tb);
     }
 

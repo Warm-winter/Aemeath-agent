@@ -35,6 +35,7 @@ public partial class ConfigWindow : Window
     private readonly ProviderProbeService _providerProbeService = new();
     private readonly McpDependencyService _mcpDependencyService = new();
     private readonly LongTermMemoryStore _memoryStore = new();
+    private McpServerStore _mcpServerStore = new();
     private readonly DispatcherTimer _flickerTimer;
     private readonly List<ProviderModel> _currentModelCandidates = new();
     private bool _isLoadingProviderUi;
@@ -78,9 +79,10 @@ public partial class ConfigWindow : Window
         ProviderPresetBox.SelectionChanged += (_, _) => ApplySelectedProviderPreset();
 
         SaveAllButton.Click += async (_, _) => await SaveNonProviderSettingsAsync();
-        OpenMcpConfigButton.Click += (_, _) => new McpConfigWindow(new McpServerStore(), TriggerMcpBackgroundReload).ShowDialog(this);
-        SetupBuiltinMcpButton.Click += (_, _) => SetupBuiltinMcpServers();
-        DownloadMcpDependenciesButton.Click += async (_, _) => await DownloadMcpDependenciesAsync();
+
+        // MCP 面板：合并自原独立 McpConfigWindow。面板负责服务增删改/测试/导入，
+        // 依赖下载与内置服务配置仍由本窗口处理（通过事件回调）。
+        InitMcpPanel();
 
         BrowseAvatarButton.Click += async (_, _) => await PickAvatarAsync();
         AvatarMaleRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
@@ -110,6 +112,7 @@ public partial class ConfigWindow : Window
 
             _ = RefreshMcpDependencyStatusAsync();
             SetupBuiltinMcpServers(showNotification: false);
+            _ = RefreshMcpOverallStatusAsync();
         };
 
         PopulateProviderPresets();
@@ -861,22 +864,58 @@ public partial class ConfigWindow : Window
             aemiChatService.ReloadMcpTools();
         }
     }
+
+    /// <summary>初始化 MCP 面板并订阅其事件，把依赖下载/内置服务/重新加载接到本窗口的逻辑上。</summary>
+    private void InitMcpPanel()
+    {
+        // 注入真实 store 与 reload 回调（面板 XAML 声明时用的是空默认 store）
+        _mcpServerStore = new McpServerStore();
+        McpPanel.Configure(_mcpServerStore, TriggerMcpBackgroundReload);
+
+        McpPanel.DownloadDependenciesRequested += async (_, _) => await DownloadMcpDependenciesAsync();
+        McpPanel.SetupBuiltinRequested += (_, _) => SetupBuiltinMcpServers();
+        McpPanel.ReloadRequested += (_, _) =>
+        {
+            TriggerMcpBackgroundReload();
+            _ = RefreshMcpOverallStatusAsync();
+        };
+
+        // ChatService 报告 MCP 状态变化时，同步到面板顶部状态条
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            aemiChatService.McpStatusChanged += (_, status) => McpPanel.UpdateOverallStatus(status);
+        }
+    }
+
+    /// <summary>切换到 MCP 配置 Tab（供聊天栏快速跳转调用）。</summary>
+    public void SelectMcpTab()
+    {
+        if (SettingsTabControl.Items.Count > 2)
+        {
+            // MCP 配置是第 3 个 Tab（索引 2）
+            SettingsTabControl.SelectedIndex = 2;
+        }
+
+        _ = RefreshMcpOverallStatusAsync();
+        McpPanel.RefreshServerList();
+    }
     private async Task RefreshMcpDependencyStatusAsync()
     {
         try
         {
             var status = await _mcpDependencyService.CheckAsync(_settingsService.Current);
-            McpDownloadDirectoryText.Text = McpDependencyService.DefaultBinDirectory;
-            McpUvPathText.Text = status.UvExists ? status.UvPath : "未找到";
-            McpBunPathText.Text = status.BunExists ? status.BunPath : "未找到";
-            McpLastMirrorText.Text = _lastMcpDependencySource;
-            McpDependencyStatusText.Text = status.IsComplete
-                ? "MCP 依赖已就绪。"
-                : $"MCP 依赖未完整：{FormatMissingMcpDependencies(status)}";
+            var uvText = status.UvExists ? status.UvPath : "未找到";
+            var bunText = status.BunExists ? status.BunPath : "未找到";
+            var summary = status.IsComplete
+                ? $"MCP 依赖已就绪（uv.exe、bun.exe 均已找到）。下载目录：{McpDependencyService.DefaultBinDirectory}"
+                : $"MCP 依赖未完整：{FormatMissingMcpDependencies(status)}。下载目录：{McpDependencyService.DefaultBinDirectory}";
+
+            _lastMcpDependencySource ??= "本次尚未下载";
+            McpPanel.UpdateDependencyStatus($"{summary}\nuv.exe：{uvText}\nbun.exe：{bunText}\n最近来源：{_lastMcpDependencySource}");
         }
         catch (Exception ex)
         {
-            McpDependencyStatusText.Text = $"MCP 依赖检测失败：{ex.Message}";
+            McpPanel.UpdateDependencyStatus($"MCP 依赖检测失败：{ex.Message}");
         }
     }
 
@@ -888,8 +927,6 @@ public partial class ConfigWindow : Window
         }
 
         _isInstallingMcpDependencies = true;
-        DownloadMcpDependenciesButton.IsEnabled = false;
-        SetupBuiltinMcpButton.IsEnabled = false;
         try
         {
             var status = await _mcpDependencyService.CheckAsync(_settingsService.Current);
@@ -903,7 +940,7 @@ public partial class ConfigWindow : Window
                 return;
             }
 
-            var progress = new Progress<string>(message => McpDependencyStatusText.Text = message);
+            var progress = new Progress<string>(message => McpPanel.UpdateDependencyStatus(message));
             var result = await _mcpDependencyService.InstallMissingAsync(_settingsService.Current, progress);
             _settingsService.Save();
             _lastMcpDependencySource = result.UsedMirrors.Count > 0
@@ -924,14 +961,22 @@ public partial class ConfigWindow : Window
         catch (Exception ex)
         {
             AppLogger.Error("config", "mcp dependency install failed", ex);
-            McpDependencyStatusText.Text = $"MCP 依赖下载失败：{ex.Message}";
+            McpPanel.UpdateDependencyStatus($"MCP 依赖下载失败：{ex.Message}");
             ShowError($"MCP 依赖下载失败：{ex.Message}");
         }
         finally
         {
             _isInstallingMcpDependencies = false;
-            DownloadMcpDependenciesButton.IsEnabled = true;
-            SetupBuiltinMcpButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>把实时 McpStatus 同步到 MCP 面板顶部的整体状态条。</summary>
+    private async Task RefreshMcpOverallStatusAsync()
+    {
+        await Task.Yield();
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            McpPanel.UpdateOverallStatus(aemiChatService.McpStatus);
         }
     }
 

@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aemeath.Desktop.Views.McpConfigPanel"
+             Background="Transparent">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,0">
+
+    <!-- ① 整体状态条：实时 MCP 加载状态 -->
+    <Border Grid.Row="0" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="14,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Grid.Column="0" Text="MCP 整体状态" Classes="subtle" VerticalAlignment="Center" Margin="0,0,12,0"/>
+        <TextBlock Grid.Column="1" x:Name="OverallStatusText" Text="未加载" VerticalAlignment="Center" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+        <Button Grid.Column="2" x:Name="RefreshMcpButton" Content="重新加载" Classes="ghost" MinWidth="96"/>
+      </Grid>
+    </Border>
+
+    <!-- ② 前置引导：依赖 + 内置服务（小白用户从这里起步） -->
+    <Border Grid.Row="1" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFF8FB" Padding="14" Margin="0,12,0,0">
+      <StackPanel Spacing="10">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="第 1 步" FontWeight="SemiBold" Foreground="{StaticResource AemiFocusBrush}" VerticalAlignment="Center"/>
+          <TextBlock Text="准备 MCP 运行环境" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Text="MCP 工具需要 uv.exe / bun.exe 才能运行。点击下方按钮可一键检测，缺失会自动从国内镜像下载。" Classes="muted" TextWrapping="Wrap"/>
+        <WrapPanel>
+          <Button x:Name="DownloadMcpDependenciesButton" Content="检测 / 下载依赖" Classes="primary" MinWidth="156" Margin="0,0,10,0"/>
+          <Button x:Name="SetupBuiltinMcpButton" Content="一键配置内置服务" Classes="ghost" MinWidth="156"/>
+        </WrapPanel>
+        <TextBlock x:Name="McpDependencyStatusText" Text="尚未检测" Classes="muted" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <!-- ③ 服务列表（卡片式） + 编辑表单 -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="0,12,0,0" MinHeight="0">
+      <!-- 左：服务卡片列表 -->
+      <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="12">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="第 2 步" FontWeight="SemiBold" Foreground="{StaticResource AemiFocusBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="管理 MCP 服务" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+              <TextBlock Text="点击卡片可编辑，右侧开关可启用 / 停用。" Classes="muted"/>
+            </StackPanel>
+            <Button Grid.Column="1" x:Name="NewServerButton" Content="＋ 新增" Classes="ghost" MinWidth="80" VerticalAlignment="Top"/>
+          </Grid>
+          <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="ServerCardsPanel" Spacing="10"/>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <!-- 右：选中服务的编辑表单 -->
+      <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="10">
+          <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="14">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="服务详情" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}" VerticalAlignment="Center"/>
+                <CheckBox Grid.Column="1" x:Name="EnabledBox" Content="启用"/>
+              </Grid>
+              <Grid ColumnDefinitions="*,*">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="服务 ID" Classes="subtle"/>
+                  <TextBox x:Name="ServerIdBox" Watermark="filesystem"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
+                  <TextBlock Text="显示名称" Classes="subtle"/>
+                  <TextBox x:Name="ServerNameBox" Watermark="文件系统"/>
+                </StackPanel>
+              </Grid>
+              <Grid ColumnDefinitions="*,*">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="连接方式" Classes="subtle"/>
+                  <ComboBox x:Name="TransportBox" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
+                  <TextBlock Text="URL（SSE / HTTP）" Classes="subtle"/>
+                  <TextBox x:Name="UrlBox" Watermark="https://example.com/mcp"/>
+                </StackPanel>
+              </Grid>
+              <StackPanel Spacing="4">
+                <TextBlock Text="命令 Command（stdio）" Classes="subtle"/>
+                <TextBox x:Name="CommandBox" Watermark="bun / uvx / npx / 可执行文件路径"/>
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <TextBlock Text="参数 Args（每行一个）" Classes="subtle"/>
+                <TextBox x:Name="ArgsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"/>
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <TextBlock Text="工作目录（stdio，可空）" Classes="subtle"/>
+                <TextBox x:Name="WorkingDirectoryBox" Watermark="C:\path\to\project"/>
+              </StackPanel>
+              <Grid ColumnDefinitions="*,*">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="环境变量（KEY=VALUE）" Classes="subtle"/>
+                  <TextBox x:Name="EnvBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
+                  <TextBlock Text="请求头 Headers（KEY=VALUE）" Classes="subtle"/>
+                  <TextBox x:Name="HeadersBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
+                </StackPanel>
+              </Grid>
+              <WrapPanel>
+                <Button x:Name="SaveButton" Content="保存" Classes="primary" MinWidth="92" Margin="0,0,8,0"/>
+                <Button x:Name="TestButton" Content="测试连接" Classes="ghost" MinWidth="92" Margin="0,0,8,0"/>
+                <Button x:Name="DeleteButton" Content="删除" Classes="danger" MinWidth="92"/>
+              </WrapPanel>
+              <TextBlock x:Name="StatusText" Text="尚未选择服务，点击左侧卡片或「新增」开始。" Classes="muted" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- ④ JSON 快速导入（高级） -->
+    <Border Grid.Row="3" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="12" Margin="0,12,0,0">
+      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Text="快速导入（高级）" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+          <TextBlock Text="粘贴标准 { &quot;mcpServers&quot;: { ... } } 配置，一键导入多个服务。" Classes="muted"/>
+        </StackPanel>
+        <Button Grid.Column="1" x:Name="ImportJsonButton" Content="导入" Classes="ghost" MinWidth="80" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="1" Grid.ColumnSpan="2" x:Name="ImportJsonBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="0,10,0,0" Watermark="粘贴 JSON 配置…"/>
+      </Grid>
+    </Border>
+
+  </Grid>
+</UserControl>

@@ -572,14 +572,14 @@ public partial class ChatWindow : Window
         }
 
         menu.Items.Add(new Separator());
-        var configItem = new MenuItem { Header = "打开 MCP 配置" };
-        configItem.Click += (_, _) => new McpConfigWindow(_mcpServerStore, () =>
+        var configItem = new MenuItem { Header = "打开 MCP 配置（设置中心）" };
+        configItem.Click += (_, _) =>
         {
-            if (_chatService is AemiChatService service)
+            if (Avalonia.Application.Current is App app)
             {
-                service.ReloadMcpTools();
+                app.OpenConfigAtMcpTab();
             }
-        }).ShowDialog(this);
+        };
         menu.Items.Add(configItem);
         menu.Open(McpToolsButton);
     }

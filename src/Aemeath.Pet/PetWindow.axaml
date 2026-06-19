@@ -28,15 +28,12 @@
                 Background="#F8FFFFFF"
                 BorderBrush="#F3C2D4"
                 BorderThickness="1">
-            <Grid>
-                <Border IsHitTestVisible="False" CornerRadius="13" BorderBrush="#FFE1EE" BorderThickness="1"/>
-                <TextBlock Name="BubbleText"
-                           Margin="2"
-                           TextWrapping="Wrap"
-                           Foreground="#4A2A3A"
-                           FontSize="12"
-                           LineHeight="17"/>
-            </Grid>
+            <TextBlock Name="BubbleText"
+                       Margin="2"
+                       TextWrapping="Wrap"
+                       Foreground="#4A2A3A"
+                       FontSize="12"
+                       LineHeight="17"/>
         </Border>
     </Grid>
 </Window>

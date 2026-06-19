@@ -222,6 +222,13 @@ public partial class App : Application
         _configWindow.Activate();
     }
 
+    /// <summary>供聊天栏「打开 MCP 配置」跳转：打开/激活设置窗口并切到 MCP 配置 Tab。</summary>
+    public void OpenConfigAtMcpTab()
+    {
+        OpenConfigWindow();
+        _configWindow?.SelectMcpTab();
+    }
+
     private void OnPetWindowClosing(object? sender, WindowClosingEventArgs e)
     {
         if (_isExiting)

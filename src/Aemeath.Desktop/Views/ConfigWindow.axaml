@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:Aemeath.Desktop.Views"
         x:Class="Aemeath.Desktop.Views.ConfigWindow"
         Width="1040" Height="820"
         MinWidth="780" MinHeight="680"
@@ -241,44 +242,7 @@
 
           <TabItem Header="MCP 配置">
             <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <StackPanel Spacing="16">
-                <TextBlock Text="工具接入" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16">
-                  <StackPanel Spacing="12">
-                    <TextBlock Text="内置 Servers" Classes="subtle"/>
-                    <WrapPanel>
-                      <Button x:Name="SetupBuiltinMcpButton" Content="配置内置 MCP Servers" Classes="primary" MinWidth="190" Margin="0,0,10,0"/>
-                      <Button x:Name="OpenMcpConfigButton" Content="打开 MCP 配置页面" Classes="ghost" MinWidth="170"/>
-                    </WrapPanel>
-                  </StackPanel>
-                </Border>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16">
-                  <StackPanel Spacing="12">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Spacing="4">
-                        <TextBlock Text="MCP 运行时依赖" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                        <TextBlock Text="自动检测 uv.exe 与 bun.exe，缺失时从国内镜像源下载。" Classes="subtle"/>
-                      </StackPanel>
-                      <Button Grid.Column="1"
-                              x:Name="DownloadMcpDependenciesButton"
-                              Content="检测/下载 MCP 依赖"
-                              Classes="primary"
-                              MinWidth="180"/>
-                    </Grid>
-                    <TextBlock x:Name="McpDependencyStatusText" Text="尚未检测" Classes="subtle" TextWrapping="Wrap"/>
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
-                      <TextBlock Grid.Row="0" Grid.Column="0" Text="uv.exe" Classes="muted" Margin="0,0,12,6"/>
-                      <TextBlock Grid.Row="0" Grid.Column="1" x:Name="McpUvPathText" Text="未找到" TextWrapping="Wrap"/>
-                      <TextBlock Grid.Row="1" Grid.Column="0" Text="bun.exe" Classes="muted" Margin="0,0,12,6"/>
-                      <TextBlock Grid.Row="1" Grid.Column="1" x:Name="McpBunPathText" Text="未找到" TextWrapping="Wrap"/>
-                      <TextBlock Grid.Row="2" Grid.Column="0" Text="下载目录" Classes="muted" Margin="0,0,12,6"/>
-                      <TextBlock Grid.Row="2" Grid.Column="1" x:Name="McpDownloadDirectoryText" Text="-" TextWrapping="Wrap"/>
-                      <TextBlock Grid.Row="3" Grid.Column="0" Text="最近来源" Classes="muted" Margin="0,0,12,0"/>
-                      <TextBlock Grid.Row="3" Grid.Column="1" x:Name="McpLastMirrorText" Text="本次尚未下载" TextWrapping="Wrap"/>
-                    </Grid>
-                  </StackPanel>
-                </Border>
-              </StackPanel>
+              <views:McpConfigPanel x:Name="McpPanel"/>
             </Border>
           </TabItem>
 
