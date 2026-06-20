@@ -429,7 +429,8 @@ public class AemiChatService : IChatService, IAsyncDisposable
                 sb.AppendLine($"- {functionName}：{description}");
             }
             sb.AppendLine();
-            sb.AppendLine("当用户问题超出本地知识库范围、需要最新信息、专业资料或联网查询时，请优先主动调用相关的 MCP 工具获取信息后再回答，而不是直接说不知道。");
+            sb.AppendLine("【强制规则】在说「不知道」「没有收录」「资料不足」之前，必须先调用上述工具尝试查询。");
+            sb.AppendLine("只有工具也查不到时，才能回答资料不足。直接说不知道而不调用工具是错误的。");
             sb.AppendLine();
         }
 
