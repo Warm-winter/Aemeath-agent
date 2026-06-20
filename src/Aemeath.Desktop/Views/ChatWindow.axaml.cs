@@ -304,6 +304,12 @@ public partial class ChatWindow : Window
 
             // 先取历史（不含当前这一条），再持久化当前消息，避免当前消息在历史里重复出现一次。
             var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
+            AppLogger.Info("chat", $"[诊断] 输入文本: {input.Substring(0, Math.Min(100, input.Length))}... | recent 消息数: {recent.Count}");
+            if (recent.Count > 0)
+            {
+                var lastMsg = recent[recent.Count - 1];
+                AppLogger.Info("chat", $"[诊断] recent 最后一条: Role={lastMsg.Role}, Content={lastMsg.Content.Substring(0, Math.Min(80, lastMsg.Content.Length))}...");
+            }
 
             var userMessage = new ChatMessageRecord { Role = "user", Content = visibleUserContent, Timestamp = DateTimeOffset.UtcNow };
             _displayMessages.Add(userMessage);
@@ -320,6 +326,7 @@ public partial class ChatWindow : Window
             _pendingTimer.Start();
 
             var prompt = BuildPromptWithRecentContext(recent, input, attachmentList);
+            AppLogger.Info("chat", $"[诊断] 构建的 Prompt 前 500 字符: {prompt.Substring(0, Math.Min(500, prompt.Length))}...");
 
             _chatService.ClearHistory();
 

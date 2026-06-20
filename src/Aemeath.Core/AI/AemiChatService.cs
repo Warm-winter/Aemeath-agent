@@ -418,6 +418,21 @@ public class AemiChatService : IChatService, IAsyncDisposable
             sb.AppendLine();
         }
 
+        // 动态注入已加载的 MCP 工具清单，让模型知道可以调用哪些外部工具
+        var mcpTools = _mcpRuntime.GetLoadedToolSummary();
+        if (mcpTools.Count > 0)
+        {
+            sb.AppendLine("【外部 MCP 工具】");
+            sb.AppendLine("你当前可以调用以下外部工具：");
+            foreach (var (functionName, description) in mcpTools)
+            {
+                sb.AppendLine($"- {functionName}：{description}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("当用户问题超出本地知识库范围、需要最新信息、专业资料或联网查询时，请优先主动调用相关的 MCP 工具获取信息后再回答，而不是直接说不知道。");
+            sb.AppendLine();
+        }
+
         sb.AppendLine("【用户请求】");
         sb.Append(message);
         return sb.ToString();

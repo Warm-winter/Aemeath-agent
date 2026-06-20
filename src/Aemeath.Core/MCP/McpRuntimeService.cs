@@ -27,6 +27,25 @@ public sealed class McpRuntimeService : IAsyncDisposable
 
     public IReadOnlyList<McpServerConfig> ListServers() => _store.ListServers();
 
+    /// <summary>
+    /// 获取当前已加载的 MCP 工具摘要列表，供 Prompt 构建时动态注入工具清单。
+    /// 返回 (functionName, description) 元组列表，只包含已成功加载的工具。
+    /// </summary>
+    public IReadOnlyList<(string FunctionName, string Description)> GetLoadedToolSummary()
+    {
+        var summary = new List<(string, string)>();
+        foreach (var kvp in _tools)
+        {
+            var functionName = kvp.Key;
+            var tool = kvp.Value;
+            var description = string.IsNullOrWhiteSpace(tool.Description)
+                ? tool.Name
+                : tool.Description;
+            summary.Add((functionName, description));
+        }
+        return summary;
+    }
+
     public IReadOnlyList<McpServerConfig> ImportJson(string json) => _store.ImportJson(json);
 
     public void SaveServer(McpServerConfig server) => _store.SaveServer(server);
@@ -324,11 +343,14 @@ public sealed class McpRuntimeService : IAsyncDisposable
     {
         IClientTransport transport = server.Transport switch
         {
+            // SSE 分支：根据 URL 特征决定传输模式。
+            // - 如果 URL 明确包含 /sse 路径（如 https://xxx.net/sse），说明是 legacy SSE 端点，用 Sse 模式。
+            // - 否则用 AutoDetect 让 SDK 自动协商（先试 Streamable HTTP，失败再退回 SSE），兼容性最好。
             McpTransportType.Sse => new HttpClientTransport(new HttpClientTransportOptions
             {
                 Name = server.DisplayName,
                 Endpoint = new Uri(server.Url ?? throw new InvalidOperationException("缺少 SSE URL。")),
-                TransportMode = HttpTransportMode.Sse,
+                TransportMode = DetermineHttpTransportMode(server.Url ?? string.Empty),
                 ConnectionTimeout = timeout,
                 AdditionalHeaders = server.Headers
             }, loggerFactory: null),
@@ -370,6 +392,18 @@ public sealed class McpRuntimeService : IAsyncDisposable
         => transport == McpTransportType.Stdio
             ? manualTest ? ManualStdioTimeout : BackgroundStdioTimeout
             : manualTest ? ManualHttpTimeout : BackgroundHttpTimeout;
+
+    /// <summary>
+    /// 根据 URL 特征决定 SSE 传输的 HttpTransportMode。
+    /// 如果 URL 明确包含 /sse 路径，说明是 legacy SSE 端点，直接用 Sse 模式。
+    /// 否则用 AutoDetect 让 SDK 自动协商（先试 Streamable HTTP，失败再退回 SSE）。
+    /// </summary>
+    private static HttpTransportMode DetermineHttpTransportMode(string url)
+    {
+        return url.Contains("/sse", StringComparison.OrdinalIgnoreCase)
+            ? HttpTransportMode.Sse
+            : HttpTransportMode.AutoDetect;
+    }
 
     /// <summary>
     /// 判断 stdio 命令对应的可执行文件是否真实存在。
