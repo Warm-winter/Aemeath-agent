@@ -8,6 +8,7 @@ public sealed class McpServerStore
 {
     private readonly string _serversDirectory;
     private readonly string _legacyConfigPath;
+    private readonly string _migrationMarkerPath;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
 
     public McpServerStore()
@@ -15,6 +16,7 @@ public sealed class McpServerStore
         var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath");
         _serversDirectory = Path.Combine(appData, "mcp", "servers");
         _legacyConfigPath = Path.Combine(appData, "mcp_servers.json");
+        _migrationMarkerPath = Path.Combine(appData, "mcp", ".migrated");
         Directory.CreateDirectory(_serversDirectory);
         TryMigrateLegacyConfig();
     }
@@ -225,17 +227,50 @@ public sealed class McpServerStore
 
     private void TryMigrateLegacyConfig()
     {
-        if (!File.Exists(_legacyConfigPath) || Directory.GetFiles(_serversDirectory, "*.json").Length > 0)
+        // 如果已经迁移过（标记文件存在），跳过
+        if (File.Exists(_migrationMarkerPath))
         {
+            return;
+        }
+
+        // 如果旧配置不存在，创建标记防止后续检查
+        if (!File.Exists(_legacyConfigPath))
+        {
+            try
+            {
+                File.WriteAllText(_migrationMarkerPath, DateTimeOffset.UtcNow.ToString("O"));
+            }
+            catch
+            {
+                // 标记文件写入失败不影响功能
+            }
+            return;
+        }
+
+        // 只有当新目录为空时才迁移（保持原逻辑）
+        if (Directory.GetFiles(_serversDirectory, "*.json").Length > 0)
+        {
+            // 新目录已有配置，创建标记防止后续迁移
+            try
+            {
+                File.WriteAllText(_migrationMarkerPath, DateTimeOffset.UtcNow.ToString("O"));
+            }
+            catch
+            {
+                // 标记文件写入失败不影响功能
+            }
             return;
         }
 
         try
         {
             ImportJson(File.ReadAllText(_legacyConfigPath));
+            // 迁移成功后创建标记
+            File.WriteAllText(_migrationMarkerPath, DateTimeOffset.UtcNow.ToString("O"));
         }
         catch
         {
+            // 迁移失败，不创建标记，下次还可以重试
         }
     }
 
