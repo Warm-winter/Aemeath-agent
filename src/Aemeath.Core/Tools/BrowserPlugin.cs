@@ -100,7 +100,7 @@ public class BrowserPlugin
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = "https://www.bing.com",
+                FileName = "https://www.bing.com.cn",
                 UseShellExecute = true
             });
             return "已打开默认浏览器";
@@ -112,18 +112,17 @@ public class BrowserPlugin
     }
 
     [KernelFunction("search_web")]
-    [Description("在搜索引擎中搜索关键词")]
+    [Description("在浏览器中打开搜索结果页面（不推荐，优先使用 MCP 搜索工具直接获取结果）")]
     public string SearchWeb(
         [Description("搜索关键词")] string query,
-        [Description("搜索引擎，默认 Google")] string engine = "Google")
+        [Description("搜索引擎：bing（默认）、baidu")] string engine = "bing")
     {
         try
         {
             var baseUrl = engine.ToLower() switch
             {
                 "baidu" => "https://www.baidu.com/s?wd=",
-                "bing" => "https://www.bing.com/search?q=",
-                _ => "https://www.google.com/search?q="
+                _ => "https://cn.bing.com/search?q="
             };
             
             var url = baseUrl + Uri.EscapeDataString(query);
