@@ -301,6 +301,10 @@ public partial class ChatWindow : Window
             PauseAmbientFlicker();
             EnsureCurrentSession();
             var visibleUserContent = AttachmentService.BuildVisibleUserContent(input, attachmentList);
+
+            // 先取历史（不含当前这一条），再持久化当前消息，避免当前消息在历史里重复出现一次。
+            var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
+
             var userMessage = new ChatMessageRecord { Role = "user", Content = visibleUserContent, Timestamp = DateTimeOffset.UtcNow };
             _displayMessages.Add(userMessage);
             AddMessageBubble(_displayMessages.Count - 1, isAssistant: false, visibleUserContent, isPending: false);
@@ -315,8 +319,7 @@ public partial class ChatWindow : Window
             _pendingFrameIndex = 0;
             _pendingTimer.Start();
 
-            var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
-            var prompt = BuildPromptWithRecentContext(recent, input);
+            var prompt = BuildPromptWithRecentContext(recent, input, attachmentList);
 
             _chatService.ClearHistory();
 
@@ -851,7 +854,7 @@ public partial class ChatWindow : Window
         await SendUserTurnAsync(text, attachments: null, clearInputBox: false);
     }
 
-    private string BuildPromptWithRecentContext(IReadOnlyList<ChatMessageRecord> recentMessages, string userInput)
+    private string BuildPromptWithRecentContext(IReadOnlyList<ChatMessageRecord> recentMessages, string userInput, IReadOnlyList<ChatAttachment>? attachments)
     {
         var rounds = recentMessages.TakeLast(40).ToList();
         var sb = new System.Text.StringBuilder();
@@ -863,14 +866,35 @@ public partial class ChatWindow : Window
             sb.AppendLine(longTermMemory);
             sb.AppendLine();
         }
-        sb.AppendLine("以下是最近20轮对话上下文，请结合上下文继续：");
-        foreach (var m in rounds)
+
+        if (rounds.Count > 0)
         {
-            var role = m.Role == "assistant" ? "小爱" : "你";
-            sb.Append(role).Append("：").AppendLine(m.Content);
+            sb.AppendLine("以下是最近对话上下文，请结合上下文继续：");
+            foreach (var m in rounds)
+            {
+                var role = m.Role == "assistant" ? "小爱" : "你";
+                sb.Append(role).Append("：").AppendLine(m.Content);
+            }
+            sb.AppendLine();
         }
 
-        sb.AppendLine("你：" + userInput);
+        // 当前这一条用户消息只出现一次（下方）。附件作为多模态内容由底层直接附在本次消息后，
+        // 这里用文字提示模型「图片/文件已随消息附带，请直接查看」，而不是让模型去读路径。
+        sb.Append("你：").AppendLine(userInput);
+        if (attachments is { Count: > 0 })
+        {
+            var images = attachments.Where(a => a.Kind == ChatAttachmentKind.Image).ToList();
+            var others = attachments.Where(a => a.Kind != ChatAttachmentKind.Image).ToList();
+            if (images.Count > 0)
+            {
+                sb.AppendLine($"（本次消息已附带 {images.Count} 张图片，图片内容已直接随消息发送给你，请直接查看并分析图片，不要回复看不到或需要截图。）");
+            }
+            if (others.Count > 0)
+            {
+                sb.AppendLine($"（本次消息已附带 {others.Count} 个文件，文本类文件内容已直接随消息发送给你。）");
+            }
+        }
+
         sb.AppendLine("要求：如果用户要求执行电脑操作，请优先调用可用工具并给出执行反馈。反馈要像日常对话，不要展示确认编号、插件名、函数名、命令细节、可执行文件名或长串内部 ID；除非用户明确询问技术细节。只输出纯文本，不要 Markdown。");
         return sb.ToString();
     }
@@ -1335,7 +1359,7 @@ public partial class ChatWindow : Window
         {
             _chatService.ClearHistory();
             var recent = _displayMessages.TakeLast(40).ToList();
-            var prompt = BuildPromptWithRecentContext(recent, userContent);
+            var prompt = BuildPromptWithRecentContext(recent, userContent, attachments: null);
             var reply = await StreamReplyIntoAsync(prompt, pending);
             var sanitized = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitized))
