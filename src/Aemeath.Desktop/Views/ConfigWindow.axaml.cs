@@ -821,20 +821,14 @@ public partial class ConfigWindow : Window
         var bun = ResolveBuiltinExecutablePath(_settingsService.Current.BunExecutablePath, "bun.exe");
 
         var result = plugin.SetupBuiltinMcpServers(uv, bun, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+        // 注意：SetupBuiltinMcpServers 会写入旧格式的 mcp_servers.json，
+        // 但我们已经在 McpServerStore 构造时完成了一次性迁移（带 .migrated 标记）。
+        // 这里不再重复导入，避免覆盖用户的删除/修改操作。
+        // 如果用户真的需要重新导入，可以删除 .migrated 标记文件后重启应用。
+
         if (!result.Contains("失败", StringComparison.Ordinal) && !result.Contains("未找到", StringComparison.Ordinal))
         {
-            var store = new McpServerStore();
-            var existingServers = store.ListServers();
-            var legacyConfigPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Aemeath",
-                "mcp_servers.json");
-
-            if (File.Exists(legacyConfigPath) && existingServers.Count == 0)
-            {
-                store.ImportJson(File.ReadAllText(legacyConfigPath));
-            }
-
             TriggerMcpBackgroundReload();
         }
 

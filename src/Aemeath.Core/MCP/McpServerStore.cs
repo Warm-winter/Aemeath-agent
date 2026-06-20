@@ -19,6 +19,7 @@ public sealed class McpServerStore
         _migrationMarkerPath = Path.Combine(appData, "mcp", ".migrated");
         Directory.CreateDirectory(_serversDirectory);
         TryMigrateLegacyConfig();
+        FixExecutablePathsIfNeeded();
     }
 
     public string ServersDirectory => _serversDirectory;
@@ -271,6 +272,46 @@ public sealed class McpServerStore
         catch
         {
             // 迁移失败，不创建标记，下次还可以重试
+        }
+    }
+
+    /// <summary>
+    /// 修复旧的 MCP 配置中硬编码的 uv.exe / bun.exe 路径。
+    /// 旧配置可能指向发布目录（如 E:\Aemeath\publish\...\bin\bun.exe），
+    /// 但实际下载到 %AppData%\Aemeath\tools\bin\。
+    /// 这里统一更新为标准的下载目录路径。
+    /// </summary>
+    private void FixExecutablePathsIfNeeded()
+    {
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath");
+        var standardBinDir = Path.Combine(appData, "tools", "bin");
+        var uvExe = Path.Combine(standardBinDir, "uv.exe");
+        var bunExe = Path.Combine(standardBinDir, "bun.exe");
+
+        foreach (var server in ListServers())
+        {
+            if (string.IsNullOrWhiteSpace(server.Command))
+            {
+                continue;
+            }
+
+            var originalCommand = server.Command;
+            var fileName = Path.GetFileName(server.Command);
+
+            // 如果命令是 uv.exe 或 bun.exe，且标准位置存在该文件，则更新为标准路径
+            if (fileName.Equals("uv.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(uvExe))
+            {
+                server.Command = uvExe;
+            }
+            else if (fileName.Equals("bun.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(bunExe))
+            {
+                server.Command = bunExe;
+            }
+
+            if (!string.Equals(originalCommand, server.Command, StringComparison.Ordinal))
+            {
+                SaveServer(server);
+            }
         }
     }
 
