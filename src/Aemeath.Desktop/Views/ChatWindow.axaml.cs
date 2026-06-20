@@ -30,15 +30,14 @@ namespace Aemeath.Desktop.Views;
 
 public partial class ChatWindow : Window
 {
-    private const int MaxAttachmentCount = 6;
-    private const long MaxAttachmentBytes = 10 * 1024 * 1024;
-
     private readonly IChatService _chatService;
     private readonly SettingsService _settingsService;
     private readonly ChatSessionStore _sessionStore;
     private readonly LongTermMemoryStore _memoryStore;
+    private readonly MemorySummarizer _memorySummarizer;
     private readonly ParticleEffect _particleEffect;
     private readonly ToolConfirmationService? _toolConfirmationService;
+    private readonly AttachmentService _attachments = new();
     private readonly DispatcherTimer _pendingTimer;
     private readonly DispatcherTimer _flickerTimer;
     private readonly DispatcherTimer _statusHideTimer;
@@ -67,11 +66,9 @@ public partial class ChatWindow : Window
     private readonly DrawingImage _fileIcon;
     private readonly McpServerStore _mcpServerStore = new();
     private readonly List<ChatMessageRecord> _displayMessages = [];
-    private readonly List<ChatAttachment> _pendingAttachments = [];
     private readonly Dictionary<string, PendingToolAction> _pendingToolActions = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan MinimumVoiceCaptureDuration = TimeSpan.FromMilliseconds(500);
     private readonly SemaphoreSlim _voiceCaptureLock = new(1, 1);
-    private readonly SemaphoreSlim _memorySummaryLock = new(1, 1);
     private readonly SemaphoreSlim _providerSwitchLock = new(1, 1);
     private volatile bool _confirmationCreatedDuringGeneration;
     private bool _isLoadingProviderSwitch;
@@ -99,6 +96,7 @@ public partial class ChatWindow : Window
         _settingsService = settingsService;
         _sessionStore = new ChatSessionStore();
         _memoryStore = new LongTermMemoryStore();
+        _memorySummarizer = new MemorySummarizer(_chatService, _sessionStore, _memoryStore);
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
         if (_chatService is AemiChatService aemiChatService)
         {
@@ -106,51 +104,51 @@ public partial class ChatWindow : Window
             _toolConfirmationService.PendingActionCreated += OnPendingToolActionCreated;
         }
 
-        _assistantAvatar = LoadBitmap("avares://Aemeath-agent/Assets/static/xiaoai-avatar.png");
-        _maleAvatar = LoadBitmap("avares://Aemeath-agent/Assets/static/user-male.png");
-        _femaleAvatar = LoadBitmap("avares://Aemeath-agent/Assets/static/user-female.png");
+        _assistantAvatar = AemiUi.LoadBitmap("avares://Aemeath-agent/Assets/static/xiaoai-avatar.png");
+        _maleAvatar = AemiUi.LoadBitmap("avares://Aemeath-agent/Assets/static/user-male.png");
+        _femaleAvatar = AemiUi.LoadBitmap("avares://Aemeath-agent/Assets/static/user-female.png");
         // Copy icon (two overlapping rectangles)
-        _copyIcon = CreateVectorIcon(
+        _copyIcon = AemiUi.CreateVectorIcon(
             "M4 2 C2.895 2 2 2.895 2 4 L2 14 L4 14 L4 4 L14 4 L14 2 Z " +
             "M8 6 C6.895 6 6 6.895 6 8 L6 18 C6 19.105 6.895 20 8 20 L18 20 C19.105 20 20 19.105 20 18 L20 8 C20 6.895 19.105 6 18 6 Z " +
             "M8 8 L18 8 L18 18 L8 18 Z",
             22, 22);
         // Delete / trash icon
-        _deleteIcon = CreateVectorIcon(
+        _deleteIcon = AemiUi.CreateVectorIcon(
             "M9 3 L9 4 L4 4 L4 6 L5 6 L5 20 C5 21.105 5.895 22 7 22 L17 22 C18.105 22 19 21.105 19 20 L19 6 L20 6 L20 4 L15 4 L15 3 Z " +
             "M7 6 L17 6 L17 20 L7 20 Z " +
             "M9 8 L9 18 L11 18 L11 8 Z " +
             "M13 8 L13 18 L15 18 L15 8 Z",
             24, 24);
         // Retry / refresh icon (circular arrow)
-        _retryIcon = CreateVectorIcon(
+        _retryIcon = AemiUi.CreateVectorIcon(
             "M17.65 6.35 C16.2 4.9 14.21 4 12 4 C7.58 4 4.01 7.58 4.01 12 C4.01 16.42 7.58 20 12 20 C15.73 20 18.84 17.45 19.73 14 L17.65 14 " +
             "C16.83 16.33 14.61 18 12 18 C8.69 18 6 15.31 6 12 C6 8.69 8.69 6 12 6 C13.66 6 15.14 6.69 16.22 7.78 L13 11 L20 11 L20 4 Z",
             24, 24);
         // Microphone icon
-        _micIcon = CreateVectorIcon(
+        _micIcon = AemiUi.CreateVectorIcon(
             "M12 14 C13.66 14 14.99 12.66 14.99 11 L15 5 C15 3.34 13.66 2 12 2 C10.34 2 9 3.34 9 5 L9 11 C9 12.66 10.34 14 12 14 Z " +
             "M17.3 11 C17.3 14 14.76 16.1 12 16.1 C9.24 16.1 6.7 14 6.7 11 L5 11 C5 14.41 7.72 17.23 11 17.72 L11 21 L13 21 L13 17.72 " +
             "C16.28 17.23 19 14.41 19 11 Z",
             24, 24);
         // Keyboard icon
-        _keyboardIcon = CreateVectorIcon(
+        _keyboardIcon = AemiUi.CreateVectorIcon(
             "M2 6 C2 4.9 2.9 4 4 4 L20 4 C21.1 4 22 4.9 22 6 L22 18 C22 19.1 21.1 20 20 20 L4 20 C2.9 20 2 19.1 2 18 Z " +
             "M4 6 L4 18 L20 18 L20 6 Z " +
             "M5 8 L7 8 L7 10 L5 10 Z M8 8 L10 8 L10 10 L8 10 Z M11 8 L13 8 L13 10 L11 10 Z M14 8 L16 8 L16 10 L14 10 Z M17 8 L19 8 L19 10 L17 10 Z " +
             "M5 11 L7 11 L7 13 L5 13 Z M8 11 L10 11 L10 13 L8 13 Z M11 11 L13 11 L13 13 L11 13 Z M14 11 L16 11 L16 13 L14 13 Z M17 11 L19 11 L19 13 L17 13 Z " +
             "M7 14 L17 14 L17 16 L7 16 Z",
             24, 24);
-        _uploadIcon = CreateVectorIcon(
+        _uploadIcon = AemiUi.CreateVectorIcon(
             "M3830 5115 l0 -955 -965 0 -965 0 0 -85 0 -85 965 0 965 0 0 -965 0 -965 85 0 85 0 2 963 3 962 958 3 957 2 0 85 0 85 -960 0 -960 0 0 955 0 955 -85 0 -85 0 0 -955z",
             800, 800);
-        _wrenchIcon = CreateSvgTransformedVectorIcon(
+        _wrenchIcon = AemiUi.CreateSvgTransformedVectorIcon(
             "M4495 6174 c-530 -89 -947 -486 -1061 -1010 -12 -55 -17 -126 -17 -234 -1 -174 15 -278 63 -413 l29 -82 -222 -225 c-122 -124 -427 -432 -677 -685 -660 -665 -684 -692 -725 -775 -48 -102 -61 -187 -42 -288 20 -104 65 -192 139 -268 166 -173 426 -204 628 -74 44 28 570 551 1333 1326 l277 281 93 -27 c129 -39 264 -54 416 -47 333 14 620 139 853 372 192 191 304 399 353 657 21 108 21 326 1 440 -17 90 -58 234 -82 280 -17 34 -62 58 -106 58 -29 0 -65 -32 -375 -342 l-342 -341 -103 22 c-57 12 -152 32 -212 44 l-109 22 -38 160 c-21 88 -41 178 -44 200 -7 46 -47 1 442 496 230 233 243 248 243 283 0 54 -15 75 -73 100 -170 74 -442 104 -642 70z",
             800, 800);
-        _imageIcon = CreateVectorIcon(
+        _imageIcon = AemiUi.CreateVectorIcon(
             "M1953 5440 c-12 -5 -26 -18 -32 -29 -8 -14 -11 -424 -11 -1339 l0 -1319 23 -21 23 -22 1960 0 1961 0 21 23 22 23 0 1321 c0 1286 -1 1321 -19 1344 l-19 24 -1954 2 c-1113 1 -1962 -2 -1975 -7z m3795 -1362 l-3 -1193 -1830 0 -1830 0 -3 161 -2 161 87 79 c91 82 365 327 395 351 17 15 37 0 473 -355 82 -67 152 -121 157 -120 6 3 584 506 1051 917 l138 122 117 -108 c158 -145 962 -857 970 -860 4 -2 36 24 71 55 l63 58 -73 66 c-41 36 -265 236 -499 444 -234 208 -474 422 -533 476 -60 54 -112 98 -116 98 -4 0 -34 -24 -67 -53 -101 -92 -1106 -971 -1120 -982 -10 -7 -22 -1 -46 21 -26 24 -285 238 -549 452 l-27 22 -119 -108 c-65 -60 -174 -158 -243 -219 l-125 -111 -3 897 c-1 493 0 902 3 909 3 9 380 12 1835 12 l1830 0 -2 -1192z",
             800, 800);
-        _fileIcon = CreateVectorIcon(
+        _fileIcon = AemiUi.CreateVectorIcon(
             "M2425 5901 c-61 -27 -111 -89 -125 -152 -8 -40 -10 -507 -8 -1784 l3 -1730 28 -47 c18 -31 44 -57 75 -75 l47 -28 1555 0 c1505 0 1556 1 1593 19 44 22 83 69 103 123 11 31 13 295 14 1438 l0 1400 -428 428 -427 427 -1195 0 c-1134 0 -1197 -1 -1235 -19z m2265 -468 c0 -156 5 -294 10 -314 17 -61 52 -102 109 -131 l55 -28 313 0 313 0 0 -1335 0 -1335 -1490 0 -1490 0 0 1710 0 1710 1090 0 1090 0 0 -277z m413 -64 c103 -100 187 -185 187 -190 0 -5 -84 -9 -190 -9 l-189 0 -3 190 c-2 105 0 190 3 190 3 0 90 -81 192 -181z",
             800, 800);
         UploadButton.Content = new AvaloniaImage { Source = _uploadIcon, Width = 18, Height = 18, Stretch = Stretch.Uniform };
@@ -269,16 +267,32 @@ public partial class ChatWindow : Window
         }
 
         var input = InputBox.Text?.Trim() ?? string.Empty;
-        var attachments = _pendingAttachments.ToList();
+        var attachments = _attachments.Snapshot();
         if (string.IsNullOrWhiteSpace(input) && attachments.Count == 0)
         {
             return;
         }
 
+        await SendUserTurnAsync(input, attachments, clearInputBox: true);
+    }
+
+    /// <summary>
+    /// \u7edf\u4e00\u7684\u7528\u6237\u6d88\u606f\u53d1\u9001\u4e3b\u6d41\u7a0b\uff08\u6587\u672c\u53d1\u9001 / \u8bed\u97f3\u6587\u672c\u53d1\u9001\u5171\u7528\uff09\u3002
+    /// \u91cd\u65b0\u751f\u6210\u56de\u590d\uff08GenerateAssistantReplyForUserAsync\uff09\u56e0\u4e0a\u4e0b\u6587\u6765\u6e90\u4e0e\u6301\u4e45\u5316\u65b9\u5f0f\u4e0d\u540c\uff0c\u672a\u5408\u5165\u6b64\u5904\u3002
+    /// </summary>
+    private async Task SendUserTurnAsync(string text, IReadOnlyList<ChatAttachment>? attachments, bool clearInputBox)
+    {
+        if (_isSending || string.IsNullOrWhiteSpace(text) && (attachments is null || attachments.Count == 0))
+        {
+            return;
+        }
+
+        var input = string.IsNullOrWhiteSpace(text) ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002" : text;
+        var attachmentList = attachments ?? Array.Empty<ChatAttachment>();
+
         _isSending = true;
         RaiseActivityChanged(ChatActivityKind.Sending);
         UpdateProviderQuickSwitchEnabled();
-        var prompt = string.Empty;
         TextBlock? pending = null;
         _confirmationCreatedDuringGeneration = false;
         try
@@ -286,13 +300,15 @@ public partial class ChatWindow : Window
             AppLogger.Info("chat", "send start");
             PauseAmbientFlicker();
             EnsureCurrentSession();
-            var userInput = string.IsNullOrWhiteSpace(input) ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002" : input;
-            var visibleUserContent = BuildVisibleUserContent(userInput, attachments);
+            var visibleUserContent = AttachmentService.BuildVisibleUserContent(input, attachmentList);
             var userMessage = new ChatMessageRecord { Role = "user", Content = visibleUserContent, Timestamp = DateTimeOffset.UtcNow };
             _displayMessages.Add(userMessage);
             AddMessageBubble(_displayMessages.Count - 1, isAssistant: false, visibleUserContent, isPending: false);
             _sessionStore.AppendMessage(_currentSessionId, userMessage.Role, userMessage.Content);
-            InputBox.Text = string.Empty;
+            if (clearInputBox)
+            {
+                InputBox.Text = string.Empty;
+            }
 
             pending = AddMessageBubble(_displayMessages.Count, isAssistant: true, string.Empty, isPending: true);
             _pendingTextBlock = pending;
@@ -300,11 +316,11 @@ public partial class ChatWindow : Window
             _pendingTimer.Start();
 
             var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
-            prompt = BuildPromptWithRecentContext(recent, userInput);
+            var prompt = BuildPromptWithRecentContext(recent, input);
 
             _chatService.ClearHistory();
 
-            var reply = await StreamReplyIntoAsync(prompt, pending, attachments);
+            var reply = await StreamReplyIntoAsync(prompt, pending, attachmentList);
             var sanitizedReply = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitizedReply))
             {
@@ -333,7 +349,7 @@ public partial class ChatWindow : Window
             RenderCurrentMessages();
             RefreshSessionSelector(_currentSessionId);
             ClearPendingAttachments();
-            await UpdateLongTermMemoryIfNeededAsync();
+            await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
             RaiseActivityChanged(ChatActivityKind.Completed);
             AppLogger.Info("chat", "send completed");
         }
@@ -440,7 +456,7 @@ public partial class ChatWindow : Window
         {
             Title = imagesOnly ? "选择要发送给小爱的图片" : "选择要发送给小爱的文件",
             AllowMultiple = true,
-            FileTypeFilter = BuildAttachmentFileTypes(imagesOnly)
+            FileTypeFilter = AttachmentService.BuildFileTypes(imagesOnly)
         });
         if (files.Count == 0)
         {
@@ -457,36 +473,18 @@ public partial class ChatWindow : Window
                 continue;
             }
 
-            if (_pendingAttachments.Count >= MaxAttachmentCount)
+            var error = _attachments.TryAdd(path);
+            if (!string.IsNullOrWhiteSpace(error))
             {
-                notices.Add($"\u6700\u591a\u4e00\u6b21\u9644\u52a0 {MaxAttachmentCount} \u4e2a\u6587\u4ef6\u3002");
-                break;
+                notices.Add(error);
             }
-
-            if (_pendingAttachments.Any(a => string.Equals(a.Path, path, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            var attachment = TryCreateAttachment(path, out var error);
-            if (attachment is null)
-            {
-                if (!string.IsNullOrWhiteSpace(error))
-                {
-                    notices.Add(error);
-                }
-
-                continue;
-            }
-
-            _pendingAttachments.Add(attachment);
         }
 
         RenderAttachmentChips();
         var message = notices.Count > 0
             ? string.Join(" ", notices)
-            : _pendingAttachments.Count > 0
-                ? $"\u5df2\u9644\u52a0 {_pendingAttachments.Count} \u4e2a\u6587\u4ef6\u3002"
+            : _attachments.Count > 0
+                ? $"\u5df2\u9644\u52a0 {_attachments.Count} \u4e2a\u6587\u4ef6\u3002"
                 : string.Empty;
 
         if (!string.IsNullOrWhiteSpace(message))
@@ -609,69 +607,12 @@ public partial class ChatWindow : Window
             ? "加载超时"
             : "连接失败";
     }
-    private static IReadOnlyList<FilePickerFileType> BuildAttachmentFileTypes(bool imagesOnly)
-    {
-        var imageType = new FilePickerFileType("图片")
-        {
-            Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp"],
-            MimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"]
-        };
-
-        if (imagesOnly)
-        {
-            return [imageType];
-        }
-
-        return
-        [
-            new FilePickerFileType("文本与代码")
-            {
-                Patterns = ["*.txt", "*.md", "*.markdown", "*.cs", "*.json", "*.xml", "*.xaml", "*.axaml", "*.yaml", "*.yml", "*.log", "*.csv", "*.tsv", "*.html", "*.css", "*.js", "*.ts", "*.py", "*.ps1", "*.bat"],
-                MimeTypes = ["text/plain", "text/markdown", "application/json", "application/xml", "text/csv", "text/html", "text/css", "text/javascript"]
-            },
-            FilePickerFileTypes.All
-        ];
-    }
-    private ChatAttachment? TryCreateAttachment(string path, out string? error)
-    {
-        error = null;
-        try
-        {
-            if (!File.Exists(path))
-            {
-                error = "\u6587\u4ef6\u4e0d\u5b58\u5728\uff1a" + Path.GetFileName(path);
-                return null;
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length > MaxAttachmentBytes)
-            {
-                error = $"\u6587\u4ef6\u8fc7\u5927\uff1a{info.Name}\uff0c\u5355\u4e2a\u9644\u4ef6\u6700\u5927 {FormatBytes(MaxAttachmentBytes)}\u3002";
-                return null;
-            }
-
-            var extension = info.Extension.ToLowerInvariant();
-            var kind = GetAttachmentKind(extension);
-            return new ChatAttachment(
-                info.FullName,
-                info.Name,
-                GetMimeType(extension, kind),
-                kind,
-                info.Length);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            error = "\u65e0\u6cd5\u8bfb\u53d6\u6587\u4ef6\uff1a" + ex.Message;
-            return null;
-        }
-    }
-
     private void RenderAttachmentChips()
     {
         AttachmentPanel.Children.Clear();
-        AttachmentPanel.IsVisible = _pendingAttachments.Count > 0;
+        AttachmentPanel.IsVisible = _attachments.Count > 0;
 
-        foreach (var attachment in _pendingAttachments.ToList())
+        foreach (var attachment in _attachments.Snapshot())
         {
             var removeButton = new Button
             {
@@ -689,13 +630,13 @@ public partial class ChatWindow : Window
             ToolTip.SetTip(removeButton, "\u79fb\u9664\u9644\u4ef6");
             removeButton.Click += (_, _) =>
             {
-                _pendingAttachments.Remove(attachment);
+                _attachments.Remove(attachment);
                 RenderAttachmentChips();
             };
 
             var label = new TextBlock
             {
-                Text = $"{GetAttachmentKindLabel(attachment.Kind)} {attachment.Name} ({FormatBytes(attachment.SizeBytes)})",
+                Text = $"{AttachmentService.GetAttachmentKindLabel(attachment.Kind)} {attachment.Name} ({AttachmentService.FormatBytes(attachment.SizeBytes)})",
                 Foreground = Brushes.White,
                 FontSize = 12,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -725,79 +666,8 @@ public partial class ChatWindow : Window
 
     private void ClearPendingAttachments()
     {
-        _pendingAttachments.Clear();
+        _attachments.Clear();
         RenderAttachmentChips();
-    }
-
-    private static string BuildVisibleUserContent(string userInput, IReadOnlyList<ChatAttachment> attachments)
-    {
-        if (attachments.Count == 0)
-        {
-            return userInput;
-        }
-
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine(userInput);
-        sb.AppendLine();
-        sb.AppendLine("\u9644\u4ef6\uff1a");
-        foreach (var attachment in attachments)
-        {
-            sb.AppendLine($"- {attachment.Name} ({GetAttachmentKindLabel(attachment.Kind)}, {FormatBytes(attachment.SizeBytes)})");
-        }
-
-        return sb.ToString().TrimEnd();
-    }
-
-    private static ChatAttachmentKind GetAttachmentKind(string extension)
-    {
-        if (extension is ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif" or ".bmp")
-        {
-            return ChatAttachmentKind.Image;
-        }
-
-        return extension is ".txt" or ".md" or ".markdown" or ".cs" or ".json" or ".xml" or ".xaml" or ".axaml" or ".yaml" or ".yml" or ".log" or ".csv" or ".tsv" or ".html" or ".css" or ".js" or ".ts" or ".py" or ".ps1" or ".bat"
-            ? ChatAttachmentKind.Text
-            : ChatAttachmentKind.Other;
-    }
-
-    private static string GetMimeType(string extension, ChatAttachmentKind kind)
-    {
-        return extension switch
-        {
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".webp" => "image/webp",
-            ".gif" => "image/gif",
-            ".bmp" => "image/bmp",
-            ".json" => "application/json",
-            ".xml" or ".xaml" or ".axaml" => "application/xml",
-            ".csv" => "text/csv",
-            ".tsv" => "text/tab-separated-values",
-            ".html" => "text/html",
-            ".css" => "text/css",
-            ".js" => "text/javascript",
-            _ => kind == ChatAttachmentKind.Text ? "text/plain" : "application/octet-stream"
-        };
-    }
-
-    private static string GetAttachmentKindLabel(ChatAttachmentKind kind)
-    {
-        return kind switch
-        {
-            ChatAttachmentKind.Image => "\u56fe\u7247",
-            ChatAttachmentKind.Text => "\u6587\u672c",
-            _ => "\u6587\u4ef6"
-        };
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        if (bytes >= 1024 * 1024)
-        {
-            return $"{bytes / 1024d / 1024d:0.##} MB";
-        }
-
-        return bytes >= 1024 ? $"{bytes / 1024d:0.##} KB" : $"{bytes} B";
     }
 
     private void ToggleVoiceMode()
@@ -973,85 +843,12 @@ public partial class ChatWindow : Window
 
     private async Task SendVoiceTextAsync(string text)
     {
-        if (_isSending || string.IsNullOrWhiteSpace(text)) return;
-
-        _isSending = true;
-        RaiseActivityChanged(ChatActivityKind.Sending);
-        UpdateProviderQuickSwitchEnabled();
-        var prompt = string.Empty;
-        TextBlock? pending = null;
-        _confirmationCreatedDuringGeneration = false;
-        try
+        if (_isSending || string.IsNullOrWhiteSpace(text))
         {
-            AppLogger.Info("chat", "voice send start");
-            PauseAmbientFlicker();
-            EnsureCurrentSession();
-            var userMessage = new ChatMessageRecord { Role = "user", Content = text, Timestamp = DateTimeOffset.UtcNow };
-            _displayMessages.Add(userMessage);
-            AddMessageBubble(_displayMessages.Count - 1, isAssistant: false, text, isPending: false);
-            _sessionStore.AppendMessage(_currentSessionId, userMessage.Role, userMessage.Content);
-
-            pending = AddMessageBubble(_displayMessages.Count, isAssistant: true, string.Empty, isPending: true);
-            _pendingTextBlock = pending;
-            _pendingFrameIndex = 0;
-            _pendingTimer.Start();
-
-            var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
-            prompt = BuildPromptWithRecentContext(recent, text);
-
-            _chatService.ClearHistory();
-
-            var reply = await StreamReplyIntoAsync(prompt, pending);
-            var sanitizedReply = SanitizeAssistantOutput(reply);
-            if (ShouldSuppressConfirmationReply(sanitizedReply))
-            {
-                RenderCurrentMessages();
-                RefreshSessionSelector(_currentSessionId);
-                RaiseActivityChanged(ChatActivityKind.ToolWaiting);
-                AppLogger.Info("chat", "voice send paused for tool confirmation");
-                return;
-            }
-
-            pending.Text = string.IsNullOrWhiteSpace(sanitizedReply) ? "(无回复)" : sanitizedReply;
-            ScrollToBottom();
-
-            var assistantReply = pending.Text ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(assistantReply))
-            {
-                assistantReply = "(无回复)";
-                pending.Text = assistantReply;
-            }
-
-            assistantReply = FormatToolResultForUser(assistantReply);
-            pending.Text = assistantReply;
-            _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = assistantReply, Timestamp = DateTimeOffset.UtcNow });
-            _sessionStore.AppendMessage(_currentSessionId, "assistant", assistantReply);
-            RenderCurrentMessages();
-            RefreshSessionSelector(_currentSessionId);
-            await UpdateLongTermMemoryIfNeededAsync();
-            RaiseActivityChanged(ChatActivityKind.Completed);
-            AppLogger.Info("chat", "voice send completed");
+            return;
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error("chat", "voice send failed", ex);
-            if (pending is not null)
-            {
-                pending.Text = $"执行失败：{ex.Message}";
-                _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = pending.Text, Timestamp = DateTimeOffset.UtcNow });
-                _sessionStore.AppendMessage(_currentSessionId, "assistant", pending.Text);
-                RenderCurrentMessages();
-            }
-            RaiseActivityChanged(ChatActivityKind.Failed);
-        }
-        finally
-        {
-            _pendingTimer.Stop();
-            _pendingTextBlock = null;
-            _isSending = false;
-            ResumeAmbientFlicker();
-            UpdateProviderQuickSwitchEnabled();
-        }
+
+        await SendUserTurnAsync(text, attachments: null, clearInputBox: false);
     }
 
     private string BuildPromptWithRecentContext(IReadOnlyList<ChatMessageRecord> recentMessages, string userInput)
@@ -1077,158 +874,6 @@ public partial class ChatWindow : Window
         sb.AppendLine("要求：如果用户要求执行电脑操作，请优先调用可用工具并给出执行反馈。反馈要像日常对话，不要展示确认编号、插件名、函数名、命令细节、可执行文件名或长串内部 ID；除非用户明确询问技术细节。只输出纯文本，不要 Markdown。");
         return sb.ToString();
     }
-
-    private async Task UpdateLongTermMemoryIfNeededAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_currentSessionId))
-        {
-            return;
-        }
-
-        if (!await _memorySummaryLock.WaitAsync(0))
-        {
-            return;
-        }
-
-        try
-        {
-            var session = _sessionStore.GetSession(_currentSessionId);
-            if (session is null)
-            {
-                return;
-            }
-
-            var completedRounds = CountCompletedRounds(session.Messages);
-            var summarizedRounds = _memoryStore.GetSummarizedRounds(_currentSessionId);
-            if (completedRounds - summarizedRounds < 5)
-            {
-                return;
-            }
-
-            var prompt = BuildMemorySummaryPrompt(session.Messages, summarizedRounds, completedRounds);
-            string rawSummary;
-            try
-            {
-                rawSummary = await _chatService.SummarizeAsync(prompt);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("memory", "AI memory summary failed, using fallback", ex);
-                rawSummary = BuildFallbackMemorySummary(session.Messages);
-            }
-
-            var parsed = ParseMemorySummary(rawSummary);
-            if (string.IsNullOrWhiteSpace(parsed.Summary))
-            {
-                parsed = parsed with { Summary = BuildFallbackMemorySummary(session.Messages) };
-            }
-
-            _memoryStore.SaveSummary(
-                _currentSessionId,
-                completedRounds,
-                parsed.Summary,
-                parsed.Facts,
-                parsed.OpenThreads,
-                parsed.Preferences);
-            AppLogger.Info("memory", $"long-term memory updated: session={_currentSessionId}, rounds={completedRounds}");
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("memory", "long-term memory update failed", ex);
-        }
-        finally
-        {
-            _memorySummaryLock.Release();
-        }
-    }
-
-    private string BuildMemorySummaryPrompt(IReadOnlyList<ChatMessageRecord> messages, int summarizedRounds, int completedRounds)
-    {
-        var recent = messages.TakeLast(20).ToList();
-        var existingMemory = _memoryStore.BuildPromptBlock(_currentSessionId, 1200);
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("请更新 Aemeath 的本地长期记忆。只输出 JSON，不要 Markdown。");
-        sb.AppendLine("JSON 格式：{\"summary\":\"...\",\"preferences\":[\"...\"],\"facts\":[\"...\"],\"openThreads\":[\"...\"]}");
-        sb.AppendLine("要求：只保留用户偏好、未完成事项、重要事实和本会话摘要；不要编造；不要写寒暄。");
-        sb.AppendLine($"已总结到第 {summarizedRounds} 轮；当前完成第 {completedRounds} 轮。");
-        if (!string.IsNullOrWhiteSpace(existingMemory))
-        {
-            sb.AppendLine("已有长期记忆：");
-            sb.AppendLine(existingMemory);
-        }
-
-        sb.AppendLine("最近对话：");
-        foreach (var message in recent)
-        {
-            var role = string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase) ? "小爱" : "用户";
-            sb.Append(role).Append("：").AppendLine(message.Content);
-        }
-
-        return sb.ToString();
-    }
-
-    private static int CountCompletedRounds(IReadOnlyList<ChatMessageRecord> messages)
-    {
-        var users = messages.Count(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase));
-        var assistants = messages.Count(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase));
-        return Math.Min(users, assistants);
-    }
-
-    private static string BuildFallbackMemorySummary(IReadOnlyList<ChatMessageRecord> messages)
-    {
-        var recent = messages.TakeLast(10)
-            .Select(m => $"{(string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) ? "小爱" : "用户")}：{m.Content}");
-        var text = string.Join("\n", recent).Trim();
-        return text.Length <= 900 ? text : text[..900];
-    }
-
-    private static MemorySummaryResult ParseMemorySummary(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return new MemorySummaryResult(string.Empty, [], [], []);
-        }
-
-        var json = ExtractJsonObject(raw);
-        if (json is null)
-        {
-            return new MemorySummaryResult(raw.Trim(), [], [], []);
-        }
-
-        try
-        {
-            var result = JsonSerializer.Deserialize<MemorySummaryDto>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            return new MemorySummaryResult(
-                result?.Summary?.Trim() ?? string.Empty,
-                CleanList(result?.Preferences),
-                CleanList(result?.Facts),
-                CleanList(result?.OpenThreads));
-        }
-        catch
-        {
-            return new MemorySummaryResult(raw.Trim(), [], [], []);
-        }
-    }
-
-    private static string? ExtractJsonObject(string raw)
-    {
-        var start = raw.IndexOf('{');
-        var end = raw.LastIndexOf('}');
-        return start >= 0 && end > start ? raw[start..(end + 1)] : null;
-    }
-
-    private static IReadOnlyList<string> CleanList(IEnumerable<string>? values)
-        => values?
-               .Where(v => !string.IsNullOrWhiteSpace(v))
-               .Select(v => v.Trim())
-               .Distinct(StringComparer.OrdinalIgnoreCase)
-               .Take(12)
-               .ToList()
-           ?? [];
 
     private bool ShouldSuppressConfirmationReply(string? text)
     {
@@ -1600,7 +1245,7 @@ public partial class ChatWindow : Window
         RenderCurrentMessages();
         ScrollToBottom();
         UpdateProviderQuickSwitchEnabled();
-        await UpdateLongTermMemoryIfNeededAsync();
+        await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
         RaiseActivityChanged(_pendingToolActions.Count == 0 ? ChatActivityKind.Completed : ChatActivityKind.ToolWaiting);
     }
 
@@ -1704,7 +1349,7 @@ public partial class ChatWindow : Window
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = cleaned, Timestamp = DateTimeOffset.UtcNow });
             PersistCurrentMessages();
             RenderCurrentMessages();
-            await UpdateLongTermMemoryIfNeededAsync();
+            await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
             RaiseActivityChanged(ChatActivityKind.Completed);
         }
         catch (Exception ex)
@@ -2066,41 +1711,6 @@ public partial class ChatWindow : Window
         ChatBackgroundHost.Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill, Opacity = 0.72 };
     }
 
-    private static Bitmap LoadBitmap(string uri)
-    {
-        using var stream = AssetLoader.Open(new Uri(uri));
-        return new Bitmap(stream);
-    }
-
-    private static DrawingImage CreateVectorIcon(string pathData, double width, double height)
-    {
-        var geometry = StreamGeometry.Parse(pathData);
-        var drawing = new GeometryDrawing
-        {
-            Geometry = geometry,
-            Brush = new SolidColorBrush(Colors.White)
-        };
-        var group = new DrawingGroup();
-        group.Children.Add(drawing);
-        return new DrawingImage(group);
-    }
-
-    private static DrawingImage CreateSvgTransformedVectorIcon(string pathData, double width, double height)
-    {
-        var geometry = StreamGeometry.Parse(pathData);
-        var drawing = new GeometryDrawing
-        {
-            Geometry = geometry,
-            Brush = new SolidColorBrush(Colors.White)
-        };
-        var transform = new TransformGroup();
-        transform.Children.Add(new ScaleTransform(width / 8000d, -height / 8000d));
-        transform.Children.Add(new TranslateTransform(0, height));
-
-        var group = new DrawingGroup { Transform = transform };
-        group.Children.Add(drawing);
-        return new DrawingImage(group);
-    }
 
     private void StartNewSession()
     {
@@ -2286,19 +1896,6 @@ public partial class ChatWindow : Window
         _maleAvatar.Dispose();
         _femaleAvatar.Dispose();
         base.OnClosed(e);
-    }
-    private sealed record MemorySummaryResult(
-        string Summary,
-        IReadOnlyList<string> Preferences,
-        IReadOnlyList<string> Facts,
-        IReadOnlyList<string> OpenThreads);
-
-    private sealed class MemorySummaryDto
-    {
-        public string? Summary { get; set; }
-        public List<string>? Preferences { get; set; }
-        public List<string>? Facts { get; set; }
-        public List<string>? OpenThreads { get; set; }
     }
 }
 

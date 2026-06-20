@@ -2,6 +2,8 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace Aemeath.Desktop.Services;
 
@@ -125,5 +127,44 @@ internal static class AemiUi
 
     public static TextBlock Label(string text)
         => Text(text, 12, TextMuted, FontWeight.SemiBold);
+
+    /// <summary>从 avares URI 加载位图。</summary>
+    public static Bitmap LoadBitmap(string uri)
+    {
+        using var stream = AssetLoader.Open(new Uri(uri));
+        return new Bitmap(stream);
+    }
+
+    /// <summary>用路径数据构造一个白色矢量图标（坐标已按视图盒缩放）。</summary>
+    public static DrawingImage CreateVectorIcon(string pathData, double width, double height)
+    {
+        var geometry = StreamGeometry.Parse(pathData);
+        var drawing = new GeometryDrawing
+        {
+            Geometry = geometry,
+            Brush = new SolidColorBrush(Colors.White)
+        };
+        var group = new DrawingGroup();
+        group.Children.Add(drawing);
+        return new DrawingImage(group);
+    }
+
+    /// <summary>用 SVG 路径数据（8000x8000 视图盒）构造一个白色矢量图标，自动缩放并翻转 Y 轴。</summary>
+    public static DrawingImage CreateSvgTransformedVectorIcon(string pathData, double width, double height)
+    {
+        var geometry = StreamGeometry.Parse(pathData);
+        var drawing = new GeometryDrawing
+        {
+            Geometry = geometry,
+            Brush = new SolidColorBrush(Colors.White)
+        };
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(width / 8000d, -height / 8000d));
+        transform.Children.Add(new TranslateTransform(0, height));
+
+        var group = new DrawingGroup { Transform = transform };
+        group.Children.Add(drawing);
+        return new DrawingImage(group);
+    }
 }
 
