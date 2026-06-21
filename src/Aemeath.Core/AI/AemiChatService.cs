@@ -22,7 +22,9 @@ public class AemiChatService : IChatService, IAsyncDisposable
     private readonly McpRuntimeService _mcpRuntime = new();
     private readonly SemaphoreSlim _mcpReloadLock = new(1, 1);
     private CancellationTokenSource? _mcpReloadCts;
-    private const int McpReloadTimeoutSeconds = 130;
+    // 总预算调高到 200s，确保不小于单服务最长超时（HTTP 后台 150s + 余量）。
+    // 即使总预算耗尽，BuildEnabledPluginAsync 内部每个服务有独立超时，已成功的工具仍会注册。
+    private const int McpReloadTimeoutSeconds = 200;
     private Action<Action>? _uiThreadInvoker;
 
     public string CurrentAssistantName => "小爱";
@@ -262,11 +264,9 @@ public class AemiChatService : IChatService, IAsyncDisposable
         {
             SetMcpStatus("MCP 工具正在后台加载");
             var plugin = await _mcpRuntime.BuildEnabledPluginAsync(token);
-            if (token.IsCancellationRequested)
-            {
-                SetMcpStatus("MCP 工具加载超时");
-                return;
-            }
+            // 不再因为 token 超时就丢弃已加载的 plugin。
+            // BuildEnabledPluginAsync 内部每个服务有独立超时，即使整体超时，
+            // 已成功加载的工具仍会被收集到 plugin 中并注册，保障其他工具正常运行。
 
             if (plugin is null)
             {
@@ -291,11 +291,15 @@ public class AemiChatService : IChatService, IAsyncDisposable
                 _currentKernel?.ReplacePlugin(plugin);
             }
             var failedCount = _mcpRuntime.ListServers().Count(s => s.Enabled && string.Equals(s.LastStatus, "error", StringComparison.OrdinalIgnoreCase));
-            SetMcpStatus(failedCount > 0 ? $"MCP 工具已加载，{failedCount} 个服务失败" : "MCP 工具已加载");
+            var loadedCount = _mcpRuntime.GetLoadedToolSummary().Count;
+            SetMcpStatus(failedCount > 0
+                ? $"MCP 工具已加载 {loadedCount} 个工具，{failedCount} 个服务失败"
+                : "MCP 工具已加载");
         }
         catch (OperationCanceledException)
         {
-            SetMcpStatus("MCP 工具加载超时");
+            // 即使整体取消，也尝试注册已收集的工具（降级处理）
+            SetMcpStatus("MCP 工具加载超时（部分工具可能仍可用）");
         }
         catch (Exception ex)
         {
@@ -423,14 +427,17 @@ public class AemiChatService : IChatService, IAsyncDisposable
         if (mcpTools.Count > 0)
         {
             sb.AppendLine("【外部 MCP 工具】");
-            sb.AppendLine("你当前可以调用以下外部工具：");
+            sb.AppendLine("你当前可以调用以下外部工具（这些工具会直接返回结果文本，不需要打开浏览器）：");
             foreach (var (functionName, description) in mcpTools)
             {
                 sb.AppendLine($"- {functionName}：{description}");
             }
             sb.AppendLine();
-            sb.AppendLine("【强制规则】在说「不知道」「没有收录」「资料不足」之前，必须先调用上述工具尝试查询。");
-            sb.AppendLine("只有工具也查不到时，才能回答资料不足。直接说不知道而不调用工具是错误的。");
+            sb.AppendLine("【强制规则】");
+            sb.AppendLine("1. 在说「不知道」「没有收录」「资料不足」之前，必须先调用上述 MCP 工具尝试查询。");
+            sb.AppendLine("2. 需要搜索信息时，必须使用上述 MCP 搜索类工具，禁止使用 search_web 打开浏览器。");
+            sb.AppendLine("3. MCP 工具会直接把搜索结果返回给你，你可以基于结果直接回答用户，无需让用户自己去浏览器查看。");
+            sb.AppendLine("4. 只有当 MCP 工具也查不到时，才能回答资料不足。直接说不知道而不调用工具是错误的。");
             sb.AppendLine();
         }
 

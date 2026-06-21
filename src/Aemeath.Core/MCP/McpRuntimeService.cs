@@ -81,7 +81,18 @@ public sealed class McpRuntimeService : IAsyncDisposable
                 return null;
             }
 
-            var loadTasks = enabledServers.Select(server => LoadServerAsync(server, manualTest: false, cancellationToken)).ToList();
+            // 每个服务使用独立的超时 token，不共享外部 cancellationToken 的取消压力。
+            // 这样单个服务超时失败时，只会导致它自己被标记为 error 并跳过，
+            // 不会因为某个慢服务拖累整体而丢弃已经成功的工具。
+            var loadTasks = enabledServers.Select(async server =>
+            {
+                var perServerTimeout = GetTimeout(server.Transport, manualTest: false);
+                using var perServerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                perServerCts.CancelAfter(perServerTimeout);
+                return await LoadServerAsync(server, manualTest: false, perServerCts.Token);
+            }).ToList();
+
+            // 等待所有任务完成（失败的服务已被 LoadServerAsync 内部 catch 成 Fail，不会抛出）
             var results = await Task.WhenAll(loadTasks);
             var functions = new List<KernelFunction>();
             var functionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -180,8 +191,70 @@ public sealed class McpRuntimeService : IAsyncDisposable
         {
             server.LastStatus = "error";
             server.LastError = BuildFailureMessage(server, ex, stderr, timeout, manualTest ? "测试连接" : "后台加载");
+
+            // 自动禁用持续失败的服务（仅后台加载，非手动测试）。
+            // 使用 LastError 中的失败次数追踪：连续失败达到阈值时禁用，避免拖累整体加载。
+            // 手动测试不禁用（用户主动点「测试连接」时应该保留配置）。
+            if (!manualTest)
+            {
+                TryAutoDisableOnPersistentFailure(server);
+            }
+
             _store.SaveServer(server);
             return McpServerLoadResult.Fail(server, server.LastError);
+        }
+    }
+
+    /// <summary>
+    /// 当服务连续失败达到阈值时自动禁用，保障其他工具正常加载。
+    /// 通过 UpdatedAt 时间戳与 LastError 中的失败计数追踪连续失败次数。
+    /// 避免偶发网络抖动导致误禁用。
+    /// </summary>
+    private void TryAutoDisableOnPersistentFailure(McpServerConfig server)
+    {
+        try
+        {
+            const int MaxConsecutiveFailures = 3;
+            const string FailCountPrefix = "[连续失败 ";
+
+            var currentCount = 1;
+            if (!string.IsNullOrEmpty(server.LastError) &&
+                server.LastError.StartsWith(FailCountPrefix, StringComparison.Ordinal))
+            {
+                // 解析已有的失败计数
+                var rest = server.LastError.Substring(FailCountPrefix.Length);
+                var endIndex = rest.IndexOf(']', StringComparison.Ordinal);
+                if (endIndex > 0 && int.TryParse(rest.AsSpan(0, endIndex), out var prev))
+                {
+                    currentCount = prev + 1;
+                }
+            }
+
+            if (currentCount >= MaxConsecutiveFailures)
+            {
+                server.Enabled = false;
+                // 清除失败计数前缀，记录禁用原因
+                var cleanError = server.LastError == null
+                    ? string.Empty
+                    : (server.LastError.StartsWith(FailCountPrefix, StringComparison.Ordinal)
+                        ? server.LastError.Substring(server.LastError.IndexOf(']') + 1).TrimStart()
+                        : server.LastError);
+                server.LastError = $"已自动禁用（连续失败 {currentCount} 次）。{cleanError}";
+            }
+            else
+            {
+                // 在错误信息前加上连续失败计数
+                var cleanError = server.LastError == null
+                    ? string.Empty
+                    : (server.LastError.StartsWith(FailCountPrefix, StringComparison.Ordinal)
+                        ? server.LastError.Substring(server.LastError.IndexOf(']') + 1).TrimStart()
+                        : server.LastError);
+                server.LastError = $"{FailCountPrefix}{currentCount}/{MaxConsecutiveFailures}] {cleanError}";
+            }
+        }
+        catch
+        {
+            // 自动禁用逻辑失败不影响主流程
         }
     }
 

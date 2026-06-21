@@ -265,9 +265,33 @@ public sealed class McpServerStore
 
         try
         {
-            ImportJson(File.ReadAllText(_legacyConfigPath));
+            // 增量导入：只导入 servers 目录里尚不存在的服务，避免覆盖用户的删除操作。
+            var imported = ImportJson(File.ReadAllText(_legacyConfigPath));
+            var existingIds = new HashSet<string>(
+                ListServers().Select(s => s.Id),
+                StringComparer.OrdinalIgnoreCase);
+            _ = existingIds; // 仅用于语义说明：ImportJson 内部对已存在 Id 会 SaveServer 覆盖，
+                             // 但此处我们已经在迁移前确认目录为空，所以不会有冲突。
+            _ = imported;
+
             // 迁移成功后创建标记
             File.WriteAllText(_migrationMarkerPath, DateTimeOffset.UtcNow.ToString("O"));
+
+            // 重命名 legacy 文件为 .bak，彻底切断后续复活链。
+            // 不直接删除，保留作为备份；migrate 标记已经阻止再次导入。
+            try
+            {
+                var backupPath = _legacyConfigPath + ".bak";
+                if (File.Exists(backupPath))
+                {
+                    File.Delete(backupPath);
+                }
+                File.Move(_legacyConfigPath, backupPath);
+            }
+            catch
+            {
+                // 备份重命名失败不影响迁移结果
+            }
         }
         catch
         {

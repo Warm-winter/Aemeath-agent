@@ -112,7 +112,9 @@ public partial class ConfigWindow : Window
             }
 
             _ = RefreshMcpDependencyStatusAsync();
-            SetupBuiltinMcpServers(showNotification: false);
+            // 不再在每次打开设置窗口时自动调用 SetupBuiltinMcpServers。
+            // 该方法会重写 mcp_servers.json（旧格式），可能导致用户已删除的服务在迁移时被恢复。
+            // 内置服务配置只在用户显式点击「一键配置内置服务」时执行。
             _ = RefreshMcpOverallStatusAsync();
         };
 
