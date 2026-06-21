@@ -1,9 +1,12 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Aemeath.Core.MCP;
+using Aemeath.Desktop.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,11 +16,10 @@ using System.Threading.Tasks;
 namespace Aemeath.Desktop.Views;
 
 /// <summary>
-/// MCP 配置面板（嵌入 ConfigWindow 的「MCP 配置」Tab）。
-/// 合并了原独立 McpConfigWindow 的全部服务管理能力（列表/增删改/测试/导入），
-/// 并以小白友好的卡片式呈现：整体状态 → 环境准备 → 服务卡片 → 高级导入。
-/// 依赖下载与内置服务配置的执行逻辑仍由 ConfigWindow 负责（通过事件回调），
-/// 本面板只负责 MCP 服务本身的持久化与运行时测试。
+/// MCP 配置面板（左右分栏，参考 cherry-studio 设计）。
+/// 左侧服务列表（紧凑行卡片），右侧选中服务详情表单。
+/// 顶部工具栏含环境依赖、重新加载、添加菜单（手动创建 / JSON 导入弹窗）。
+/// 受保护的内置服务（memory/filesystem）在列表中隐藏。
 /// </summary>
 public partial class McpConfigPanel : UserControl
 {
@@ -49,7 +51,7 @@ public partial class McpConfigPanel : UserControl
         InitTransportOptions();
         WireButtons();
         RefreshServerList();
-        StartNewServer();
+        ShowEmptyHint();
     }
 
     /// <summary>
@@ -84,88 +86,155 @@ public partial class McpConfigPanel : UserControl
 
     private void WireButtons()
     {
-        NewServerButton.Click += (_, _) => StartNewServer();
+        RefreshMcpButton.Click += (_, _) => ReloadRequested?.Invoke(this, EventArgs.Empty);
+        DownloadMcpDependenciesButton.Click += (_, _) => DownloadDependenciesRequested?.Invoke(this, EventArgs.Empty);
+        AddButton.Click += (_, _) => ShowAddMenu();
         SaveButton.Click += (_, _) => SaveCurrentServer();
         DeleteButton.Click += (_, _) => DeleteCurrentServer();
         TestButton.Click += async (_, _) => await TestCurrentServerAsync();
-        ImportJsonButton.Click += (_, _) => ImportJson();
-        RefreshMcpButton.Click += (_, _) => ReloadRequested?.Invoke(this, EventArgs.Empty);
-        DownloadMcpDependenciesButton.Click += (_, _) => DownloadDependenciesRequested?.Invoke(this, EventArgs.Empty);
-        SetupBuiltinMcpButton.Click += (_, _) => SetupBuiltinRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>顶部「+ 添加」按钮的下拉菜单：手动创建 / 从 JSON 导入 / 配置内置服务。</summary>
+    private void ShowAddMenu()
+    {
+        var menu = new ContextMenu();
+
+        var manual = new MenuItem { Header = "手动创建" };
+        manual.Click += (_, _) => StartNewServer();
+        menu.Items.Add(manual);
+
+        var import = new MenuItem { Header = "从 JSON 导入…" };
+        import.Click += (_, _) => OpenImportDialog();
+        menu.Items.Add(import);
+
+        menu.Items.Add(new Separator());
+
+        var builtin = new MenuItem { Header = "一键配置内置服务（记忆/文件系统）" };
+        builtin.Click += (_, _) => SetupBuiltinRequested?.Invoke(this, EventArgs.Empty);
+        menu.Items.Add(builtin);
+
+        menu.Open(AddButton);
+    }
+
+    /// <summary>弹出 JSON 导入窗口（粘贴 { "mcpServers": {...} } 配置）。</summary>
+    private void OpenImportDialog()
+    {
+        var dialog = new McpImportWindow();
+        dialog.ImportRequested += (sender, json) =>
+        {
+            try
+            {
+                var imported = _store.ImportJson(json ?? string.Empty);
+                _reloadChatService?.Invoke();
+                RefreshServerList(imported.FirstOrDefault()?.Id);
+                StatusText.Text = $"已导入 {imported.Count} 个 MCP 服务。";
+                ShowStatusMessage();
+                dialog.Close();
+            }
+            catch (Exception ex)
+            {
+                dialog.SetError("导入失败：" + ex.Message);
+            }
+        };
+        dialog.Show();
     }
 
     /// <summary>更新顶部整体状态条文字（由 ConfigWindow 根据实时 McpStatus 喂入）。</summary>
     public void UpdateOverallStatus(string text)
     {
         // McpStatusChanged 可能在后台线程触发，UI 文本必须切回 UI 线程设置（CON-009）。
-        Dispatcher.UIThread.Post(() => OverallStatusText.Text = string.IsNullOrWhiteSpace(text) ? "未加载" : text);
+        Dispatcher.UIThread.Post(() => OverallStatusText.Text = text);
     }
 
-    /// <summary>刷新依赖状态文字（由 ConfigWindow 喂入）。</summary>
+    /// <summary>更新依赖检测状态文字（空串则隐藏）。</summary>
     public void UpdateDependencyStatus(string text)
     {
-        Dispatcher.UIThread.Post(() => McpDependencyStatusText.Text = string.IsNullOrWhiteSpace(text) ? "尚未检测" : text);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                McpDependencyStatusText.IsVisible = false;
+                return;
+            }
+            McpDependencyStatusText.Text = text;
+            McpDependencyStatusText.IsVisible = true;
+        });
     }
 
-    /// <summary>重新拉取服务卡片列表并刷新状态徽章。</summary>
+    /// <summary>重新拉取服务卡片列表并刷新计数与状态徽章。</summary>
     public void RefreshServerList(string? selectId = null)
     {
         ServerCardsPanel.Children.Clear();
         // 受保护的内置服务（memory/filesystem）对用户隐藏，避免误删核心功能。
-        // 它们在后台仍由 McpRuntimeService 强制启用。
-        foreach (var server in _store.ListServers().Where(s => !McpBuiltinRegistry.IsProtected(s.Id)))
+        var visible = _store.ListServers().Where(s => !McpBuiltinRegistry.IsProtected(s.Id)).ToList();
+
+        var enabledCount = visible.Count(s => s.Enabled);
+        CountText.Text = $"已启用 {enabledCount} / 共 {visible.Count}";
+
+        foreach (var server in visible)
         {
-            ServerCardsPanel.Children.Add(BuildServerCard(server, server.Id == selectId));
+            ServerCardsPanel.Children.Add(BuildServerRow(server, server.Id == selectId));
         }
 
-        // 没有任何服务时给一个空状态提示
         if (ServerCardsPanel.Children.Count == 0)
         {
             ServerCardsPanel.Children.Add(new TextBlock
             {
-                Text = "还没有 MCP 服务。点击右上「＋ 新增」手动添加，或用「一键配置内置服务」快速开始。",
+                Text = "还没有 MCP 服务。点击右上「+ 添加」手动创建，或用「从 JSON 导入」快速开始。",
                 Classes = { "muted" },
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(0, 8, 0, 0)
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(4, 8, 4, 0)
             });
         }
 
-        // 若指定了要选中的服务，加载进表单
         if (!string.IsNullOrWhiteSpace(selectId))
         {
             LoadServerIntoForm(selectId);
         }
     }
 
-    private Border BuildServerCard(McpServerConfig server, bool select)
+    /// <summary>构建紧凑的服务行（左侧状态点 + 名称 + 类型徽章，右侧启停开关）。</summary>
+    private Border BuildServerRow(McpServerConfig server, bool select)
     {
         var id = server.Id;
-
-        // 状态徽章
+        var statusColor = AemiUi.StatusColor(!server.Enabled ? null : server.LastStatus);
         var (statusText, statusBg, statusFg) = BuildStatusVisual(server);
+
+        var dot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = new SolidColorBrush(Avalonia.Media.Color.Parse(statusColor))
+        };
 
         var nameBlock = new TextBlock
         {
             Text = string.IsNullOrWhiteSpace(server.DisplayName) ? id : server.DisplayName,
-            FontSize = 15,
+            FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse("#4A2A3A"))
+            Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse("#4A2A3A")),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
 
         var transportBadge = MakeBadge(server.Transport.ToString().ToUpperInvariant(), "#FFE1EE", "#7A5564");
         var statusBadge = MakeBadge(statusText, statusBg, statusFg);
 
         var badges = new WrapPanel();
-        transportBadge.Margin = new Avalonia.Thickness(0, 0, 6, 0);
+        transportBadge.Margin = new Thickness(0, 0, 6, 0);
         badges.Children.Add(transportBadge);
         badges.Children.Add(statusBadge);
 
-        // 启停开关（ToggleSwitch 不可用时用按钮文字代替）
+        var left = new StackPanel { Spacing = 4 };
+        left.Children.Add(nameBlock);
+        left.Children.Add(badges);
+
+        // 启停开关
         var toggle = new Button
         {
-            Content = server.Enabled ? "已启用" : "已停用",
+            Content = server.Enabled ? "开" : "关",
             Classes = { server.Enabled ? "primary" : "ghost" },
-            MinWidth = 76,
+            MinWidth = 44,
+            Padding = new Thickness(8, 2),
             VerticalAlignment = VerticalAlignment.Center
         };
         toggle.Click += (_, _) =>
@@ -175,28 +244,25 @@ public partial class McpConfigPanel : UserControl
             RefreshServerList(id);
         };
 
-        var card = new Border
-        {
-            CornerRadius = new Avalonia.CornerRadius(12),
-            BorderBrush = select ? new SolidColorBrush(Avalonia.Media.Color.Parse("#FF69B4")) : new SolidColorBrush(Avalonia.Media.Color.Parse("#F3C2D4")),
-            BorderThickness = new Avalonia.Thickness(select ? 2 : 1),
-            Background = new SolidColorBrush(Avalonia.Media.Color.Parse(select ? "#FFF0F6" : "#FFFFFF")),
-            Padding = new Avalonia.Thickness(12, 10),
-            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-            Tag = id
-        };
-
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var left = new StackPanel { Spacing = 6 };
-        left.Children.Add(nameBlock);
-        left.Children.Add(badges);
-        grid.Children.Add(left);
+        var dotRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        dotRow.Children.Add(dot);
+        dotRow.Children.Add(left);
+        grid.Children.Add(dotRow);
         Grid.SetColumn(toggle, 1);
         grid.Children.Add(toggle);
 
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse(select ? "#FF69B4" : "#F3C2D4")),
+            BorderThickness = new Thickness(select ? 2 : 1),
+            Background = new SolidColorBrush(Avalonia.Media.Color.Parse(select ? "#FFF0F6" : "#FFFFFF")),
+            Padding = new Thickness(10, 8),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Tag = id
+        };
         card.Child = grid;
-
-        // 点卡片（非按钮区域）加载到表单
         card.PointerPressed += (_, _) => LoadServerIntoForm(id);
         return card;
     }
@@ -205,11 +271,11 @@ public partial class McpConfigPanel : UserControl
     {
         return new Border
         {
-            CornerRadius = new Avalonia.CornerRadius(999),
-            Padding = new Avalonia.Thickness(8, 2),
+            CornerRadius = new CornerRadius(999),
+            Padding = new Thickness(8, 2),
             Background = new SolidColorBrush(Avalonia.Media.Color.Parse(bg)),
             BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse("#F3C2D4")),
-            BorderThickness = new Avalonia.Thickness(1),
+            BorderThickness = new Thickness(1),
             Child = new TextBlock
             {
                 Text = text,
@@ -245,6 +311,29 @@ public partial class McpConfigPanel : UserControl
         return ("未加载", "#FFE1EE", "#7A5564");
     }
 
+    // ===== 表单操作（保留原有逻辑） =====
+
+    private void ShowEmptyHint()
+    {
+        EmptyHintPanel.IsVisible = true;
+        EditFormPanel.IsVisible = false;
+    }
+
+    private void ShowEditForm()
+    {
+        EmptyHintPanel.IsVisible = false;
+        EditFormPanel.IsVisible = true;
+    }
+
+    private void ShowStatusMessage()
+    {
+        // 状态文字在表单的 StatusText，确保表单可见
+        if (!EditFormPanel.IsVisible)
+        {
+            ShowEditForm();
+        }
+    }
+
     private void StartNewServer()
     {
         _selectedId = null;
@@ -259,11 +348,8 @@ public partial class McpConfigPanel : UserControl
         EnvBox.Text = string.Empty;
         HeadersBox.Text = string.Empty;
         StatusText.Text = "正在创建新的 MCP 服务，填写后点「保存」。";
-        // 取消卡片高亮
-        foreach (var child in ServerCardsPanel.Children)
-        {
-            if (child is Border b) b.BorderThickness = new Avalonia.Thickness(1);
-        }
+        ShowEditForm();
+        RefreshServerListHighlight(null);
     }
 
     private void LoadServerIntoForm(string id)
@@ -289,17 +375,18 @@ public partial class McpConfigPanel : UserControl
             ? (server.LastStatus ?? "已加载服务。")
             : $"{server.LastStatus}：{server.LastError}";
 
+        ShowEditForm();
         RefreshServerListHighlight(id);
     }
 
-    private void RefreshServerListHighlight(string id)
+    private void RefreshServerListHighlight(string? id)
     {
         foreach (var child in ServerCardsPanel.Children)
         {
             if (child is not Border b || b.Tag is not string cardId) continue;
-            var selected = string.Equals(cardId, id, StringComparison.OrdinalIgnoreCase);
+            var selected = id is not null && string.Equals(cardId, id, StringComparison.OrdinalIgnoreCase);
             b.BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse(selected ? "#FF69B4" : "#F3C2D4"));
-            b.BorderThickness = new Avalonia.Thickness(selected ? 2 : 1);
+            b.BorderThickness = new Thickness(selected ? 2 : 1);
             b.Background = new SolidColorBrush(Avalonia.Media.Color.Parse(selected ? "#FFF0F6" : "#FFFFFF"));
         }
     }
@@ -381,7 +468,7 @@ public partial class McpConfigPanel : UserControl
         _store.DeleteServer(id);
         _reloadChatService?.Invoke();
         RefreshServerList();
-        StartNewServer();
+        ShowEmptyHint();
         StatusText.Text = "MCP 服务已删除。";
     }
 
@@ -407,22 +494,6 @@ public partial class McpConfigPanel : UserControl
         }
     }
 
-    private void ImportJson()
-    {
-        try
-        {
-            var imported = _store.ImportJson(ImportJsonBox.Text ?? string.Empty);
-            _reloadChatService?.Invoke();
-            RefreshServerList(imported.FirstOrDefault()?.Id);
-            StatusText.Text = $"已导入 {imported.Count} 个 MCP 服务。";
-            ImportJsonBox.Text = string.Empty;
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = "导入失败：" + ex.Message;
-        }
-    }
-
     private static List<string> ReadLines(string? text)
         => (text ?? string.Empty)
             .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -445,14 +516,13 @@ public partial class McpConfigPanel : UserControl
         return map;
     }
 
-    private static string FormatMap(Dictionary<string, string> map)
+    private static string FormatMap(IReadOnlyDictionary<string, string> map)
     {
         var sb = new StringBuilder();
-        foreach (var kvp in map.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var kvp in map)
         {
-            sb.AppendLine($"{kvp.Key}={kvp.Value}");
+            sb.Append(kvp.Key).Append('=').AppendLine(kvp.Value);
         }
-
         return sb.ToString().TrimEnd();
     }
 }

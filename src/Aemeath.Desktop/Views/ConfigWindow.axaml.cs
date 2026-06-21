@@ -84,6 +84,7 @@ public partial class ConfigWindow : Window
         // MCP 面板：合并自原独立 McpConfigWindow。面板负责服务增删改/测试/导入，
         // 依赖下载与内置服务配置仍由本窗口处理（通过事件回调）。
         InitMcpPanel();
+        InitSkillPanel();
 
         BrowseAvatarButton.Click += async (_, _) => await PickAvatarAsync();
         AvatarMaleRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
@@ -881,6 +882,15 @@ public partial class ConfigWindow : Window
         if (_chatService is AemiChatService aemiChatService)
         {
             aemiChatService.McpStatusChanged += (_, status) => McpPanel.UpdateOverallStatus(status);
+        }
+    }
+
+    /// <summary>初始化 Skill 面板：复用 ChatService 的 SkillService 实例，reload 回调触发 AI 重建。</summary>
+    private void InitSkillPanel()
+    {
+        if (_chatService is AemiChatService aemiChatService)
+        {
+            SkillPanel.Configure(aemiChatService.SkillService, () => aemiChatService.ReloadSkills());
         }
     }
 

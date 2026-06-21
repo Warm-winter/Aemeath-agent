@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Aemeath.Desktop.Views.McpImportWindow"
+        Title="从 JSON 导入 MCP 服务"
+        Width="560" Height="460"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="#FFF8FB">
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+    <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,10">
+      <TextBlock Text="从 JSON 导入" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+      <TextBlock Text="粘贴标准 mcpServers 配置（{ &quot;mcpServers&quot;: { ... } }），确认后导入。" Classes="muted" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <Border Grid.Row="1" CornerRadius="10" Background="#FFFFFF" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Padding="8">
+      <TextBox x:Name="JsonBox"
+               AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               FontFamily="Cascadia Code,Consolas,Courier New"
+               FontSize="13"
+               PlaceholderText="粘贴 mcpServers JSON 配置，例如 {&quot;mcpServers&quot;:{...}}"/>
+    </Border>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <TextBlock x:Name="ErrorText" Text="" Classes="muted" Foreground="#D94A62" VerticalAlignment="Center" TextWrapping="Wrap"/>
+      <Button x:Name="CancelButton" Content="取消" Classes="ghost" MinWidth="80" Click="CancelButton_Click"/>
+      <Button x:Name="ConfirmButton" Content="导入" Classes="primary" MinWidth="80" Click="ConfirmButton_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

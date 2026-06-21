@@ -153,7 +153,7 @@ public sealed class SkillLoader
             }
 
             var skillName = Path.GetFileName(dir);
-            var pkg = BuildPackage(files, isBuiltin: false, skillName);
+            var pkg = BuildPackage(files, isBuiltin: false, skillName, directory: dir);
             if (pkg is not null)
             {
                 packages.Add(pkg);
@@ -166,11 +166,13 @@ public sealed class SkillLoader
     /// <summary>
     /// 把 skill 的文件集合组装成 SkillPackage。
     /// files 键为文件名（不含扩展名），SKILL 是入口。
+    /// directory：用户 skill 的目录绝对路径（内置传 null）。
     /// </summary>
     private static SkillPackage? BuildPackage(
         Dictionary<string, string> files,
         bool isBuiltin,
-        string fallbackName)
+        string fallbackName,
+        string? directory = null)
     {
         if (!files.TryGetValue("SKILL", out var skillContent) || string.IsNullOrWhiteSpace(skillContent))
         {
@@ -180,6 +182,9 @@ public sealed class SkillLoader
         var (frontMatter, body) = SplitFrontMatter(skillContent);
         var manifest = ParseManifest(frontMatter, fallbackName);
         manifest.IsBuiltin = isBuiltin;
+        manifest.Directory = directory;
+        // 内置 skill 恒启用（锁定）；用户 skill 的 Enabled 由 SkillService 根据状态文件决定
+        manifest.Enabled = isBuiltin;
 
         // 人格提示词：SKILL.md 正文 + interaction.md（互动风格、典型回复示例、禁区）
         var persona = body;

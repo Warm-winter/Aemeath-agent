@@ -26,6 +26,7 @@ internal static class AemiUi
     public const string Ghost = "#4A2A3A";
     public const string TextSecondary = "#7A5564";
     public const string TextMuted = "#9A7482";
+    public const string TextFaint = "#B58B9C";
     public const string Success = "#3CA66B";
     public const string Error = "#D94A62";
 
@@ -127,6 +128,37 @@ internal static class AemiUi
 
     public static TextBlock Label(string text)
         => Text(text, 12, TextMuted, FontWeight.SemiBold);
+
+    /// <summary>
+    /// 根据状态返回状态点颜色（cherry-studio 风格的 4 态配色）。
+    /// status 取值：disabled/connecting/ok/error。
+    /// </summary>
+    public static string StatusColor(string? status)
+    {
+        return (status ?? string.Empty).ToLowerInvariant() switch
+        {
+            "ok" or "connected" or "success" => Success,       // 绿
+            "connecting" or "running" or "loading" => "#E8B84D", // 黄
+            "error" or "failed" or "fail" => Error,            // 红
+            _ => TextFaint                                        // 灰（disabled/未加载）
+        };
+    }
+
+    /// <summary>状态点对应的中文标签。</summary>
+    public static string StatusLabel(string? status, bool enabled = true)
+    {
+        if (!enabled)
+        {
+            return "已停用";
+        }
+        return (status ?? string.Empty).ToLowerInvariant() switch
+        {
+            "ok" or "connected" or "success" => "已连接",
+            "connecting" or "running" or "loading" => "连接中",
+            "error" or "failed" or "fail" => "错误",
+            _ => "未加载"
+        };
+    }
 
     /// <summary>从 avares URI 加载位图。</summary>
     public static Bitmap LoadBitmap(string uri)

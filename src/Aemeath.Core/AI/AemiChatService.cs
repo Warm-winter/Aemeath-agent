@@ -18,6 +18,9 @@ public class AemiChatService : IChatService, IAsyncDisposable
     private string _currentProvider = "OpenAI";
     private readonly KnowledgeBaseService _knowledgeBase = new();
     private readonly SkillService _skillService = new();
+
+    /// <summary>Skill 服务（供 UI 面板管理复用同一实例）。</summary>
+    public SkillService SkillService => _skillService;
     public ToolConfirmationService ToolConfirmationService { get; } = new();
     private readonly Dictionary<string, Func<string, Task<string>>> _customTools = new();
     private readonly Dictionary<string, string> _customToolDescriptions = new();
@@ -84,7 +87,9 @@ public class AemiChatService : IChatService, IAsyncDisposable
         var systemPrompt = persona + "\n\n" + AemiSystemPrompt.CapabilityBase;
 
         // skill 提供的知识条目并入知识库（与现有内置知识库互补）
+        // 先清空旧的，避免禁用/删除的 skill 条目残留
         var skillEntries = _skillService.GetKnowledgeEntries();
+        _knowledgeBase.ClearExtraEntries();
         if (skillEntries.Count > 0)
         {
             _knowledgeBase.AddEntries(skillEntries);
@@ -252,6 +257,16 @@ public class AemiChatService : IChatService, IAsyncDisposable
     public void ReloadMcpTools()
     {
         _ = ReloadMcpToolsAsync();
+    }
+
+    /// <summary>
+    /// Skill 变更后调用：重新加载 skill（人格 + 知识库），重建 Kernel 系统提示词。
+    /// 复用 TryReloadFromSettings 的重建流程（它会重新 LoadAll + 拼 persona + 重建 kernel + 重注入知识库）。
+    /// </summary>
+    public void ReloadSkills()
+    {
+        _skillService.Reload();
+        TryReloadFromSettings(out _);
     }
 
     public async Task ReloadMcpToolsAsync(CancellationToken cancellationToken = default)

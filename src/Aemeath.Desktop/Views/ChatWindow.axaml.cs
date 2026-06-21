@@ -545,7 +545,11 @@ public partial class ChatWindow : Window
             menu.Items.Add(new Separator());
         }
 
-        var servers = _mcpServerStore.ListServers();
+        // 受保护的内置服务（memory/filesystem）在快速菜单里也隐藏，
+        // 它们永远启用、不可由用户切换。与设置面板的过滤保持一致。
+        var servers = _mcpServerStore.ListServers()
+            .Where(s => !McpBuiltinRegistry.IsProtected(s.Id))
+            .ToList();
         if (servers.Count == 0)
         {
             menu.Items.Add(new MenuItem { Header = "暂无 MCP 服务", IsEnabled = false });

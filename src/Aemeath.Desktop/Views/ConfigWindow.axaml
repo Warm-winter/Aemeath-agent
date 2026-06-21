@@ -246,6 +246,12 @@
             </Border>
           </TabItem>
 
+          <TabItem Header="Skill 管理">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
+              <views:SkillConfigPanel x:Name="SkillPanel"/>
+            </Border>
+          </TabItem>
+
           <TabItem Header="界面与行为">
             <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <StackPanel Spacing="14">

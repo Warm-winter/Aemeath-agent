@@ -36,6 +36,16 @@ public sealed class KnowledgeBaseService
         _cacheDirty = true;
     }
 
+    /// <summary>清空外部注入的条目（重新加载 skill 时调用，避免禁用的 skill 条目残留）。</summary>
+    public void ClearExtraEntries()
+    {
+        if (_extraEntries.Count > 0)
+        {
+            _extraEntries.Clear();
+            _cacheDirty = true;
+        }
+    }
+
     /// <summary>合并内置条目 + 外部注入条目（带缓存）。</summary>
     private IReadOnlyList<KnowledgeBaseEntry> GetAllEntries()
     {
