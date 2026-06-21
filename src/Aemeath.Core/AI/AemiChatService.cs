@@ -3,6 +3,7 @@ using Aemeath.Core.Configuration;
 using Aemeath.Core.Tools;
 using Aemeath.Core.MCP;
 using Aemeath.Core.Knowledge;
+using Aemeath.Core.Skills;
 using System.Diagnostics;
 using Microsoft.SemanticKernel;
 using System.Text;
@@ -16,6 +17,7 @@ public class AemiChatService : IChatService, IAsyncDisposable
     private KernelMixinBase? _currentKernel;
     private string _currentProvider = "OpenAI";
     private readonly KnowledgeBaseService _knowledgeBase = new();
+    private readonly SkillService _skillService = new();
     public ToolConfirmationService ToolConfirmationService { get; } = new();
     private readonly Dictionary<string, Func<string, Task<string>>> _customTools = new();
     private readonly Dictionary<string, string> _customToolDescriptions = new();
@@ -71,9 +73,22 @@ public class AemiChatService : IChatService, IAsyncDisposable
     {
         _currentProvider = _settingsService.Current.CurrentProvider;
         LastInitializationError = null;
-        var systemPrompt = string.Equals(_settingsService.Current.SystemPrompt, "Professional", StringComparison.OrdinalIgnoreCase)
-            ? AemiSystemPrompt.Professional
-            : AemiSystemPrompt.Default;
+
+        // 加载 Skill（人格定义 + 知识库），并把 skill 知识并入本地知识库
+        _skillService.LoadAll();
+        var persona = _skillService.GetPersonaPrompt();
+        if (string.IsNullOrWhiteSpace(persona))
+        {
+            persona = AemiSystemPrompt.FallbackPersona;
+        }
+        var systemPrompt = persona + "\n\n" + AemiSystemPrompt.CapabilityBase;
+
+        // skill 提供的知识条目并入知识库（与现有内置知识库互补）
+        var skillEntries = _skillService.GetKnowledgeEntries();
+        if (skillEntries.Count > 0)
+        {
+            _knowledgeBase.AddEntries(skillEntries);
+        }
 
         var defaultModel = _settingsService.Current.DefaultModel;
         var keyInfo = _settingsService.GetApiKeyInfo(_currentProvider);

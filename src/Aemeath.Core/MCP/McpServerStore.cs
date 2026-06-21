@@ -71,6 +71,12 @@ public sealed class McpServerStore
 
     public bool DeleteServer(string id)
     {
+        // 受保护的内置服务（memory/filesystem）禁止删除，防止用户误删核心功能。
+        if (McpBuiltinRegistry.IsProtected(id))
+        {
+            return false;
+        }
+
         var path = GetServerPath(NormalizeId(id));
         // 加锁，避免与并发的 SaveServer/LoadFile 竞态（CON-007）。
         _fileLock.Wait();
@@ -94,6 +100,12 @@ public sealed class McpServerStore
     {
         var server = GetServer(id);
         if (server is null)
+        {
+            return;
+        }
+
+        // 受保护的服务拒绝禁用（永远保持启用）
+        if (McpBuiltinRegistry.IsProtected(id) && !enabled)
         {
             return;
         }

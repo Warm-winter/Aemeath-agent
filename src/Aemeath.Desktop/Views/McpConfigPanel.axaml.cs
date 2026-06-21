@@ -111,7 +111,9 @@ public partial class McpConfigPanel : UserControl
     public void RefreshServerList(string? selectId = null)
     {
         ServerCardsPanel.Children.Clear();
-        foreach (var server in _store.ListServers())
+        // 受保护的内置服务（memory/filesystem）对用户隐藏，避免误删核心功能。
+        // 它们在后台仍由 McpRuntimeService 强制启用。
+        foreach (var server in _store.ListServers().Where(s => !McpBuiltinRegistry.IsProtected(s.Id)))
         {
             ServerCardsPanel.Children.Add(BuildServerCard(server, server.Id == selectId));
         }

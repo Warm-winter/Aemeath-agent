@@ -21,4 +21,29 @@
     <EmbeddedResource Include="Knowledge\knowledge_base.zh-CN.json" />
   </ItemGroup>
 
+  <!-- 内置 Aemeath-skill（人格定义 + 知识库），用 LogicalName 固定资源名便于运行时加载 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Skills\AemeathSkill\SKILL.md">
+      <LogicalName>Aemeath.Skills.aemeath.SKILL.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\profile.md">
+      <LogicalName>Aemeath.Skills.aemeath.profile.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\personality.md">
+      <LogicalName>Aemeath.Skills.aemeath.personality.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\interaction.md">
+      <LogicalName>Aemeath.Skills.aemeath.interaction.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\memory.md">
+      <LogicalName>Aemeath.Skills.aemeath.memory.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\relations.md">
+      <LogicalName>Aemeath.Skills.aemeath.relations.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Skills\AemeathSkill\conflicts.md">
+      <LogicalName>Aemeath.Skills.aemeath.conflicts.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

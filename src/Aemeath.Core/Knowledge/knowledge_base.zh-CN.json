@@ -24,14 +24,6 @@
     "sourceUrl": "https://wuthering.gg/zh-Hans/characters/aemeath"
   },
   {
-    "id": "aemeath-persona",
-    "title": "项目内小爱人格约束",
-    "category": "项目设定",
-    "aliases": ["性格", "人格", "说话方式", "语气", "俏皮", "活泼"],
-    "content": "本项目系统提示词设定小爱自称“小爱”，性格活泼俏皮、温暖关心用户，解决问题时应优先执行可用工具并给出纯文本反馈。这是项目内角色化助手设定，不应伪称为游戏官方台词。",
-    "sourceUrl": "src/Aemeath.Core/AI/Prompts/AemiSystemPrompt.cs"
-  },
-  {
     "id": "ww-fact-safety",
     "title": "鸣潮资料回答边界",
     "category": "安全边界",

@@ -75,7 +75,15 @@ public sealed class McpRuntimeService : IAsyncDisposable
         try
         {
             await DisposeClientsAsync();
-            var enabledServers = _store.ListServers().Where(s => s.Enabled).ToList();
+            // 主动关闭本机不支持的 odr 服务，避免它加载失败拖累其他工具。
+            // odr.exe 默认不随程序分发，用户未单独安装时加载必失败。
+            await DisableUnsupportedOdrIfNeeded();
+
+            // 受保护的内置服务（memory/filesystem）强制纳入加载，即使 Enabled 字段为 false。
+            // 普通服务仍然只加载 Enabled 的。
+            var enabledServers = _store.ListServers()
+                .Where(s => s.Enabled || McpBuiltinRegistry.IsProtected(s.Id))
+                .ToList();
             if (enabledServers.Count == 0)
             {
                 return null;
@@ -476,6 +484,37 @@ public sealed class McpRuntimeService : IAsyncDisposable
         return url.Contains("/sse", StringComparison.OrdinalIgnoreCase)
             ? HttpTransportMode.Sse
             : HttpTransportMode.AutoDetect;
+    }
+
+    /// <summary>
+    /// 本机不支持 odr.exe 时，主动停用 windows_odr 服务。
+    /// odr.exe 不随程序分发，用户未单独安装时该服务加载必失败。
+    /// 虽然独立超时机制已能让它的失败不影响其他工具，但主动停用可以避免无谓的超时等待和错误状态。
+    /// </summary>
+    private async Task DisableUnsupportedOdrIfNeeded()
+    {
+        try
+        {
+            var odrServer = _store.ListServers().FirstOrDefault(s =>
+                string.Equals(s.Id, "windows_odr", StringComparison.OrdinalIgnoreCase) && s.Enabled);
+            if (odrServer is null)
+            {
+                return;
+            }
+
+            if (!IsCommandAvailable(odrServer.Command))
+            {
+                odrServer.LastStatus = "error";
+                odrServer.LastError = "本机未检测到 odr.exe，已自动停用以避免影响其他工具。如需启用，请先安装 odr。";
+                _store.SetEnabled(odrServer.Id, false);
+                _store.SaveServer(odrServer);
+                await Task.CompletedTask;
+            }
+        }
+        catch
+        {
+            // odr 检测失败不阻断主加载流程
+        }
     }
 
     /// <summary>

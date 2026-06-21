@@ -6,10 +6,48 @@ namespace Aemeath.Core.Knowledge;
 public sealed class KnowledgeBaseService
 {
     private readonly Lazy<IReadOnlyList<KnowledgeBaseEntry>> _entries;
+    private readonly List<KnowledgeBaseEntry> _extraEntries = new();
+    private IReadOnlyList<KnowledgeBaseEntry> _allEntriesCache = Array.Empty<KnowledgeBaseEntry>();
+    private bool _cacheDirty = true;
 
     public KnowledgeBaseService()
     {
         _entries = new Lazy<IReadOnlyList<KnowledgeBaseEntry>>(LoadEntries);
+    }
+
+    /// <summary>
+    /// 追加额外的知识库条目（例如来自 Skill 的背景资料）。
+    /// 这些条目与内置条目一起参与检索，形成互补。
+    /// </summary>
+    public void AddEntries(IEnumerable<KnowledgeBaseEntry> entries)
+    {
+        if (entries is null)
+        {
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry is not null && !_extraEntries.Any(x => string.Equals(x.Id, entry.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                _extraEntries.Add(entry);
+            }
+        }
+        _cacheDirty = true;
+    }
+
+    /// <summary>合并内置条目 + 外部注入条目（带缓存）。</summary>
+    private IReadOnlyList<KnowledgeBaseEntry> GetAllEntries()
+    {
+        if (_cacheDirty)
+        {
+            var combined = new List<KnowledgeBaseEntry>(_entries.Value.Count + _extraEntries.Count);
+            combined.AddRange(_entries.Value);
+            combined.AddRange(_extraEntries);
+            _allEntriesCache = combined;
+            _cacheDirty = false;
+        }
+        return _allEntriesCache;
     }
 
     public IReadOnlyList<KnowledgeBaseEntry> Search(string query, int maxResults = 4)
@@ -20,7 +58,7 @@ public sealed class KnowledgeBaseService
         }
 
         var normalizedQuery = Normalize(query);
-        var scored = _entries.Value
+        var scored = GetAllEntries()
             .Select(entry => new
             {
                 Entry = entry,
