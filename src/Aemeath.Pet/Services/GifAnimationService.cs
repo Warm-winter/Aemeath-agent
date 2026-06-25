@@ -28,39 +28,58 @@ public class GifAnimationService
 
     public Task LoadGifAsync(string gifPath, PetState state)
     {
-        try
+        // GIF 解码（ImageSharp）很吃 CPU，放后台线程；Avalonia Bitmap 必须在 UI 线程创建，
+        // 所以后台只解到 PNG 字节，再切回 UI 线程构造 Bitmap。避免启动时卡 UI 数秒。
+        return Task.Run(() =>
         {
-            using Stream stream = gifPath.StartsWith("avares://", StringComparison.OrdinalIgnoreCase)
-                ? AssetLoader.Open(new Uri(gifPath))
-                : File.OpenRead(gifPath);
-
-            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(stream);
-            var frames = new List<GifFrame>();
-
-            for (int i = 0; i < image.Frames.Count; i++)
+            List<(byte[] png, TimeSpan delay)> decoded;
+            try
             {
-                using var frameImage = image.Frames.CloneFrame(i);
-                using var ms = new MemoryStream();
-                frameImage.SaveAsPng(ms);
-                ms.Position = 0;
+                using Stream stream = gifPath.StartsWith("avares://", StringComparison.OrdinalIgnoreCase)
+                    ? AssetLoader.Open(new Uri(gifPath))
+                    : File.OpenRead(gifPath);
 
-                var delayCentiseconds = image.Frames[i].Metadata.GetGifMetadata().FrameDelay;
-                var delay = TimeSpan.FromMilliseconds(Math.Max(20, delayCentiseconds <= 0 ? 100 : delayCentiseconds * 10));
-                var bitmap = new Bitmap(ms);
-                frames.Add(new GifFrame(bitmap, delay));
+                using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(stream);
+                decoded = new List<(byte[], TimeSpan)>(image.Frames.Count);
+                for (int i = 0; i < image.Frames.Count; i++)
+                {
+                    using var frameImage = image.Frames.CloneFrame(i);
+                    using var ms = new MemoryStream();
+                    frameImage.SaveAsPng(ms);
+                    var delayCentiseconds = image.Frames[i].Metadata.GetGifMetadata().FrameDelay;
+                    var delay = TimeSpan.FromMilliseconds(Math.Max(20, delayCentiseconds <= 0 ? 100 : delayCentiseconds * 10));
+                    decoded.Add((ms.ToArray(), delay));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"加载 GIF 失败 {gifPath}: {ex.Message}");
+                return;
             }
 
-            if (frames.Count > 0)
+            // 切回 UI 线程构造 Bitmap（Avalonia 要求）
+            Dispatcher.UIThread.Post(() =>
             {
-                _stateFrames[state] = frames;
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"加载 GIF 失败 {gifPath}: {ex.Message}");
-        }
+                try
+                {
+                    var frames = new List<GifFrame>(decoded.Count);
+                    foreach (var (png, delay) in decoded)
+                    {
+                        using var ms = new MemoryStream(png);
+                        frames.Add(new GifFrame(new Bitmap(ms), delay));
+                    }
 
-        return Task.CompletedTask;
+                    if (frames.Count > 0)
+                    {
+                        _stateFrames[state] = frames;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"构造 GIF 帧失败 {gifPath}: {ex.Message}");
+                }
+            });
+        });
     }
 
     public void SetState(PetState state, bool restart = false)

@@ -28,11 +28,7 @@ public sealed class McpDependencyService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(18);
     private readonly HttpClient _httpClient;
 
-    public static string DefaultBinDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Aemeath",
-        "tools",
-        "bin");
+    public static string DefaultBinDirectory => Path.Combine(RuntimePaths.RuntimeRoot, "bin");
 
     public McpDependencyService(HttpClient? httpClient = null)
     {

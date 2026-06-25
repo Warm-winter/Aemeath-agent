@@ -45,6 +45,7 @@ public partial class App : Application
             desktop.MainWindow = _petWindow;
             AppLogger.Info("app", "main window assigned");
             AppLogger.Info("app", "framework initialized");
+            BridgeAssetDeployer.DeployUfoRunner();
             StartMcpBackgroundReload();
         }
 

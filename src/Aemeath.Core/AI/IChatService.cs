@@ -26,8 +26,6 @@ public interface IChatService
 
     Task<string> SendMessageAsync(string message, IReadOnlyList<ChatAttachment>? attachments, CancellationToken cancellationToken = default);
 
-    Task<string> SummarizeAsync(string message, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// 发送消息并获取流式响应
     /// </summary>

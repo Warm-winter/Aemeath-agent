@@ -230,9 +230,25 @@ dotnet test Aemeath.sln
 
 项目仍在持续开发中。当前已经从“能运行的桌宠基线”推进到“面向鸣潮玩家的角色化 AI 桌面助手”。后续仍适合继续完善自动化测试、安装包发布、更多桌宠互动、更多角色知识库内容和更完整的 MCP 工具体验。
 
-## 致谢
+## 致谢与第三方资源声明
 
-- UI风格参考项目：Ameath 桌宠项目，https://gitee.com/lzy-buaa-jdi/ameath
+本项目在开发过程中参考/集成了以下开源项目，谨致谢意。各资源的原始授权文件统一保存在 `assets/notices/` 目录下。
+
+### UI 风格参考
+
+- Ameath 桌宠项目：https://gitee.com/lzy-buaa-jdi/ameath
+
+### 第三方资源
+
+- **aemeath-mini-codex-pet**（MIT）：提供额外桌宠动画 GIF 资源。声明文件：`assets/notices/aemeath-mini-codex-pet-LICENSE.txt`、`aemeath-mini-codex-pet-NOTICE.md`
+- **Aemeath-skill**（MIT）：提供爱弥斯语气风格与部分知识库。声明文件：`assets/notices/Aemeath-skill-LICENSE.txt`
+- **ameath**（MIT）：桌宠/聊天/设置界面的视觉风格参考及 Zpix 字体来源。声明文件：`assets/notices/ameath-reference-LICENSE.txt`
+- **Mem0**（Apache 2.0）：核心长期记忆系统，通过自带 Python 桥接调用其 SDK（未修改核心逻辑）。声明文件：`assets/notices/mem0-LICENSE.txt`
+- **Hermes-Agent**（MIT）：图片识别工具（VisionPlugin）的实现思路与提示词工程参考，以 C# 重新实现。声明文件：`assets/notices/hermes-agent-LICENSE.txt`
+- **UFO**（MIT）：电脑控制能力的 Agent 规划与 UIA 操作逻辑参考，以 C# 重新实现；并支持用户可选安装 UFO 作为高阶控制后端。声明文件：`assets/notices/UFO-LICENSE.txt`、`assets/notices/UFO-DISCLAIMER.md`
+
+> 完整的第三方致谢清单见 `assets/notices/THIRD_PARTY_NOTICES.md`。
+
 ## License
 
 本项目使用 MIT License。详见 [LICENSE](LICENSE)。

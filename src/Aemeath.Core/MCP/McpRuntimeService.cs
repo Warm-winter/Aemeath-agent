@@ -79,10 +79,12 @@ public sealed class McpRuntimeService : IAsyncDisposable
             // odr.exe 默认不随程序分发，用户未单独安装时加载必失败。
             await DisableUnsupportedOdrIfNeeded();
 
-            // 受保护的内置服务（memory/filesystem）强制纳入加载，即使 Enabled 字段为 false。
+            // 受保护的内置服务（filesystem）强制纳入加载，即使 Enabled 字段为 false。
             // 普通服务仍然只加载 Enabled 的。
+            // 已废弃的旧内置服务（memory——长期记忆改由 Mem0 提供）永远跳过，即使配置里还留着旧条目。
+            var skipLegacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "memory" };
             var enabledServers = _store.ListServers()
-                .Where(s => s.Enabled || McpBuiltinRegistry.IsProtected(s.Id))
+                .Where(s => !skipLegacy.Contains(s.Id) && (s.Enabled || McpBuiltinRegistry.IsProtected(s.Id)))
                 .ToList();
             if (enabledServers.Count == 0)
             {

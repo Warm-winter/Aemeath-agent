@@ -1,0 +1,261 @@
+using Aemeath.Core.AI;
+using Aemeath.Core.Configuration;
+using Microsoft.SemanticKernel;
+using System.ComponentModel;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+
+namespace Aemeath.Core.Tools;
+
+/// <summary>
+/// 图片识别插件：让纯文本模型也能「看」图片。
+///
+/// 工作原理（移植自 NousResearch/hermes-agent 的 vision_analyze 工具，精简后用 C# 实现）：
+/// 当主对话模型不支持视觉时，本工具调用一个**辅助视觉模型**（OpenAI 兼容、支持 image_url 的多模态模型）
+/// 把图片描述成文本，再把描述返回给主模型——从而让纯文本模型间接具备图片识别能力。
+///
+/// 关键设计（来自 hermes 的提示词工程）：
+/// - 工具 description 明确列举触发场景（用户提到图片路径/截图/URL 时必须调用），防止模型偷懒不调用。
+/// - 发给辅助模型的提示词用「Fully describe and explain everything about this image, then answer...」模板。
+///
+/// 注意：若主模型本身已支持视觉，图片会通过 ChatAttachment 直接随消息发送（见 KernelMixinBase），
+/// 此时模型不需要本工具也能看图。本工具主要服务于「用户给了路径/截图，但主模型是纯文本」的场景。
+/// </summary>
+public class VisionPlugin
+{
+    private const string FallbackVisionModel = "gpt-4o-mini";
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(120) };
+
+    private readonly Func<(string Model, string Endpoint, string ApiKey)?> _configFactory;
+
+    /// <summary>
+    /// 构造。configFactory 在每次调用时返回当前视觉辅助配置（模型/endpoint/key），
+    /// 通常传入 AemiChatService.BuildVisionConfig。
+    /// </summary>
+    public VisionPlugin(Func<(string Model, string Endpoint, string ApiKey)?> configFactory)
+    {
+        _configFactory = configFactory;
+    }
+
+    [KernelFunction("vision_analyze")]
+    [Description(
+        "Analyze and understand an image so you can answer questions about it. " +
+        "Call this whenever the user references an image and you cannot see it directly: " +
+        "a filepath in their message (e.g. C:\\...\\photo.png), a screenshot you just took with take_screenshot, " +
+        "an http(s) URL of an image, or any file the user asks you to 'look at / read / 看一下 / 识别' that is a picture. " +
+        "Returns a detailed text description of the image. Pass the image location in image_source and what you need to know in question. " +
+        "Do NOT say you cannot see images or ask the user to describe them — call this tool instead. " +
+        "当用户提到任何图片（路径、截图、网址）并询问内容时，必须调用本工具而不是回复看不到。")]
+    public async Task<string> AnalyzeImageAsync(
+        [Description("图片来源：本地文件绝对路径、或 http(s) 图片网址")] string image_source,
+        [Description("你想了解图片的什么，用自然语言提问（如：这张图里有什么文字？这张截图怎么操作？）")] string question)
+    {
+        if (string.IsNullOrWhiteSpace(image_source))
+        {
+            return "图片识别失败：image_source（图片来源）不能为空。";
+        }
+
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            question = "请详细描述这张图片的内容。";
+        }
+
+        try
+        {
+            var config = _configFactory();
+            if (config is null)
+            {
+                return "图片识别失败：尚未配置视觉辅助模型。请在「设置 → 记忆管理」里配置辅助视觉模型，或确保当前 Provider 的模型支持图片。";
+            }
+
+            var (model, endpoint, apiKey) = config.Value;
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                model = FallbackVisionModel;
+            }
+
+            // 取图片并转 base64 data URL（本地路径有白名单校验，URL 则直接传给远端下载）
+            var dataUrl = await ResolveAsDataUrlAsync(image_source);
+            if (dataUrl is null)
+            {
+                return $"图片识别失败：无法读取图片来源 {image_source}（路径不在允许范围内或文件不存在）。";
+            }
+
+            var prompt = "Fully describe and explain everything about this image, then answer the following question:\n\n" + question;
+            var description = await CallVisionModelAsync(model, endpoint, apiKey, prompt, dataUrl);
+            // 把来源信息附上，方便主模型后续追问时复用
+            return $"[图片识别结果]\n来源：{image_source}\n\n{description}";
+        }
+        catch (Exception ex)
+        {
+            return $"图片识别失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>把本地路径或 http(s) URL 统一转成 base64 data URL。</summary>
+    private static async Task<string?> ResolveAsDataUrlAsync(string source)
+    {
+        source = source.Trim();
+
+        if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            // 远端图片：下载后转 base64。本地桌面应用场景，不做 SSRF 限制（用户主动指定）。
+            try
+            {
+                var bytes = await HttpClient.GetByteArrayAsync(source);
+                var mime = GuessMimeFromUrl(source);
+                return ToDataUrl(bytes, mime);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // 本地路径：走与 FileSystemPlugin 一致的白名单（用户主目录 + 临时目录，禁止 AppData\Aemeath）
+        if (!IsAllowedPath(source) || !File.Exists(source))
+        {
+            return null;
+        }
+
+        var data = await File.ReadAllBytesAsync(source);
+        if (data.Length == 0)
+        {
+            return null;
+        }
+
+        return ToDataUrl(data, GuessMimeFromExtension(source));
+    }
+
+    private static string ToDataUrl(byte[] bytes, string mime)
+        => $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+
+    private static string GuessMimeFromUrl(string url)
+    {
+        var path = url.Split('?')[0].Split('#')[0];
+        return GuessMimeFromExtension(path);
+    }
+
+    private static string GuessMimeFromExtension(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            _ => "image/jpeg"
+        };
+    }
+
+    /// <summary>
+    /// 调用 OpenAI 兼容的 chat completions 接口，用 image_url 内容块请求视觉描述。
+    /// 协议格式与 hermes-agent/auxiliary_client 一致：messages 含一个 image_url + text 的 user 消息。
+    /// </summary>
+    private static async Task<string> CallVisionModelAsync(string model, string endpoint, string apiKey, string prompt, string dataUrl)
+    {
+        var baseUrl = NormalizeBaseUrl(endpoint);
+        var url = baseUrl.TrimEnd('/') + "/chat/completions";
+
+        var body = new
+        {
+            model,
+            temperature = 0.1,
+            max_tokens = 1500,
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new { type = "text", text = prompt },
+                        new { type = "image_url", image_url = new { url = dataUrl } }
+                    }
+                }
+            }
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.Add("Authorization", "Bearer " + apiKey);
+        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+        using var resp = await HttpClient.SendAsync(req);
+        var json = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"视觉模型返回 {(int)resp.StatusCode}：{Truncate(json, 300)}");
+        }
+
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+        {
+            var first = choices[0];
+            if (first.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+            {
+                return content.GetString() ?? string.Empty;
+            }
+        }
+
+        throw new InvalidOperationException("视觉模型未返回有效内容：" + Truncate(json, 300));
+    }
+
+    private static string NormalizeBaseUrl(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            return "https://api.openai.com/v1";
+        }
+
+        var url = endpoint.Trim();
+        var idx = url.IndexOf("/v1", StringComparison.OrdinalIgnoreCase);
+        if (idx > 0)
+        {
+            url = url[..(idx + 3)];
+        }
+        else if (!url.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+        {
+            url = url.TrimEnd('/') + "/v1";
+        }
+
+        return url;
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";
+
+    /// <summary>与 FileSystemPlugin 一致的路径白名单：用户主目录 + 临时目录，禁止 AppData\Aemeath。</summary>
+    private static bool IsAllowedPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var full = Path.GetFullPath(path.Trim());
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var temp = Path.GetTempPath();
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath");
+
+            var inUser = !string.IsNullOrEmpty(userProfile) &&
+                         (full.StartsWith(userProfile + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(full, userProfile, StringComparison.OrdinalIgnoreCase));
+            var inTemp = full.StartsWith(temp, StringComparison.OrdinalIgnoreCase);
+            var inAppData = full.StartsWith(appData + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(full, appData, StringComparison.OrdinalIgnoreCase);
+
+            return (inUser || inTemp) && !inAppData;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

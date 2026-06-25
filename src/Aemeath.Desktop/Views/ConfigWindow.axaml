@@ -218,7 +218,14 @@
             <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
               <Grid ColumnDefinitions="330,*">
                 <StackPanel Spacing="12">
-                  <TextBlock Text="长期记忆" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+                  <TextBlock Text="长期记忆（Mem0）" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+                  <Border Background="#FFF6F2F7" CornerRadius="10" Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Mem0 记忆引擎依赖独立的 Python 环境（放在桌宠运行目录下，不占用 C 盘）。首次使用请点击下方按钮一键安装。" TextWrapping="Wrap" Classes="subtle"/>
+                      <TextBlock x:Name="Mem0InstallStatusText" Text="正在检测…" TextWrapping="Wrap" Classes="subtle"/>
+                      <Button x:Name="Mem0InstallButton" Content="安装 Mem0 依赖" Classes="primary" HorizontalAlignment="Left" MinWidth="160"/>
+                    </StackPanel>
+                  </Border>
                   <TextBlock x:Name="MemoryStatusText" Text="本地记忆仅保存在这台电脑" Classes="subtle"/>
                   <ListBox x:Name="MemoryListBox" MinHeight="430"/>
                   <WrapPanel>
@@ -228,17 +235,72 @@
                   </WrapPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="12" Margin="18,0,0,0">
-                  <TextBlock Text="记忆内容编辑" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <TextBox x:Name="MemoryEditorBox"
-                           AcceptsReturn="True"
-                           TextWrapping="Wrap"
-                           VerticalContentAlignment="Top"
-                           MinHeight="360"/>
-                  <Button x:Name="SaveMemoryButton" Content="保存修改" Classes="primary" HorizontalAlignment="Right" MinWidth="116"/>
+                  <TextBlock Text="记忆说明" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="22">
+小爱会在每轮对话后自动把重要信息存入 Mem0（由 Mem0 内部 AI 自动抽取，无需手动整理），
+并在下次相关对话时自动回忆。左侧列表可查看、删除、清空这些记忆。
+                  </TextBlock>
+                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="22" Margin="0,8,0,0">
+记忆按「全局」与「会话」两类存放：全局记忆跨所有对话保留漂泊者的长期偏好；
+会话记忆只属于当前打开的对话。关闭某个对话会保留其记忆，删除对话才会清除。
+                  </TextBlock>
                 </StackPanel>
               </Grid>
             </Border>
           </TabItem>
+
+          <TabItem Header="电脑控制">
+            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
+              <Grid ColumnDefinitions="420,*">
+                <StackPanel Spacing="14">
+                  <TextBlock Text="电脑控制" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="20">
+小爱可以自动操作电脑（点击界面、输入文字）来完成「打开微信给某人发消息」这类任务。
+这会真实操控你的电脑，因此每次执行前都会弹确认卡片，你同意后小爱才操作。
+                  </TextBlock>
+
+                  <StackPanel Spacing="6" Margin="0,4,0,0">
+                    <TextBlock Text="控制后端" Classes="subtle"/>
+                    <ComboBox x:Name="ComputerControlBackendBox" MinWidth="280">
+                      <ComboBoxItem Content="auto（推荐：优先 UFO，未安装则用内置控制）" Tag="auto"/>
+                      <ComboBoxItem Content="内置 C# 控制（无需安装，开箱即用）" Tag="uia"/>
+                      <ComboBoxItem Content="UFO（需先安装，能力更强）" Tag="ufo"/>
+                    </ComboBox>
+                  </StackPanel>
+
+                  <Border Background="#FFF6F2F7" CornerRadius="10" Padding="12" Margin="0,4,0,0">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="辅助视觉模型（电脑控制和图片识别都用它，需支持图片输入）" FontWeight="SemiBold" Classes="subtle"/>
+                      <TextBlock Text="从已配置的提供商里选一个模型，或选择「复用当前对话模型」。" TextWrapping="Wrap" Classes="subtle"/>
+                      <StackPanel Spacing="6">
+                        <TextBlock Text="视觉模型提供商" Classes="subtle"/>
+                        <ComboBox x:Name="VisionProviderBox" MinWidth="280" PlaceholderText="复用当前对话提供商"/>
+                        <TextBlock Text="视觉模型（留空则用该提供商默认模型）" Classes="subtle" Margin="0,4,0,0"/>
+                        <ComboBox x:Name="VisionModelBox" MinWidth="280" IsEditable="True" PlaceholderText="例如 gpt-4o-mini"/>
+                        <TextBlock Text="视觉模型 API Key（留空则用该提供商已保存的 Key）" Classes="subtle" Margin="0,4,0,0"/>
+                        <TextBox x:Name="VisionApiKeyBox" PlaceholderText="留空复用提供商 Key" PasswordChar="•"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Spacing="12" Margin="18,0,0,0">
+                  <TextBlock Text="UFO（可选高阶后端）" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="20">
+UFO 是微软开源的电脑控制 Agent，视觉理解能力更强，适合复杂任务。
+它体积较大、依赖较多，默认不启用；需要时按下方步骤安装。
+                  </TextBlock>
+                  <StackPanel Spacing="6" Margin="0,4,0,0">
+                    <TextBlock Text="UFO 专用 Python 解释器路径（安装 UFO 后填入，如 ...runtime\Aemeath-Agent-Ufo\Scripts\python.exe）" TextWrapping="Wrap" Classes="subtle"/>
+                    <TextBox x:Name="UfoPythonBox" PlaceholderText="留空则不启用 UFO" />
+                    <TextBlock x:Name="UfoStatusText" Text="UFO 状态：未检测" TextWrapping="Wrap" Classes="subtle" Margin="0,4,0,0"/>
+                    <Button x:Name="UfoCheckButton" Content="检测 UFO 是否可用" Classes="primary" HorizontalAlignment="Left" MinWidth="180"/>
+                  </StackPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </TabItem>
+
 
           <TabItem Header="MCP 配置">
             <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">

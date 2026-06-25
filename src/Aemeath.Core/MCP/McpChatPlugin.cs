@@ -8,8 +8,6 @@ namespace Aemeath.Core.MCP;
 public class McpChatPlugin
 {
     private readonly string _appDataPath;
-    private readonly string _memoryPath;
-    private readonly object _memoryLock = new();
 
     public McpChatPlugin()
     {
@@ -17,7 +15,6 @@ public class McpChatPlugin
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Aemeath");
         Directory.CreateDirectory(_appDataPath);
-        _memoryPath = Path.Combine(_appDataPath, "mcp_memory.json");
     }
 
     [KernelFunction("setup_builtin_mcp_servers")]
@@ -41,19 +38,11 @@ public class McpChatPlugin
                 : filesystemRoots.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             var configPath = Path.Combine(_appDataPath, "mcp_servers.json");
-            var memoryFilePath = Path.Combine(_appDataPath, "mcp_memory_store.jsonl");
 
             var builtin = new Dictionary<string, object?>
             {
-                ["memory"] = new
-                {
-                    command = bunPath,
-                    args = new[] { "x", "@modelcontextprotocol/server-memory" },
-                    env = new Dictionary<string, string>
-                    {
-                        ["MEMORY_FILE_PATH"] = memoryFilePath
-                    }
-                },
+                // 注意：内置「记忆」MCP（@modelcontextprotocol/server-memory）已移除，
+                // 长期记忆改由 Mem0 提供（见 Aemeath.Core.Memory）。这里只保留 filesystem。
                 ["filesystem"] = new
                 {
                     command = bunPath,
@@ -93,73 +82,6 @@ public class McpChatPlugin
         {
             return $"MCP 配置失败：{ex.Message}";
         }
-    }
-
-    [KernelFunction("mcp_memory_set")]
-    [Description("写入全局持久记忆键值")]
-    public string MemorySet(
-        [Description("记忆键") ] string key,
-        [Description("记忆值") ] string value)
-    {
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            return "记忆写入失败：key 不能为空";
-        }
-
-        // 读-改-写整体加锁，避免并发写入丢失（CON-005）。
-        lock (_memoryLock)
-        {
-            var db = LoadMemory();
-            db[key.Trim()] = value;
-            SaveMemory(db);
-        }
-        return $"记忆已写入：{key}";
-    }
-
-    [KernelFunction("mcp_memory_get")]
-    [Description("读取全局持久记忆键值")]
-    public string MemoryGet([Description("记忆键") ] string key)
-    {
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            return "记忆读取失败：key 不能为空";
-        }
-
-        var db = LoadMemory();
-        return db.TryGetValue(key.Trim(), out var value)
-            ? value
-            : $"未找到记忆：{key}";
-    }
-
-    [KernelFunction("mcp_memory_delete")]
-    [Description("删除全局持久记忆键值")]
-    public string MemoryDelete([Description("记忆键") ] string key)
-    {
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            return "记忆删除失败：key 不能为空";
-        }
-
-        lock (_memoryLock)
-        {
-            var db = LoadMemory();
-            var removed = db.Remove(key.Trim());
-            SaveMemory(db);
-            return removed ? $"记忆已删除：{key}" : $"未找到记忆：{key}";
-        }
-    }
-
-    [KernelFunction("mcp_memory_list")]
-    [Description("列出所有持久记忆键")]
-    public string MemoryList()
-    {
-        var db = LoadMemory();
-        if (db.Count == 0)
-        {
-            return "当前没有持久记忆";
-        }
-
-        return "持久记忆键：\n" + string.Join("\n", db.Keys.OrderBy(x => x));
     }
 
     private static string[] BuildFilesystemArgs(IEnumerable<string> roots)
@@ -234,42 +156,5 @@ public class McpChatPlugin
         }
 
         return null;
-    }
-
-    private Dictionary<string, string> LoadMemory()
-    {
-        if (!File.Exists(_memoryPath))
-        {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        try
-        {
-            var json = File.ReadAllText(_memoryPath);
-            // 反序列化得到的默认是 Ordinal 比较；重建为 OrdinalIgnoreCase，与新建时一致（DATA-003），
-            // 否则重启后用不同大小写读不到已存记忆。
-            var raw = JsonSerializer.Deserialize<Dictionary<string, string>>(json)
-                      ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kvp in raw)
-            {
-                result[kvp.Key] = kvp.Value;
-            }
-            return result;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"MCP 记忆读取失败：{ex.Message}");
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private void SaveMemory(Dictionary<string, string> db)
-    {
-        // 原子写，避免崩溃导致 JSON 截断（DATA-005）。
-        var json = JsonSerializer.Serialize(db, new JsonSerializerOptions { WriteIndented = true });
-        var tempPath = _memoryPath + ".tmp";
-        File.WriteAllText(tempPath, json);
-        File.Move(tempPath, _memoryPath, overwrite: true);
     }
 }

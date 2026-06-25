@@ -16,10 +16,12 @@ public static class McpBuiltinRegistry
     /// <summary>
     /// 受保护的服务 Id 集合（已 NormalizeId 规范化：小写）。
     /// 新增内置受保护服务时在此登记。
+    ///
+    /// 注意：「memory」已从受保护列表移除——长期记忆改由 Mem0 提供
+    /// （见 Aemeath.Core.Memory），不再使用 @modelcontextprotocol/server-memory。
     /// </summary>
     public static readonly HashSet<string> ProtectedIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "memory",       // 项目自带的全局持久记忆 MCP
         "filesystem"    // 项目自带的文件读写 MCP
     };
 

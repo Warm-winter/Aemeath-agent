@@ -8,8 +8,10 @@ using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Aemeath.Core.AI;
+using Aemeath.Core.ComputerControl;
 using Aemeath.Core.Configuration;
 using Aemeath.Core.MCP;
+using Aemeath.Core.Memory;
 using Aemeath.Desktop.Services;
 using Aemeath.Pet.Effects;
 using SixLabors.ImageSharp;
@@ -35,12 +37,14 @@ public partial class ConfigWindow : Window
     private readonly ParticleEffect _particleEffect;
     private readonly ProviderProbeService _providerProbeService = new();
     private readonly McpDependencyService _mcpDependencyService = new();
-    private readonly LongTermMemoryStore _memoryStore = new();
+    private readonly MemoryOrchestrator _memoryOrchestrator;
+    private readonly Mem0DependencyService _mem0DependencyService;
     private McpServerStore _mcpServerStore = new();
     private readonly DispatcherTimer _flickerTimer;
     private readonly List<ProviderModel> _currentModelCandidates = new();
     private bool _isLoadingProviderUi;
     private bool _isInstallingMcpDependencies;
+    private bool _isInstallingMem0;
     private string? _selectedMemoryEntryId;
     private string _lastMcpDependencySource = "本次尚未下载";
     private double _flickerPhase;
@@ -59,6 +63,24 @@ public partial class ConfigWindow : Window
         _chatService = chatService;
         _currentSessionIdProvider = currentSessionIdProvider;
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
+
+        // Mem0 记忆编排器 + 依赖服务。与 ChatWindow 共享同一数据目录，各自维护 Python 子进程。
+        if (chatService is AemiChatService aemiChatService)
+        {
+            _memoryOrchestrator = new MemoryOrchestrator(
+                () => aemiChatService.BuildMem0Config(),
+                () => settingsService.Current.Mem0PythonPath);
+        }
+        else
+        {
+            _memoryOrchestrator = new MemoryOrchestrator(() => null, () => null);
+        }
+
+        _mem0DependencyService = new Mem0DependencyService(
+            !string.IsNullOrWhiteSpace(settingsService.Current.UvExecutablePath) && File.Exists(settingsService.Current.UvExecutablePath)
+                ? settingsService.Current.UvExecutablePath!
+                : McpDependencyService.DefaultBinDirectory + "\\uv.exe",
+            EnsureUvAsync);
 
         _flickerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         _flickerTimer.Tick += (_, _) =>
@@ -98,11 +120,11 @@ public partial class ConfigWindow : Window
             await SaveNonProviderSettingsAsync();
         };
 
-        MemoryListBox.SelectionChanged += (_, _) => LoadSelectedMemory();
-        SaveMemoryButton.Click += (_, _) => SaveSelectedMemory();
         DeleteMemoryButton.Click += async (_, _) => await DeleteSelectedMemoryAsync();
         ClearCurrentSessionMemoryButton.Click += async (_, _) => await ClearCurrentSessionMemoryAsync();
         ClearAllMemoryButton.Click += async (_, _) => await ClearAllMemoryAsync();
+        Mem0InstallButton.Click += async (_, _) => await InstallMem0Async();
+        UfoCheckButton.Click += async (_, _) => await CheckUfoAsync();
 
         Opened += (_, _) =>
         {
@@ -122,7 +144,8 @@ public partial class ConfigWindow : Window
         PopulateProviderPresets();
         PopulatePetSizeOptions();
         LoadFromSettings();
-        RefreshMemoryList();
+        _ = RefreshMemoryListAsync();
+        _ = RefreshMem0StatusAsync();
     }
 
     private void LoadFromSettings()
@@ -148,6 +171,15 @@ public partial class ConfigWindow : Window
 
         ParticleEffectsBox.IsChecked = _settingsService.Current.EnableParticleEffects;
         EnablePetBubblesBox.IsChecked = _settingsService.Current.EnablePetBubbles;
+        // 辅助视觉模型（电脑控制面板）：提供商 + 模型选择，与对话 Provider 打通
+        PopulateVisionProviderBox();
+        UfoPythonBox.Text = _settingsService.Current.UfoPythonPath ?? string.Empty;
+        ComputerControlBackendBox.SelectedIndex = _settingsService.Current.ComputerControlBackend?.ToLowerInvariant() switch
+        {
+            "uia" => 1,
+            "ufo" => 2,
+            _ => 0
+        };
         EnablePetIdleGreetingBox.IsChecked = _settingsService.Current.EnablePetIdleGreeting;
         EnablePetEdgeSnapBox.IsChecked = _settingsService.Current.EnablePetEdgeSnap;
         PetOpacitySlider.Value = Math.Clamp(_settingsService.Current.PetOpacity, 0.65, 1.0);
@@ -260,6 +292,13 @@ public partial class ConfigWindow : Window
 
         _settingsService.Current.EnableParticleEffects = ParticleEffectsBox.IsChecked == true;
         _settingsService.Current.EnablePetBubbles = EnablePetBubblesBox.IsChecked == true;
+        // 辅助视觉模型
+        SaveVisionProviderSelection();
+        _settingsService.Current.UfoPythonPath = string.IsNullOrWhiteSpace(UfoPythonBox.Text) ? null : UfoPythonBox.Text.Trim();
+        if (ComputerControlBackendBox.SelectedItem is ComboBoxItem { Tag: string backendTag })
+        {
+            _settingsService.Current.ComputerControlBackend = backendTag;
+        }
         _settingsService.Current.EnablePetIdleGreeting = EnablePetIdleGreetingBox.IsChecked == true;
         _settingsService.Current.EnablePetEdgeSnap = EnablePetEdgeSnapBox.IsChecked == true;
         _settingsService.Current.PetOpacity = Math.Clamp(PetOpacitySlider.Value, 0.65, 1.0);
@@ -637,65 +676,104 @@ public partial class ConfigWindow : Window
         }
     }
 
-    private void RefreshMemoryList()
+    private async Task RefreshMemoryListAsync()
     {
         MemoryListBox.Items.Clear();
-        foreach (var entry in _memoryStore.ListEntries())
+        _selectedMemoryEntryId = null;
+        MemoryStatusText.Text = "正在从 Mem0 读取记忆……";
+
+        try
         {
+            // 列出全局用户记忆 + 当前会话记忆
+            var sessionId = _currentSessionIdProvider?.Invoke();
+            var client = await GetMem0ClientAsync();
+            if (client is null)
+            {
+                MemoryStatusText.Text = "Mem0 未启用（请在下方安装依赖并配置 Provider）。";
+                return;
+            }
+
+            var globalTask = client.GetAllAsync(Mem0Scope.GlobalUser, topK: 100);
+            Task<System.Text.Json.JsonElement> sessionTask;
+            if (sessionId is null)
+            {
+                sessionTask = Task.FromResult<System.Text.Json.JsonElement>(default);
+            }
+            else
+            {
+                sessionTask = client.GetAllAsync(Mem0Scope.ForSession(sessionId), topK: 100);
+            }
+
+            await Task.WhenAll(globalTask, sessionTask);
+
+            AddMem0ItemsToBox(globalTask.Result, "全局");
+            if (sessionId is not null)
+            {
+                AddMem0ItemsToBox(sessionTask.Result, "会话");
+            }
+
+            MemoryStatusText.Text = MemoryListBox.Items.Count == 0
+                ? "暂无长期记忆。"
+                : $"共 {MemoryListBox.Items.Count} 条长期记忆（Mem0）。";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("memory", "ConfigWindow 读取记忆失败", ex);
+            MemoryStatusText.Text = "读取记忆失败：" + ex.Message;
+        }
+    }
+
+    private void AddMem0ItemsToBox(System.Text.Json.JsonElement resp, string scopeLabel)
+    {
+        if (resp.ValueKind != System.Text.Json.JsonValueKind.Object) return;
+        if (!resp.TryGetProperty("results", out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+            var id = item.TryGetProperty("id", out var idEl) && idEl.ValueKind == System.Text.Json.JsonValueKind.String ? idEl.GetString() : null;
+            var text = item.TryGetProperty("memory", out var memEl) && memEl.ValueKind == System.Text.Json.JsonValueKind.String ? memEl.GetString() : null;
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(text)) continue;
+
+            var preview = text!.Length <= 42 ? text : text[..42] + "...";
             MemoryListBox.Items.Add(new ListBoxItem
             {
-                Content = FormatMemoryEntry(entry),
-                Tag = entry
+                Content = $"{scopeLabel}：{preview}",
+                Tag = $"{id}||{text}"
             });
         }
-
-        MemoryStatusText.Text = MemoryListBox.Items.Count == 0 ? "暂无长期记忆。" : $"共 {MemoryListBox.Items.Count} 条长期记忆。";
-        MemoryEditorBox.Text = string.Empty;
-        _selectedMemoryEntryId = null;
     }
 
-    private static string FormatMemoryEntry(LongTermMemoryEntry entry)
+    private async Task<Mem0Client?> GetMem0ClientAsync()
     {
-        var scope = string.Equals(entry.Scope, "global", StringComparison.OrdinalIgnoreCase) ? "全局" : "会话";
-        var content = entry.Content.Length <= 42 ? entry.Content : entry.Content[..42] + "...";
-        return $"{scope} / {entry.Category}：{content}";
+        if (!_settingsService.Current.Mem0Enabled) return null;
+        if (string.IsNullOrWhiteSpace(_settingsService.Current.Mem0PythonPath)) return null;
+        var config = (_chatService as AemiChatService)?.BuildMem0Config();
+        if (config is null) return null;
+
+        var client = new Mem0Client(_settingsService.Current.Mem0PythonPath!, Mem0DependencyService.DefaultDataDirectory, config);
+        client.Diagnostics = (level, msg, ex) =>
+        {
+            if (ex is null) AppLogger.Info("memory", $"[{level}] {msg}");
+            else AppLogger.Error("memory", msg, ex);
+        };
+        return client;
     }
 
-    private void LoadSelectedMemory()
+
+    private void OnMemorySelectionChanged()
     {
-        if (MemoryListBox.SelectedItem is not ListBoxItem { Tag: LongTermMemoryEntry entry })
+        // 选中一条记忆时记录其 id，供删除使用（编辑功能已按需求移除）
+        if (MemoryListBox.SelectedItem is ListBoxItem { Tag: string tag })
         {
-            return;
+            var parts = tag.Split("||", 2);
+            _selectedMemoryEntryId = parts.Length == 2 ? parts[0] : null;
         }
-
-        _selectedMemoryEntryId = entry.Id;
-        MemoryEditorBox.Text = entry.Content;
-        MemoryStatusText.Text = $"{entry.Scope} / {entry.Category}，更新时间：{entry.UpdatedAt:yyyy-MM-dd HH:mm}";
-    }
-
-    private void SaveSelectedMemory()
-    {
-        if (MemoryListBox.SelectedItem is not ListBoxItem { Tag: LongTermMemoryEntry entry } ||
-            string.IsNullOrWhiteSpace(_selectedMemoryEntryId))
-        {
-            ShowError("请先选择一条记忆。");
-            return;
-        }
-
-        entry.Content = MemoryEditorBox.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(entry.Content))
-        {
-            ShowError("记忆内容不能为空。");
-            return;
-        }
-
-        _memoryStore.UpsertEntry(entry);
-        RefreshMemoryList();
-        ShowSuccess("记忆已更新。");
     }
 
     private async Task DeleteSelectedMemoryAsync()
     {
+        OnMemorySelectionChanged();
         if (string.IsNullOrWhiteSpace(_selectedMemoryEntryId))
         {
             ShowError("请先选择一条记忆。");
@@ -707,9 +785,23 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        _memoryStore.DeleteEntry(_selectedMemoryEntryId);
-        RefreshMemoryList();
-        ShowSuccess("记忆已删除。");
+        try
+        {
+            var client = await GetMem0ClientAsync();
+            if (client is null)
+            {
+                ShowError("Mem0 未启用。");
+                return;
+            }
+
+            await client.DeleteAsync(_selectedMemoryEntryId);
+            await RefreshMemoryListAsync();
+            ShowSuccess("记忆已删除。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("删除记忆失败：" + ex.Message);
+        }
     }
 
     private async Task ClearCurrentSessionMemoryAsync()
@@ -726,9 +818,23 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        _memoryStore.ClearSession(sessionId);
-        RefreshMemoryList();
-        ShowSuccess("当前会话记忆已清空。");
+        try
+        {
+            var client = await GetMem0ClientAsync();
+            if (client is null)
+            {
+                ShowError("Mem0 未启用。");
+                return;
+            }
+
+            await client.DeleteAllAsync(Mem0Scope.ForSession(sessionId));
+            await RefreshMemoryListAsync();
+            ShowSuccess("当前会话记忆已清空。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("清空会话记忆失败：" + ex.Message);
+        }
     }
 
     private async Task ClearAllMemoryAsync()
@@ -738,9 +844,230 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        _memoryStore.ClearAll();
-        RefreshMemoryList();
-        ShowSuccess("全部长期记忆已清空。");
+        try
+        {
+            var client = await GetMem0ClientAsync();
+            if (client is null)
+            {
+                ShowError("Mem0 未启用。");
+                return;
+            }
+
+            await client.DeleteAllAsync(Mem0Scope.GlobalUser);
+            await RefreshMemoryListAsync();
+            ShowSuccess("全部长期记忆已清空。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("清空记忆失败：" + ex.Message);
+        }
+    }
+
+    // ===== 视觉模型提供商选择（与对话 Provider 打通） =====
+
+    /// <summary>填充视觉模型提供商下拉：含「复用当前对话提供商」+ 所有已配置 Provider。</summary>
+    private void PopulateVisionProviderBox()
+    {
+        VisionProviderBox.Items.Clear();
+        // 第一项：复用当前对话提供商
+        var reuseItem = new ComboBoxItem { Content = "复用当前对话提供商", Tag = null as string };
+        VisionProviderBox.Items.Add(reuseItem);
+
+        var providers = _settingsService.ListProviders();
+        ComboBoxItem? selected = reuseItem;
+        foreach (var p in providers)
+        {
+            var item = new ComboBoxItem { Content = p, Tag = p };
+            VisionProviderBox.Items.Add(item);
+            if (string.Equals(p, _settingsService.Current.VisionProvider, StringComparison.OrdinalIgnoreCase))
+            {
+                selected = item;
+            }
+        }
+        VisionProviderBox.SelectedItem = selected;
+
+        PopulateVisionModelBox();
+        VisionProviderBox.SelectionChanged += (_, _) => PopulateVisionModelBox();
+
+        // 若已有保存的视觉模型，回填
+        var savedModel = _settingsService.Current.VisionModel;
+        if (!string.IsNullOrWhiteSpace(savedModel))
+        {
+            VisionModelBox.Text = savedModel;
+        }
+
+        // 视觉 Key 不回填明文（安全），留空表示复用提供商 Key
+    }
+
+    /// <summary>根据当前选中的视觉提供商，填充其已获取的模型列表（便于选择支持图片的模型）。</summary>
+    private void PopulateVisionModelBox()
+    {
+        VisionModelBox.Items.Clear();
+        var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            provider = _settingsService.Current.CurrentProvider;
+        }
+
+        foreach (var m in _settingsService.GetProviderModels(provider, enabledOnly: true))
+        {
+            VisionModelBox.Items.Add(new ComboBoxItem { Content = m.Id, Tag = m.Id });
+        }
+    }
+
+    private void SaveVisionProviderSelection()
+    {
+        var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        _settingsService.Current.VisionProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
+
+        var model = VisionModelBox.Text?.Trim();
+        _settingsService.Current.VisionModel = string.IsNullOrWhiteSpace(model) ? null : model;
+
+        var key = VisionApiKeyBox.Text?.Trim();
+        _settingsService.Current.VisionApiKey = string.IsNullOrWhiteSpace(key) ? null : key;
+        // 选择新提供商时，旧的独立端点/Key 若为空则自动用该提供商
+        if (string.IsNullOrWhiteSpace(_settingsService.Current.VisionEndpoint))
+        {
+            _settingsService.Current.VisionEndpoint = null;
+        }
+    }
+
+
+    private async Task RefreshMem0StatusAsync()
+    {
+        if (Mem0InstallStatusText is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var status = await _mem0DependencyService.CheckAsync();
+            var text = status.Installed
+                ? $"Mem0 运行环境已就绪。\nPython：{status.PythonPath}\n数据目录：{Mem0DependencyService.DefaultDataDirectory}"
+                : $"Mem0 运行环境未就绪：{status.Error ?? "未安装"}";
+            Mem0InstallStatusText.Text = text;
+            if (Mem0InstallButton is not null)
+            {
+                Mem0InstallButton.IsEnabled = true;
+                Mem0InstallButton.Content = status.Installed ? "重新安装 Mem0" : "安装 Mem0 依赖";
+            }
+        }
+        catch (Exception ex)
+        {
+            Mem0InstallStatusText.Text = "Mem0 状态检测失败：" + ex.Message;
+        }
+    }
+
+    private async Task InstallMem0Async()
+    {
+        if (_isInstallingMem0)
+        {
+            return;
+        }
+
+        _isInstallingMem0 = true;
+        try
+        {
+            Mem0InstallButton.IsEnabled = false;
+            Mem0InstallButton.Content = "正在安装…";
+            var progress = new Progress<string>(m => Mem0InstallStatusText.Text = m);
+            var result = await _mem0DependencyService.InstallAsync(progress);
+            if (result.Success && !string.IsNullOrWhiteSpace(result.PythonPath))
+            {
+                _settingsService.Current.Mem0PythonPath = result.PythonPath;
+                _settingsService.Save();
+            }
+
+            await RefreshMem0StatusAsync();
+            await RefreshMemoryListAsync();
+            if (result.Success)
+            {
+                ShowSuccess(result.Message);
+            }
+            else
+            {
+                ShowError(result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "mem0 install failed", ex);
+            ShowError("Mem0 依赖安装失败：" + ex.Message);
+        }
+        finally
+        {
+            _isInstallingMem0 = false;
+        }
+    }
+
+    // ===== UFO（轨 B）检测 =====
+
+    /// <summary>
+    /// 确保 uv.exe（和 bun.exe）已下载。Mem0 安装前若缺 uv 会自动调用本方法（借鉴 OneDragon 环境自检思路）。
+    /// 返回 (是否就绪, uv 绝对路径)。
+    /// </summary>
+    private async Task<(bool Ok, string? UvPath)> EnsureUvAsync(IProgress<string> progress, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var status = await _mcpDependencyService.CheckAsync(_settingsService.Current, cancellationToken);
+            if (status.IsComplete)
+            {
+                _settingsService.Current.UvExecutablePath = status.UvPath;
+                _settingsService.Current.BunExecutablePath = status.BunPath;
+                _settingsService.Save();
+                return (true, status.UvPath);
+            }
+
+            progress?.Report("正在下载 MCP 依赖（uv.exe、bun.exe）……");
+            var result = await _mcpDependencyService.InstallMissingAsync(_settingsService.Current, progress, cancellationToken);
+            _settingsService.Save();
+            await RefreshMcpDependencyStatusAsync();
+            return (result.Success && !string.IsNullOrWhiteSpace(_settingsService.Current.UvExecutablePath),
+                _settingsService.Current.UvExecutablePath);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "EnsureUv 失败", ex);
+            return (false, null);
+        }
+    }
+
+    private async Task CheckUfoAsync()
+    {
+        try
+        {
+            UfoStatusText.Text = "正在检测 UFO…";
+            var python = UfoPythonBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(python))
+            {
+                python = _settingsService.Current.UfoPythonPath;
+            }
+
+            if (string.IsNullOrWhiteSpace(python))
+            {
+                UfoStatusText.Text = "UFO 状态：未填写 UFO Python 路径。请先克隆 UFO 并 pip install -r requirements.txt，再把其 venv 的 python.exe 路径填入上方。";
+                return;
+            }
+
+            var installer = new UfoInstaller();
+            var status = await installer.CheckAsync(python);
+            UfoStatusText.Text = status.Installed
+                ? $"UFO 状态：可用。\nPython：{status.PythonPath}\n桥接脚本：{status.RunnerScript}\n（源码目录：{status.UfoSourceDir}）"
+                : $"UFO 状态：不可用。{status.Error}";
+
+            // 检测通过则记住 python 路径
+            if (status.Installed && !string.IsNullOrWhiteSpace(python))
+            {
+                _settingsService.Current.UfoPythonPath = python;
+                _settingsService.Save();
+            }
+        }
+        catch (Exception ex)
+        {
+            UfoStatusText.Text = "UFO 检测失败：" + ex.Message;
+        }
     }
 
     private async Task<bool> ConfirmAsync(string title, string message)
@@ -748,8 +1075,7 @@ public partial class ConfigWindow : Window
         var dialog = new Window
         {
             Title = title,
-            Width = 380,
-            Height = 230,
+            Width = 380,            Height = 230,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
             Background = AemiUi.Brush(AemiUi.Void)

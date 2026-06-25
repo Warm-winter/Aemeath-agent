@@ -22,6 +22,93 @@ public class AemiChatService : IChatService, IAsyncDisposable
     /// <summary>Skill 服务（供 UI 面板管理复用同一实例）。</summary>
     public SkillService SkillService => _skillService;
     public ToolConfirmationService ToolConfirmationService { get; } = new();
+
+    /// <summary>
+    /// 根据当前 Provider 配置构造 Mem0 连接配置。
+    /// Mem0 的 LLM/embedding 指向当前 Provider（OpenAI 兼容）；
+    /// 视觉/嵌入模型可在设置里单独覆盖。
+    /// 供桌面层注入到 <see cref="Memory.MemoryOrchestrator"/>。
+    /// </summary>
+    public Memory.Mem0ConnectionConfig? BuildMem0Config()
+    {
+        var s = _settingsService.Current;
+        if (!s.Mem0Enabled)
+        {
+            return null;
+        }
+
+        var keyInfo = _settingsService.GetApiKeyInfo(_settingsService.Current.CurrentProvider);
+        var apiKey = keyInfo?.Key;
+        var endpoint = keyInfo?.Endpoint;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var llmModel = !string.IsNullOrWhiteSpace(keyInfo?.ModelId) ? keyInfo.ModelId! : s.DefaultModel;
+        if (string.IsNullOrWhiteSpace(llmModel))
+        {
+            return null;
+        }
+
+        // 嵌入模型默认复用主 Provider；embedding 走同源 OpenAI 兼容端点
+        var embedModel = !string.IsNullOrWhiteSpace(s.Mem0EmbedModel) ? s.Mem0EmbedModel! : "text-embedding-3-small";
+
+        return new Memory.Mem0ConnectionConfig(
+            LlmModel: llmModel,
+            LlmBaseUrl: NormalizeBaseUrl(endpoint) ?? string.Empty,
+            LlmApiKey: apiKey,
+            EmbedModel: embedModel,
+            EmbedBaseUrl: NormalizeBaseUrl(endpoint),
+            EmbedApiKey: apiKey,
+            EmbedDims: s.Mem0EmbedDims > 0 ? s.Mem0EmbedDims : 1536,
+            VectorProvider: "qdrant");
+    }
+
+    /// <summary>构造视觉辅助配置（VisionPlugin 用）。</summary>
+    public (string Model, string Endpoint, string ApiKey)? BuildVisionConfig()
+    {
+        var s = _settingsService.Current;
+        // 视觉模型可指定独立提供商（与对话 Provider 打通：从已配置 Provider 中选）；
+        // 未指定则复用当前对话 Provider。
+        var provider = !string.IsNullOrWhiteSpace(s.VisionProvider) ? s.VisionProvider! : s.CurrentProvider;
+        var keyInfo = _settingsService.GetApiKeyInfo(provider);
+        var apiKey = string.IsNullOrWhiteSpace(s.VisionApiKey) ? keyInfo?.Key : s.VisionApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var model = !string.IsNullOrWhiteSpace(s.VisionModel) ? s.VisionModel! : keyInfo?.ModelId ?? s.DefaultModel;
+        // endpoint：优先独立视觉端点，否则用所选 Provider 的端点
+        var endpointRaw = !string.IsNullOrWhiteSpace(s.VisionEndpoint) ? s.VisionEndpoint : keyInfo?.Endpoint;
+        var endpoint = NormalizeBaseUrl(endpointRaw);
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return null;
+        }
+
+        return (model, endpoint ?? string.Empty, apiKey);
+    }
+
+    private static string? NormalizeBaseUrl(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            return null;
+        }
+
+        var url = endpoint.Trim();
+        // 兼容用户填了完整路径的情况：截到 /v1 末尾
+        var idx = url.IndexOf("/v1", StringComparison.OrdinalIgnoreCase);
+        if (idx > 0)
+        {
+            url = url[..(idx + 3)];
+        }
+
+        return url.TrimEnd('/') + (url.Contains("/v1", StringComparison.OrdinalIgnoreCase) ? string.Empty : "/v1");
+    }
+
     private readonly Dictionary<string, Func<string, Task<string>>> _customTools = new();
     private readonly Dictionary<string, string> _customToolDescriptions = new();
     private readonly McpRuntimeService _mcpRuntime = new();
@@ -143,6 +230,12 @@ public class AemiChatService : IChatService, IAsyncDisposable
         TryRegisterPlugin(new BrowserPlugin(ToolConfirmationService), "browser");
         TryRegisterPlugin(new ReminderPlugin(), "reminder");
         TryRegisterPlugin(new KnowledgeBasePlugin(_knowledgeBase), "knowledge");
+        TryRegisterPlugin(new VisionPlugin(BuildVisionConfig), "vision");
+        TryRegisterPlugin(new ComputerControl.ComputerControlPlugin(
+            BuildVisionConfig,
+            ToolConfirmationService,
+            () => _settingsService.Current.ComputerControlBackend,
+            () => _settingsService.Current.UfoPythonPath), "computer_control");
         TryRegisterPlugin(new McpChatPlugin(), "mcp_local");
     }
 
@@ -186,41 +279,6 @@ public class AemiChatService : IChatService, IAsyncDisposable
         }
     }
 
-    public async Task<string> SummarizeAsync(string message, CancellationToken cancellationToken = default)
-    {
-        var keyInfo = _settingsService.GetApiKeyInfo(_settingsService.Current.CurrentProvider);
-        var apiKey = keyInfo?.Key;
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException(GetUnavailableMessage());
-        }
-
-        var model = string.IsNullOrWhiteSpace(keyInfo?.ModelId)
-            ? _settingsService.Current.DefaultModel
-            : keyInfo.ModelId;
-        var kernel = new OpenAIKernelMixin("""
-你是 Aemeath 的本地长期记忆整理器。
-只负责把对话压缩成简洁、准确、可复用的长期记忆。
-必须忠于原文，不要编造，不要加入项目外知识。
-如果要求输出 JSON，只输出 JSON，不要 Markdown。
-""");
-        if (!string.IsNullOrWhiteSpace(model))
-        {
-            kernel.SetModel(model);
-        }
-
-        await kernel.InitializeAsync(apiKey, keyInfo?.Endpoint);
-        try
-        {
-            var response = await kernel.SendMessageAsync(message, cancellationToken);
-            return FormatAemiResponse(response);
-        }
-        finally
-        {
-            // 用完即释放临时 Kernel 的 HttpClient（RES-003）。
-            kernel.Dispose();
-        }
-    }
 
     public IAsyncEnumerable<string> SendMessageStreamingAsync(
         string message,

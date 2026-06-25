@@ -59,6 +59,11 @@ public class SettingsService
                 // TryDecrypt 解密失败会原样返回，保持向后兼容。
                 settings.AzureSpeechKey = TryDecrypt(settings.AzureSpeechKey ?? string.Empty);
 
+                // 视觉模型 key 走同样的 DPAPI 解密
+                settings.VisionApiKey = string.IsNullOrWhiteSpace(settings.VisionApiKey)
+                    ? null
+                    : TryDecrypt(settings.VisionApiKey);
+
                 settings.ApiKeys = settings.ApiKeys
                     .GroupBy(kvp => NormalizeProvider(kvp.Key))
                     .ToDictionary(g => g.Key, g => g.Last().Value);
@@ -102,6 +107,16 @@ public class SettingsService
             UvExecutablePath = _settings.UvExecutablePath,
             BunExecutablePath = _settings.BunExecutablePath,
             McpServersConfigPath = _settings.McpServersConfigPath,
+            Mem0PythonPath = _settings.Mem0PythonPath,
+            Mem0Enabled = _settings.Mem0Enabled,
+            VisionModel = _settings.VisionModel,
+            VisionEndpoint = _settings.VisionEndpoint,
+            VisionProvider = _settings.VisionProvider,
+            VisionApiKey = TryEncrypt(_settings.VisionApiKey ?? string.Empty),
+            Mem0EmbedModel = _settings.Mem0EmbedModel,
+            Mem0EmbedDims = _settings.Mem0EmbedDims,
+            ComputerControlBackend = _settings.ComputerControlBackend,
+            UfoPythonPath = _settings.UfoPythonPath,
             ApiKeys = _settings.ApiKeys.ToDictionary(
                 x => x.Key,
                 x => new ApiKey

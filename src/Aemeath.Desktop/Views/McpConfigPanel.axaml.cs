@@ -165,8 +165,12 @@ public partial class McpConfigPanel : UserControl
     public void RefreshServerList(string? selectId = null)
     {
         ServerCardsPanel.Children.Clear();
-        // 受保护的内置服务（memory/filesystem）对用户隐藏，避免误删核心功能。
-        var visible = _store.ListServers().Where(s => !McpBuiltinRegistry.IsProtected(s.Id)).ToList();
+        // 受保护的内置服务（filesystem）对用户隐藏，避免误删核心功能。
+        // 同时隐藏已废弃的旧内置服务（memory——长期记忆改由 Mem0 提供），避免用户看到残留配置误删/困惑。
+        var hiddenLegacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "memory" };
+        var visible = _store.ListServers()
+            .Where(s => !McpBuiltinRegistry.IsProtected(s.Id) && !hiddenLegacy.Contains(s.Id))
+            .ToList();
 
         var enabledCount = visible.Count(s => s.Enabled);
         CountText.Text = $"已启用 {enabledCount} / 共 {visible.Count}";

@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using Aemeath.Core.AI;
 using Aemeath.Core.Configuration;
 using Aemeath.Core.MCP;
+using Aemeath.Core.Memory;
 using Aemeath.Core.Tools;
 using Aemeath.Desktop.Services;
 using Aemeath.Pet.Effects;
@@ -33,8 +34,7 @@ public partial class ChatWindow : Window
     private readonly IChatService _chatService;
     private readonly SettingsService _settingsService;
     private readonly ChatSessionStore _sessionStore;
-    private readonly LongTermMemoryStore _memoryStore;
-    private readonly MemorySummarizer _memorySummarizer;
+    private readonly MemoryOrchestrator _memoryOrchestrator;
     private readonly ParticleEffect _particleEffect;
     private readonly ToolConfirmationService? _toolConfirmationService;
     private readonly AttachmentService _attachments = new();
@@ -67,6 +67,10 @@ public partial class ChatWindow : Window
     private readonly McpServerStore _mcpServerStore = new();
     private readonly List<ChatMessageRecord> _displayMessages = [];
     private readonly Dictionary<string, PendingToolAction> _pendingToolActions = new(StringComparer.OrdinalIgnoreCase);
+    // 确认卡片控件：actionId → 渲染出的 Border。确认/取消时从面板移除该卡片。
+    private readonly Dictionary<string, Border> _pendingActionCards = new(StringComparer.OrdinalIgnoreCase);
+    // 长任务（电脑控制）确认后，在结果到达前显示的占位气泡：actionId → _displayMessages 索引
+    private readonly Dictionary<string, int> _runningActionPlaceholders = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan MinimumVoiceCaptureDuration = TimeSpan.FromMilliseconds(500);
     private readonly SemaphoreSlim _voiceCaptureLock = new(1, 1);
     private readonly SemaphoreSlim _providerSwitchLock = new(1, 1);
@@ -95,13 +99,28 @@ public partial class ChatWindow : Window
         _chatService = chatService;
         _settingsService = settingsService;
         _sessionStore = new ChatSessionStore();
-        _memoryStore = new LongTermMemoryStore();
-        _memorySummarizer = new MemorySummarizer(_chatService, _sessionStore, _memoryStore);
+        // Mem0 记忆编排器：每轮 add + 发送前 search 注入。config/python 由 AemiChatService 提供。
+        if (chatService is AemiChatService aemiChatSvc)
+        {
+            _memoryOrchestrator = new MemoryOrchestrator(
+                () => aemiChatSvc.BuildMem0Config(),
+                () => _settingsService.Current.Mem0PythonPath);
+            _memoryOrchestrator.Diagnostics = (level, msg, ex) =>
+            {
+                if (ex is null) AppLogger.Info("memory", $"[{level}] {msg}");
+                else AppLogger.Error("memory", msg, ex);
+            };
+        }
+        else
+        {
+            _memoryOrchestrator = new MemoryOrchestrator(() => null, () => null);
+        }
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
         if (_chatService is AemiChatService aemiChatService)
         {
             _toolConfirmationService = aemiChatService.ToolConfirmationService;
             _toolConfirmationService.PendingActionCreated += OnPendingToolActionCreated;
+            _toolConfirmationService.PendingActionCompleted += OnPendingToolActionCompleted;
         }
 
         _assistantAvatar = AemiUi.LoadBitmap("avares://Aemeath-agent/Assets/static/xiaoai-avatar.png");
@@ -208,7 +227,8 @@ public partial class ChatWindow : Window
             }
 
             _sessionStore.DeleteSession(_currentSessionId);
-            _memoryStore.ClearSession(_currentSessionId);
+            // 删除该会话的 Mem0 记忆（后台，忽略失败）
+            _ = Task.Run(() => _memoryOrchestrator.DeleteAllAsync(Mem0Scope.ForSession(_currentSessionId)));
             LoadLatestSessionOrEmpty();
         };
 
@@ -325,7 +345,10 @@ public partial class ChatWindow : Window
             _pendingFrameIndex = 0;
             _pendingTimer.Start();
 
-            var prompt = BuildPromptWithRecentContext(recent, input, attachmentList);
+            // 发送前：检索相关长期记忆（Mem0）。与旧的 BuildPromptBlock 不同，
+            // 这里是按当前用户消息做向量检索，只注入相关片段。
+            var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, input);
+            var prompt = BuildPromptWithRecentContext(recent, input, attachmentList, memoryBlock);
             AppLogger.Info("chat", $"[诊断] 构建的 Prompt 前 500 字符: {prompt.Substring(0, Math.Min(500, prompt.Length))}...");
 
             _chatService.ClearHistory();
@@ -359,7 +382,8 @@ public partial class ChatWindow : Window
             RenderCurrentMessages();
             RefreshSessionSelector(_currentSessionId);
             ClearPendingAttachments();
-            await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
+            // 把这一轮对话写入 Mem0（后台执行，不阻塞 UI）。Mem0 内部自动抽取事实，无需手动压缩。
+            _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, input, assistantReply));
             RaiseActivityChanged(ChatActivityKind.Completed);
             AppLogger.Info("chat", "send completed");
         }
@@ -545,10 +569,12 @@ public partial class ChatWindow : Window
             menu.Items.Add(new Separator());
         }
 
-        // 受保护的内置服务（memory/filesystem）在快速菜单里也隐藏，
-        // 它们永远启用、不可由用户切换。与设置面板的过滤保持一致。
+        // 受保护的内置服务（filesystem）在快速菜单里隐藏；
+        // 已废弃的旧内置服务（memory——长期记忆改由 Mem0 提供）也隐藏，避免用户误删。
+        // 与设置面板 McpConfigPanel 的过滤保持一致。
+        var hiddenLegacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "memory" };
         var servers = _mcpServerStore.ListServers()
-            .Where(s => !McpBuiltinRegistry.IsProtected(s.Id))
+            .Where(s => !McpBuiltinRegistry.IsProtected(s.Id) && !hiddenLegacy.Contains(s.Id))
             .ToList();
         if (servers.Count == 0)
         {
@@ -865,16 +891,14 @@ public partial class ChatWindow : Window
         await SendUserTurnAsync(text, attachments: null, clearInputBox: false);
     }
 
-    private string BuildPromptWithRecentContext(IReadOnlyList<ChatMessageRecord> recentMessages, string userInput, IReadOnlyList<ChatAttachment>? attachments)
+    private string BuildPromptWithRecentContext(IReadOnlyList<ChatMessageRecord> recentMessages, string userInput, IReadOnlyList<ChatAttachment>? attachments, string? memoryBlock = null)
     {
         var rounds = recentMessages.TakeLast(40).ToList();
         var sb = new System.Text.StringBuilder();
-        var longTermMemory = _memoryStore.BuildPromptBlock(_currentSessionId);
-        if (!string.IsNullOrWhiteSpace(longTermMemory))
+        // memoryBlock 由调用方用 Mem0 按当前消息检索后传入（已含【长期记忆】标题）
+        if (!string.IsNullOrWhiteSpace(memoryBlock))
         {
-            sb.AppendLine("【长期记忆】");
-            sb.AppendLine("以下是本地保存的长期记忆，只用于保持连续性。不要主动提到记忆文件或内部字段。");
-            sb.AppendLine(longTermMemory);
+            sb.AppendLine(memoryBlock);
             sb.AppendLine();
         }
 
@@ -1254,34 +1278,112 @@ public partial class ChatWindow : Window
         panel.Children.Add(buttons);
         root.Child = panel;
         MessagesPanel.Children.Add(root);
+        _pendingActionCards[action.Id] = root;
     }
 
-    private async void ResolvePendingToolAction(string actionId, bool confirm)
+    /// <summary>从面板移除某条确认卡片（确认或取消后调用）。</summary>
+    private void RemovePendingActionCard(string actionId)
+    {
+        if (_pendingActionCards.TryGetValue(actionId, out var card))
+        {
+            MessagesPanel.Children.Remove(card);
+            _pendingActionCards.Remove(actionId);
+        }
+    }
+
+    private void ResolvePendingToolAction(string actionId, bool confirm)
     {
         if (_toolConfirmationService is null)
         {
             return;
         }
 
-        var result = confirm
-            ? _toolConfirmationService.Confirm(actionId)
-            : _toolConfirmationService.Cancel(actionId);
+        // 无论确认还是取消，先立即移除确认卡片（避免弹窗残留）。
+        RemovePendingActionCard(actionId);
 
+        var action = _toolConfirmationService.GetPendingAction(actionId);
+        var isLongRunning = action?.IsLongRunning == true;
         _pendingToolActions.Remove(actionId);
-        EnsureCurrentSession();
-        var userText = FormatToolResultForUser(result);
-        _displayMessages.Add(new ChatMessageRecord
+
+        if (!confirm)
         {
-            Role = "assistant",
-            Content = userText,
-            Timestamp = DateTimeOffset.UtcNow
-        });
-        _sessionStore.AppendMessage(_currentSessionId, "assistant", userText);
+            // 取消：Cancel 会立即触发 PendingActionCompleted（结果「已取消」），由 OnPendingToolActionCompleted 统一回填
+            _toolConfirmationService.Cancel(actionId);
+            return;
+        }
+
+        // 确认：
+        // - 长任务（电脑控制）：先显示占位气泡 + 桌宠 Running 状态，让用户看到正在执行、UI 不卡。
+        //   真实结果在后台执行完毕后由 OnPendingToolActionCompleted 回填（替换占位气泡）。
+        // - 快操作：ConfirmAsync 后台执行，完成后同样由 OnPendingToolActionCompleted 回填。
+        // 关键：ConfirmAsync 会先从 service 字典同步移除该 action，再后台执行闭包。
+        // 必须在 RenderCurrentMessages 之前调用，否则 RenderPendingToolActions 会从
+        // service.PendingActions 把刚移除的 action 又加回来、重画确认卡片（点一次不消失）。
+        _toolConfirmationService.ConfirmAsync(actionId);
+
+        if (isLongRunning)
+        {
+            EnsureCurrentSession();
+            var placeholder = new ChatMessageRecord
+            {
+                Role = "assistant",
+                Content = "小爱正在操作电脑，请稍候……（你可以随时移动鼠标，但请勿抢占键盘鼠标焦点）",
+                Timestamp = DateTimeOffset.UtcNow
+            };
+            _displayMessages.Add(placeholder);
+            _sessionStore.AppendMessage(_currentSessionId, "assistant", placeholder.Content);
+            RenderCurrentMessages();
+            ScrollToBottom();
+            _runningActionPlaceholders[actionId] = _displayMessages.Count - 1;
+            RaiseActivityChanged(ChatActivityKind.Sending); // 桌宠 Running 动画
+        }
+    }
+
+    /// <summary>
+    /// 后台确认任务执行完成（成功/失败/取消）。把结果回填到聊天：
+    /// 若有占位气泡则替换，否则追加一条助手消息。
+    /// 此回调可能从后台线程触发，UI 操作必须切回 UI 线程。
+    /// </summary>
+    private void OnPendingToolActionCompleted(object? sender, PendingActionResultEventArgs e)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => OnPendingToolActionCompleted(sender, e));
+            return;
+        }
+
+        EnsureCurrentSession();
+        var text = FormatToolResultForUser(e.Result);
+
+        if (_runningActionPlaceholders.TryGetValue(e.Id, out var idx) && idx >= 0 && idx < _displayMessages.Count)
+        {
+            _displayMessages[idx] = new ChatMessageRecord
+            {
+                Role = "assistant",
+                Content = text,
+                Timestamp = DateTimeOffset.UtcNow
+            };
+            _runningActionPlaceholders.Remove(e.Id);
+        }
+        else
+        {
+            _displayMessages.Add(new ChatMessageRecord
+            {
+                Role = "assistant",
+                Content = text,
+                Timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
+        _sessionStore.AppendMessage(_currentSessionId, "assistant", text);
         RenderCurrentMessages();
         ScrollToBottom();
         UpdateProviderQuickSwitchEnabled();
-        await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
-        RaiseActivityChanged(_pendingToolActions.Count == 0 ? ChatActivityKind.Completed : ChatActivityKind.ToolWaiting);
+        // 完成后写入 Mem0（后台），并恢复桌宠状态
+        _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, text, text));
+        RaiseActivityChanged(_pendingToolActions.Count == 0 && _runningActionPlaceholders.Count == 0
+            ? ChatActivityKind.Completed
+            : ChatActivityKind.ToolWaiting);
     }
 
     private Button BuildActionButton(IImage icon, string tooltip, Action onClick)
@@ -1370,7 +1472,8 @@ public partial class ChatWindow : Window
         {
             _chatService.ClearHistory();
             var recent = _displayMessages.TakeLast(40).ToList();
-            var prompt = BuildPromptWithRecentContext(recent, userContent, attachments: null);
+            var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, userContent);
+            var prompt = BuildPromptWithRecentContext(recent, userContent, attachments: null, memoryBlock);
             var reply = await StreamReplyIntoAsync(prompt, pending);
             var sanitized = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitized))
@@ -1384,7 +1487,7 @@ public partial class ChatWindow : Window
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = cleaned, Timestamp = DateTimeOffset.UtcNow });
             PersistCurrentMessages();
             RenderCurrentMessages();
-            await _memorySummarizer.UpdateIfNeededAsync(_currentSessionId);
+            _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, userContent, cleaned));
             RaiseActivityChanged(ChatActivityKind.Completed);
         }
         catch (Exception ex)
@@ -1926,6 +2029,7 @@ public partial class ChatWindow : Window
         if (_toolConfirmationService is not null)
         {
             _toolConfirmationService.PendingActionCreated -= OnPendingToolActionCreated;
+            _toolConfirmationService.PendingActionCompleted -= OnPendingToolActionCompleted;
         }
         _assistantAvatar.Dispose();
         _maleAvatar.Dispose();
@@ -1962,9 +2066,6 @@ internal sealed class NoOpChatService : IChatService
         IReadOnlyList<ChatAttachment>? attachments,
         CancellationToken cancellationToken = default)
         => SendMessageAsync(message, cancellationToken);
-
-    public Task<string> SummarizeAsync(string message, CancellationToken cancellationToken = default)
-        => Task.FromResult(string.Empty);
 
     public IAsyncEnumerable<string> SendMessageStreamingAsync(string message, CancellationToken cancellationToken = default)
         => SendMessageStreamingAsync(message, null, cancellationToken);

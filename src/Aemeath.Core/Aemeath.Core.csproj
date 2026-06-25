@@ -17,8 +17,33 @@
     <PackageReference Include="SixLabors.ImageSharp" />
   </ItemGroup>
 
+  <!-- 电脑控制（轨 A）需要的 Windows 原生 API：
+       UIAComWrapper（Microsoft 托管 UIAutomation 封装，提供 System.Windows.Automation，无 WPF 依赖）、
+       System.Drawing.Common（截图+标注）。
+       屏幕尺寸/光标位置用 Win32 P/Invoke，避免引入 System.Windows.Forms。 -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" />
+    <!-- FrameworkReference 引入 WindowsDesktop 运行时程序集：System.Windows.Automation（UIAutomationClient/Types，
+         UIA 控件树）、WindowsBase（System.Windows.Rect）。不开启 UseWPF（避免与 Avalonia 冲突）。 -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="Knowledge\knowledge_base.zh-CN.json" />
+  </ItemGroup>
+
+  <!-- Mem0 桥接脚本（运行时释放到 %AppData%\Aemeath\mem0\bridge\） -->
+  <ItemGroup>
+    <EmbeddedResource Include="Memory\mem0_bridge.py">
+      <LogicalName>Aemeath.Core.Memory.mem0_bridge.py</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- UFO 桥接脚本（轨 B，运行时释放到 %AppData%\Aemeath\tools\ufo-bridge\） -->
+  <ItemGroup>
+    <EmbeddedResource Include="ComputerControl\ufo_runner.py">
+      <LogicalName>Aemeath.Core.ComputerControl.ufo_runner.py</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- 内置 Aemeath-skill（人格定义 + 知识库），用 LogicalName 固定资源名便于运行时加载 -->
