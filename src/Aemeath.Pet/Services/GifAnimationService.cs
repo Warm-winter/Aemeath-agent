@@ -112,6 +112,8 @@ public class GifAnimationService
         }
 
         _isPlaying = true;
+        // DispatcherTimer 周期性触发——即使首帧尚未加载，tick 也会空转，
+        // 帧加载完成后自然开始动画。不会像 one-shot Timer 那样因首帧缺失而永久死亡。
         _animationTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(100)

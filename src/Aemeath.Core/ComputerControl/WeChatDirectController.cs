@@ -75,7 +75,28 @@ public sealed class WeChatDirectController
             }
         }
 
-        // 2. 开始菜单快捷方式（最可靠：和用户点击的图标一致）
+        // 2. 桌面快捷方式（用户通常从桌面启动微信）
+        foreach (var desktop in AppLauncher.GetDesktopDirectories())
+        {
+            try
+            {
+                foreach (var lnk in Directory.EnumerateFiles(desktop, "*.lnk", SearchOption.TopDirectoryOnly))
+                {
+                    var fn = Path.GetFileNameWithoutExtension(lnk);
+                    if (!fn.Contains("微信", StringComparison.Ordinal)
+                        && !fn.Contains("WeChat", StringComparison.OrdinalIgnoreCase)
+                        && !fn.Contains("Weixin", StringComparison.OrdinalIgnoreCase)) continue;
+                    // 排除卸载快捷方式
+                    if (fn.Contains("卸载", StringComparison.Ordinal)
+                        || fn.Contains("uninstall", StringComparison.OrdinalIgnoreCase)) continue;
+                    var target = AppLauncher.ResolveShortcutTarget(lnk);
+                    if (!string.IsNullOrWhiteSpace(target) && File.Exists(target)) return target;
+                }
+            }
+            catch { }
+        }
+
+        // 3. 开始菜单快捷方式
         foreach (var progDir in new[]
         {
             Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
@@ -89,6 +110,9 @@ public sealed class WeChatDirectController
                 if (!fn.Contains("微信", StringComparison.Ordinal)
                     && !fn.Contains("WeChat", StringComparison.OrdinalIgnoreCase)
                     && !fn.Contains("Weixin", StringComparison.OrdinalIgnoreCase)) continue;
+                // 排除卸载快捷方式，避免误启动卸载器
+                if (fn.Contains("卸载", StringComparison.Ordinal)
+                    || fn.Contains("uninstall", StringComparison.OrdinalIgnoreCase)) continue;
                 var target = ResolveShortcutTarget(lnk);
                 if (!string.IsNullOrWhiteSpace(target) && File.Exists(target)) return target;
             }

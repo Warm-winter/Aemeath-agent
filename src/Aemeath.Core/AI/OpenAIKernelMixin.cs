@@ -69,7 +69,15 @@ public sealed class OpenAIKernelMixin : KernelMixinBase, IDisposable
     }
 
     private static HttpClient CreateOpenAIHttpClient()
-        => new(new OpenAIResponseNormalizationHandler(new HttpClientHandler()));
+    {
+        var client = new HttpClient(new OpenAIResponseNormalizationHandler(new HttpClientHandler()))
+        {
+            // Cloudflare 524 = 100 秒源超时。默认 HttpClient.Timeout 也是 100 秒，两者竞争导致
+            // 上传大图片时必定 524。设为 5 分钟给源站充足处理时间。
+            Timeout = TimeSpan.FromMinutes(5)
+        };
+        return client;
+    }
 
     public void SetModel(string modelId)
     {

@@ -37,6 +37,7 @@ public static class ImeFixBehavior
     private static extern IntPtr GetFocus();
 
     private const uint GCS_COMPSTR = 0x0008;
+    private const uint GCS_CURSORPOS = 0x0080;
 
     public static readonly AttachedProperty<bool> EnableImeCursorFixProperty =
         AvaloniaProperty.RegisterAttached<TextBox, bool>("EnableImeCursorFix", typeof(ImeFixBehavior));
@@ -56,19 +57,28 @@ public static class ImeFixBehavior
         {
             textBox.AddHandler(InputElement.TextInputEvent, OnTextInput, RoutingStrategies.Tunnel);
             textBox.AddHandler(InputElement.KeyUpEvent, OnKeyUp, RoutingStrategies.Tunnel);
+            // 鼠标点击改变 CaretIndex 后，Avalonia 的 TextPresenter._caretBounds 可能不自动刷新，
+            // 显式监听 PointerPressed 事件，在点击后强制刷新光标视觉位置。
+            textBox.AddHandler(InputElement.PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
             textBox.GotFocus += OnGotFocus;
             // composition 期间方向键常被 IME 拦截，KeyUp 收不到；改监听 CaretIndex 变化兜底。
             textBox.PropertyChanged += OnPropertyChanged;
+            // composition 字符串变化时 TextChanged 更可靠（IME 可能吞键盘事件）。
+            textBox.TextChanged += OnTextChanged;
             return;
         }
 
         textBox.RemoveHandler(InputElement.TextInputEvent, OnTextInput);
         textBox.RemoveHandler(InputElement.KeyUpEvent, OnKeyUp);
+        textBox.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
         textBox.GotFocus -= OnGotFocus;
         textBox.PropertyChanged -= OnPropertyChanged;
+        textBox.TextChanged -= OnTextChanged;
     }
 
-    /// <summary>CaretIndex 变化时，若处于 IME composition 期间，强制刷新竖线位置。</summary>
+    /// <summary>CaretIndex 变化时，强制刷新竖线位置。
+    /// 不再检查 IsImeComposing()——鼠标点击改变 CaretIndex 时也需要刷新视觉光标。
+    /// RefreshCaretVisualSafe 内部会自行判断是否处于 composition 状态。</summary>
     private static void OnPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (sender is not TextBox tb || !tb.IsFocused)
@@ -81,10 +91,24 @@ public static class ImeFixBehavior
             return;
         }
 
-        // 仅在 composition 期间介入；纯文本输入时 Avalonia 原生 caret 正常，不干预。
+        // 始终刷新——无论是否处于 composition 状态
+        RefreshCaretVisualSafe(tb);
+    }
+
+    /// <summary>
+    /// TextChanged 在 composition 字符串变化时触发（比 KeyUp 更可靠，IME 可能吞键盘事件）。
+    /// 若处于 composition 期间，刷新光标视觉位置。
+    /// </summary>
+    private static void OnTextChanged(object? sender, EventArgs e)
+    {
+        if (sender is not TextBox tb || !tb.IsFocused)
+        {
+            return;
+        }
+
         if (IsImeComposing())
         {
-            RefreshCaretVisual(tb);
+            RefreshCaretVisualSafe(tb);
         }
     }
 
@@ -109,10 +133,10 @@ public static class ImeFixBehavior
     /// If both true, refresh the caret visual — this fixes the case where
     /// arrow keys after IME commit don't update the visual caret position.
     ///
-    /// 注意：输入法组合（候选框打开）期间必须「不干预」。
-    /// 早期版本（提交 7b25014）曾尝试在组合期间也强制刷新光标，结果反而破坏了 Avalonia
-    /// 原生的光标跟随行为——表现为候选框打开时按方向键，显示光标卡住不动。
-    /// 这里恢复首版行为：组合期间直接 return，把光标渲染交还给 Avalonia 自己处理。
+    /// composition 期间也需强力刷新光标——用户按方向键在候选窗口移动时，
+    /// IME 内部光标位置已变但 Avalonia 的 TextPresenter._caretBounds 不会自动更新。
+    /// 使用 RefreshCaretVisualSafe：调用 MoveCaretToTextPosition + InvalidateMeasure
+    /// 触发布局重算，但**不重设 CaretIndex**，避免破坏 TSF composition 逻辑。
     /// </summary>
     private static void OnKeyUp(object? sender, KeyEventArgs e)
     {
@@ -129,9 +153,12 @@ public static class ImeFixBehavior
             return;
         }
 
-        // If IME is currently composing, don't interfere
         if (IsImeComposing())
         {
+            // composition 期间：强力刷新光标位置。
+            // 用 GCS_CURSORPOS 获取 IME 内部光标偏移，计算绝对文本位置，
+            // 调用 MoveCaretToTextPosition 强制重算 _caretBounds。
+            RefreshCaretVisualSafe(tb);
             return;
         }
 
@@ -144,6 +171,21 @@ public static class ImeFixBehavior
     private static void OnGotFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is not TextBox tb)
+        {
+            return;
+        }
+
+        ScheduleCaretRefresh(tb);
+    }
+
+    /// <summary>
+    /// 鼠标点击（左键/右键）在 TextBox 内改变 CaretIndex 后，
+    /// Avalonia 的 TextPresenter._caretBounds 可能不自动更新。
+    /// 延迟一帧刷新，确保 Avalonia 内部 PointerPressed 处理完毕后再校正光标视觉。
+    /// </summary>
+    private static void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not TextBox tb || !tb.IsFocused)
         {
             return;
         }
@@ -169,11 +211,104 @@ public static class ImeFixBehavior
     }
 
     /// <summary>
+    /// 强力刷新光标视觉位置，但不重设 CaretIndex（composition 期间安全）。
+    /// 
+    /// 核心逻辑：
+    /// 1. 用 IMM32 GCS_CURSORPOS 获取 IME 内部光标在 composition 字符串中的偏移
+    /// 2. 计算绝对文本位置 = CaretIndex - composition字符串长度 + 光标偏移
+    ///    （CaretIndex 通常指向 composition 字符串末尾）
+    /// 3. 调用 MoveCaretToTextPosition 强制重算 TextPresenter._caretBounds
+    /// 4. InvalidateMeasure/Arrange/Visual 触发布局+渲染
+    /// 
+    /// 不重设 CaretIndex——composition 期间重设会与 TSF 内部状态冲突。
+    /// </summary>
+    private static void RefreshCaretVisualSafe(TextBox textBox)
+    {
+        var presenter = FindTextPresenter(textBox);
+        if (presenter is not null)
+        {
+            try
+            {
+                // 尝试用 composition 光标位置（比 CaretIndex 更准确）
+                var targetPos = ResolveCompositionCursorPos(textBox);
+                presenter.MoveCaretToTextPosition(targetPos);
+            }
+            catch
+            {
+                // MoveCaretToTextPosition 失败时退到 InvalidateMeasure
+            }
+            presenter.InvalidateMeasure();
+            presenter.InvalidateArrange();
+            presenter.InvalidateVisual();
+        }
+
+        textBox.InvalidateMeasure();
+        textBox.InvalidateArrange();
+        textBox.InvalidateVisual();
+        // 不重设 CaretIndex——composition 期间重设会与 TSF 冲突
+    }
+
+    /// <summary>
+    /// 计算 composition 期间光标在文本中的绝对位置。
+    /// CaretIndex 通常指向 composition 字符串末尾，
+    /// GCS_CURSORPOS 返回光标在 composition 字符串中的偏移，
+    /// 绝对位置 = CaretIndex - composition字符串长度 + GCS_CURSORPOS。
+    /// 若无法获取 composition 信息，回退到 CaretIndex。
+    /// </summary>
+    private static int ResolveCompositionCursorPos(TextBox textBox)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return textBox.CaretIndex;
+        }
+
+        try
+        {
+            var hwnd = GetFocus();
+            if (hwnd == IntPtr.Zero) return textBox.CaretIndex;
+
+            var hImc = ImmGetContext(hwnd);
+            if (hImc == IntPtr.Zero) return textBox.CaretIndex;
+
+            try
+            {
+                // composition 字符串长度（字节数，ASCII 拼音 = 字符数）
+                var compLen = ImmGetCompositionString(hImc, GCS_COMPSTR, IntPtr.Zero, 0);
+                if (compLen <= 0) return textBox.CaretIndex;
+
+                // 光标在 composition 字符串中的偏移
+                var compCursor = ImmGetCompositionString(hImc, GCS_CURSORPOS, IntPtr.Zero, 0);
+                if (compCursor < 0) return textBox.CaretIndex;
+                // 过渡态保护：IME 内部状态切换瞬间 compCursor 可能大于 compLen，
+                // 此时用陈旧的 composition 数据计算位置会导致光标跳到错误位置。
+                if (compCursor > compLen) return textBox.CaretIndex;
+
+                // 绝对位置 = CaretIndex（末尾） - compLen + compCursor
+                var absPos = textBox.CaretIndex - compLen + compCursor;
+                // 安全 clamp
+                var maxLen = textBox.Text?.Length ?? 0;
+                if (absPos < 0) absPos = 0;
+                if (absPos > maxLen) absPos = maxLen;
+                return absPos;
+            }
+            finally
+            {
+                ImmReleaseContext(hwnd, hImc);
+            }
+        }
+        catch
+        {
+            return textBox.CaretIndex;
+        }
+    }
+
+    /// <summary>
     /// Forces the TextBox to re-render its caret at the current CaretIndex position.
     /// 用了两条路径，互为补充：
-    /// 1) 取到 TextBox 内部的 TextPresenter，调用其 caret 定位/重绘方法——这是根因修复
+    /// 1) 取到 TextBox 内部的 TextPresenter，调用其 MoveCaretToTextPosition——根因修复
     ///    （composition 期间 TextPresenter 的 _caretBounds 不会随 CaretIndex 自动更新）。
-    /// 2) 退路：InvalidateMeasure/Arrange/Visual + 重设 CaretIndex（旧逻辑，部分场景仍有效）。
+    /// 2) InvalidateMeasure/Arrange/Visual 触发布局+渲染重算。
+    /// 不再重设 CaretIndex——重设会触发 cascading OnPropertyChanged，导致光标闪烁或跳位。
     /// </summary>
     private static void RefreshCaretVisual(TextBox textBox)
     {
@@ -191,21 +326,14 @@ public static class ImeFixBehavior
             {
                 // MoveCaretToTextPosition 不可用时，退到重绘
             }
+            presenter.InvalidateMeasure();
+            presenter.InvalidateArrange();
             presenter.InvalidateVisual();
         }
 
-        // 退路：强制布局 + 重设 CaretIndex，兼容旧路径
         textBox.InvalidateMeasure();
         textBox.InvalidateArrange();
         textBox.InvalidateVisual();
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (textBox.IsFocused)
-            {
-                textBox.CaretIndex = idx;
-            }
-        }, DispatcherPriority.Render);
     }
 
     /// <summary>从 TextBox 的可视化子树里找到内部的 TextPresenter。</summary>

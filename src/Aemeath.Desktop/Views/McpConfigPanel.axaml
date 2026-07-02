@@ -73,7 +73,7 @@
                   <ComboBox x:Name="TransportBox" HorizontalAlignment="Stretch"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
-                  <TextBlock Text="URL（SSE / HTTP）" Classes="subtle"/>
+                  <TextBlock Text="URL（HTTP）" Classes="subtle"/>
                   <TextBox x:Name="UrlBox" PlaceholderText="https://example.com/mcp"/>
                 </StackPanel>
               </Grid>

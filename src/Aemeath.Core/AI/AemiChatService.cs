@@ -195,6 +195,13 @@ public class AemiChatService : IChatService, IAsyncDisposable
             apiKey: apiKey,
             endpoint: endpoint);
 
+        // 根据模型配置设置视觉能力：决定图片以 ImageContent 直接发送还是走 vision_analyze 工具
+        if (_currentKernel is not null)
+        {
+            var activeModelId = string.IsNullOrWhiteSpace(modelId) ? defaultModel : modelId;
+            _currentKernel.SupportsVision = ResolveVisionCapability(keyInfo?.Models, activeModelId);
+        }
+
         RegisterTools();
     }
 
@@ -219,6 +226,62 @@ public class AemiChatService : IChatService, IAsyncDisposable
         kernel.InitializeAsync(apiKey, endpoint).GetAwaiter().GetResult();
         _currentKernel = kernel;
         return providerName;
+    }
+
+    /// <summary>
+    /// 判断当前模型是否支持图片输入（视觉能力）。
+    /// 1. 优先查 ProviderModel.SupportsImageInput（由 /models API 探测）
+    /// 2. 若为 null（未探测或 API 不返回），用模型名模式匹配兜底
+    /// 3. 默认 true（现代模型大多支持视觉，且向后兼容）
+    /// </summary>
+    private static bool ResolveVisionCapability(List<ProviderModel>? models, string? modelId)
+    {
+        if (!string.IsNullOrWhiteSpace(modelId) && models is { Count: > 0 })
+        {
+            var match = models.FirstOrDefault(m =>
+                string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase));
+            if (match?.SupportsImageInput is { } explicitValue)
+            {
+                return explicitValue;
+            }
+        }
+
+        // 模型名兜底匹配：已知不支持视觉的模型
+        if (!string.IsNullOrWhiteSpace(modelId))
+        {
+            var name = modelId.ToLowerInvariant();
+
+            // 明确不支持视觉的模型
+            if (name.Contains("gpt-3.5") || name.Contains("text-davinci") ||
+                name.Contains("deepseek-r1") || name.Contains("o1-mini") ||
+                name.Contains("o3-mini") || name.Contains("llama-3.1") ||
+                name.Contains("qwen2.5-") || name.Contains("mistral") ||
+                name.Contains("yi-") || name.Contains("baichuan"))
+            {
+                // 但要排除这些系列的 VL 版本
+                if (!name.Contains("vl") && !name.Contains("vision") && !name.Contains("omni"))
+                {
+                    return false;
+                }
+            }
+
+            // 明确支持视觉的模型
+            if (name.Contains("gpt-4o") || name.Contains("gpt-4-vision") ||
+                name.Contains("gpt-4-turbo") || name.Contains("claude-3") ||
+                name.Contains("gemini") || name.Contains("qwen-vl") ||
+                name.Contains("qwen2-vl") || name.Contains("qwen2.5-vl") ||
+                name.Contains("glm-4v") || name.Contains("internvl") ||
+                name.Contains("minicpm-v") || name.Contains("yi-vl") ||
+                name.Contains("-vl") || name.Contains("vision") ||
+                name.Contains("-omni") || name.Contains("llava") ||
+                name.Contains("multimodal") || name.Contains("gemini-2"))
+            {
+                return true;
+            }
+        }
+
+        // 默认 true：大多数现代模型支持视觉
+        return true;
     }
 
     private void RegisterTools()

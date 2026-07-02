@@ -1,6 +1,10 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Text;
 
 namespace Aemeath.Core.AI;
@@ -17,6 +21,13 @@ public abstract class KernelMixinBase
 
     public string ProviderName { get; protected set; } = "Unknown";
     public bool IsInitialized => _isInitialized;
+    /// <summary>
+    /// 当前模型是否支持图片输入（视觉能力）。
+    /// true: 图片以 ImageContent 直接发送给模型。
+    /// false: 图片不直接发送，改为文本提示让模型调用 vision_analyze 工具。
+    /// 默认 true（向后兼容），由 AemiChatService 根据模型配置设置。
+    /// </summary>
+    public bool SupportsVision { get; set; } = true;
     public ChatHistory ChatHistory => _chatHistory;
 
     protected KernelMixinBase(string systemPrompt)
@@ -67,7 +78,7 @@ public abstract class KernelMixinBase
         return text;
     }
 
-    private static async Task<ChatMessageContentItemCollection> BuildUserContentItemsAsync(
+    private async Task<ChatMessageContentItemCollection> BuildUserContentItemsAsync(
         string message,
         IReadOnlyList<ChatAttachment> attachments,
         CancellationToken cancellationToken)
@@ -90,7 +101,7 @@ public abstract class KernelMixinBase
 
             if (attachment.Kind == ChatAttachmentKind.Image)
             {
-                await AppendImageAttachmentAsync(contentItems, textBuilder, attachment, cancellationToken);
+                await AppendImageAttachmentAsync(contentItems, textBuilder, attachment, SupportsVision, cancellationToken);
                 continue;
             }
 
@@ -134,6 +145,7 @@ public abstract class KernelMixinBase
         ChatMessageContentItemCollection contentItems,
         StringBuilder textBuilder,
         ChatAttachment attachment,
+        bool supportsVision,
         CancellationToken cancellationToken)
     {
         try
@@ -151,12 +163,78 @@ public abstract class KernelMixinBase
                 return;
             }
 
-            contentItems.Add(new ImageContent(bytes, attachment.MimeType));
-            textBuilder.AppendLine($"已附加图片内容（{FormatBytes(bytes.Length)}），请查看并结合图片回答。");
+            if (supportsVision)
+            {
+                // 压缩图片：缩放到长边 ≤ 2048px + JPEG 85% 质量，
+                // 将 10MB 图片降到 ~200-500KB，避免 Cloudflare 524 超时。
+                var compressed = CompressImageForChat(bytes);
+                contentItems.Add(new ImageContent(compressed, "image/jpeg"));
+                textBuilder.AppendLine($"已附加图片内容（{FormatBytes(compressed.Length)}），请查看并结合图片回答。");
+            }
+            else
+            {
+                // 模型不支持视觉：不发送 ImageContent（会导致 API 报错），
+                // 改为文本提示，让模型调用 vision_analyze 工具分析图片。
+                textBuilder.AppendLine($"图片已附加但当前模型不支持直接查看图片。");
+                textBuilder.AppendLine($"图片路径：{attachment.Path}");
+                textBuilder.AppendLine($"请调用 vision_analyze 工具（传入此路径）来获取图片描述，然后基于描述回答用户。");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             textBuilder.AppendLine($"图片读取失败：{ex.Message}，路径：{attachment.Path}");
+        }
+    }
+
+    /// <summary>
+    /// 压缩图片用于聊天上传：缩放到长边 ≤ 2048px、转 JPEG 85% 质量。
+    /// 将 10MB 原图降到 ~200-500KB，避免 Cloudflare 524 超时。
+    /// </summary>
+    private static byte[] CompressImageForChat(byte[] sourceBytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(sourceBytes);
+            using var src = Image.FromStream(ms);
+            const int maxLongSide = 2048;
+            var scale = Math.Min(1.0, (double)maxLongSide / Math.Max(src.Width, src.Height));
+            // 已经足够小且是 JPEG → 直接返回原数据
+            if (scale >= 1.0 && src.RawFormat.Equals(ImageFormat.Jpeg))
+            {
+                return sourceBytes;
+            }
+
+            var w = (int)(src.Width * scale);
+            var h = (int)(src.Height * scale);
+            if (w < 1) w = 1;
+            if (h < 1) h = 1;
+
+            using var dst = new Bitmap(w, h);
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(src, 0, 0, w, h);
+            }
+
+            using var outMs = new MemoryStream();
+            var jpegEncoder = ImageCodecInfo.GetImageEncoders()
+                .FirstOrDefault(e => e.FormatID == ImageFormat.Jpeg.Guid);
+            var parms = new EncoderParameters(1);
+            parms.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
+            if (jpegEncoder is not null)
+            {
+                dst.Save(outMs, jpegEncoder, parms);
+            }
+            else
+            {
+                dst.Save(outMs, ImageFormat.Jpeg);
+            }
+            return outMs.ToArray();
+        }
+        catch
+        {
+            // 压缩失败（如 SVG/HEIC 等非标准格式）→ 返回原始数据，让 API 自行处理
+            return sourceBytes;
         }
     }
 

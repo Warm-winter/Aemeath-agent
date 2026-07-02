@@ -10,7 +10,7 @@ public class ScreenshotPlugin
 {
     [KernelFunction("take_screenshot")]
     [Description("截取屏幕截图")]
-    public string TakeScreenshot(
+    public async Task<string> TakeScreenshot(
         [Description("保存路径（可选）")] string? savePath = null)
     {
         try
@@ -45,7 +45,20 @@ public class ScreenshotPlugin
             };
 
             using var process = Process.Start(psi);
-            process?.WaitForExit(15000);
+            if (process is not null)
+            {
+                // 使用异步等待 + 超时取消，避免阻塞 UI 线程导致桌宠动画卡住
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                try
+                {
+                    await process.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // 超时——PowerShell 进程可能仍在运行，强制结束
+                    try { process.Kill(); } catch { }
+                }
+            }
 
             if (!File.Exists(savePath))
             {

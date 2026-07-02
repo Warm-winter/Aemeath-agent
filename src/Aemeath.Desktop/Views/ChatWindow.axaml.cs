@@ -359,7 +359,6 @@ public partial class ChatWindow : Window
             {
                 RenderCurrentMessages();
                 RefreshSessionSelector(_currentSessionId);
-                ClearPendingAttachments();
                 RaiseActivityChanged(ChatActivityKind.ToolWaiting);
                 AppLogger.Info("chat", "send paused for tool confirmation");
                 return;
@@ -381,7 +380,6 @@ public partial class ChatWindow : Window
             _sessionStore.AppendMessage(_currentSessionId, "assistant", assistantReply);
             RenderCurrentMessages();
             RefreshSessionSelector(_currentSessionId);
-            ClearPendingAttachments();
             // 把这一轮对话写入 Mem0（后台执行，不阻塞 UI）。Mem0 内部自动抽取事实，无需手动压缩。
             _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, input, assistantReply));
             RaiseActivityChanged(ChatActivityKind.Completed);
@@ -408,6 +406,7 @@ public partial class ChatWindow : Window
             _isSending = false;
             ResumeAmbientFlicker();
             UpdateProviderQuickSwitchEnabled();
+            ClearPendingAttachments();
         }
     }
 
@@ -677,7 +676,7 @@ public partial class ChatWindow : Window
             var label = new TextBlock
             {
                 Text = $"{AttachmentService.GetAttachmentKindLabel(attachment.Kind)} {attachment.Name} ({AttachmentService.FormatBytes(attachment.SizeBytes)})",
-                Foreground = Brushes.White,
+                Foreground = new SolidColorBrush(Color.Parse("#4A2A3A")),
                 FontSize = 12,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = 260,
@@ -693,8 +692,8 @@ public partial class ChatWindow : Window
 
             AttachmentPanel.Children.Add(new Border
             {
-                Background = new SolidColorBrush(Color.Parse("#1A73C7FF")),
-                BorderBrush = new SolidColorBrush(Color.Parse("#6673C7FF")),
+                Background = new SolidColorBrush(Color.Parse("#FFE1EE")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#F3C2D4")),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(999),
                 Padding = new Thickness(10, 5, 5, 5),

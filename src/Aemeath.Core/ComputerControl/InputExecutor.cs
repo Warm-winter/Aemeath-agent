@@ -26,6 +26,9 @@ public static class InputExecutor
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
     private const uint MOUSEEVENTF_MOVE = 0x0001;
     private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     private const uint MOUSEEVENTF_LEFTUP = 0x0004;
@@ -66,6 +69,39 @@ public static class InputExecutor
             Thread.Sleep(20);
             mouse_event(up, 0, 0, 0, 0);
         }
+    }
+
+    /// <summary>
+    /// 从当前光标位置拖拽到指定坐标。先按下鼠标左键，逐步移动到目标位置，然后释放。
+    /// 用于 drag_on_coordinates 动作：上层先调用 Click 定位到起始点，再调用此方法拖拽到终点。
+    /// </summary>
+    public static void DragTo(int endX, int endY)
+    {
+        // 按下左键（当前位置由上层 Click 定位）
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+        Thread.Sleep(50);
+
+        // 获取当前光标位置
+        GetCursorPos(out var start);
+
+        // 逐步移动到目标位置（模拟真实拖拽轨迹，部分应用需要逐步移动才能识别拖拽）
+        var steps = 10;
+        for (int i = 1; i <= steps; i++)
+        {
+            Thread.Sleep(15);
+            var x = start.X + (endX - start.X) * i / steps;
+            var y = start.Y + (endY - start.Y) * i / steps;
+            SetCursorPos(x, y);
+            mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, 0);
+        }
+
+        Thread.Sleep(50);
+        // 确保最终位置精确
+        SetCursorPos(endX, endY);
+        mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, 0);
+        Thread.Sleep(20);
+        // 释放左键
+        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
     /// <summary>滚轮：wheelDist 正=向上，负=向下。</summary>
@@ -261,5 +297,12 @@ public static class InputExecutor
         public uint dwFlags;
         public uint time;
         public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
     }
 }

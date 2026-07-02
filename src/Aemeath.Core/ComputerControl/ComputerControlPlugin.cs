@@ -24,6 +24,10 @@ public class ComputerControlPlugin
     private readonly Func<string?> _backendSelector;
     private readonly Func<string?> _ufoPythonSelector;
 
+    /// <summary>记录已提交且仍在等待确认的任务，防止 SK AutoInvokeKernelFunctions 第二轮重复创建确认卡片。</summary>
+    private static readonly HashSet<string> _pendingTasks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _pendingGuard = new();
+
     public ComputerControlPlugin(
         Func<(string Model, string Endpoint, string ApiKey)?> visionConfig,
         ToolConfirmationService? confirmation = null,
@@ -62,13 +66,40 @@ public class ComputerControlPlugin
         // 既不阻塞 UI 线程，也避免 sync-over-async。
         if (_confirmation is not null)
         {
+            // 防止 SK AutoInvokeKernelFunctions 第二轮重复创建确认卡片：
+            // 如果同一任务已在等待确认，直接返回提示信息，不创建新的确认。
+            var taskKey = task.Trim().ToLowerInvariant();
+            lock (_pendingGuard)
+            {
+                if (_pendingTasks.Contains(taskKey))
+                {
+                    return "电脑控制任务已提交，正在等待用户确认。请告知用户点击确认卡片即可执行，无需重复发起。";
+                }
+                _pendingTasks.Add(taskKey);
+            }
+
             var marker = _confirmation.RequestConfirmation(
                 "电脑控制任务",
                 $"小爱即将在你的电脑上自动操作以完成：\n{task}\n\n这会真实点击界面、输入文字，可能耗时数十秒。请确认后再执行。",
-                () => RunAgentAsync(task),
+                async () =>
+                {
+                    try
+                    {
+                        return await RunAgentAsync(task);
+                    }
+                    finally
+                    {
+                        lock (_pendingGuard)
+                        {
+                            _pendingTasks.Remove(taskKey);
+                        }
+                    }
+                },
                 isLongRunning: true);
 
-            return marker; // 返回标记字符串，由 ChatWindow 渲染确认卡片
+            // marker 后附加 LLM 友好说明，让 LLM 理解任务已提交、不要再次调用 computer_control。
+            // ShouldSuppressConfirmationReply 检测 marker 前缀，附加文字不影响检测。
+            return marker + " 电脑控制任务已提交，正在等待用户点击确认卡片后执行。请用简短中文告知用户：任务已准备就绪，需要确认后开始。不要再次调用 computer_control。";
         }
 
         return await RunAgentAsync(task);
@@ -91,7 +122,10 @@ public class ComputerControlPlugin
             }
 
             var agent = new ComputerControlAgent(_visionConfig);
-            var result = await agent.RunAsync(task, new Progress<string>(_ => { }));
+            var result = await agent.RunAsync(task, new Progress<string>(msg =>
+            {
+                System.Diagnostics.Debug.WriteLine($"[computer_control] {msg}");
+            }));
             return result;
         }
         catch (Exception ex)

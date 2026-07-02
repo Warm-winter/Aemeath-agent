@@ -79,7 +79,8 @@ public partial class McpConfigPanel : UserControl
     {
         TransportBox.Items.Clear();
         TransportBox.Items.Add(new ComboBoxItem { Content = "stdio（本地命令）", Tag = McpTransportType.Stdio });
-        TransportBox.Items.Add(new ComboBoxItem { Content = "sse（流式 HTTP）", Tag = McpTransportType.Sse });
+        // SSE 选项暂时隐藏：SSE 连接方式存在超时问题，待修复后再恢复。
+        // TransportBox.Items.Add(new ComboBoxItem { Content = "sse（流式 HTTP）", Tag = McpTransportType.Sse });
         TransportBox.Items.Add(new ComboBoxItem { Content = "http（可流式 HTTP）", Tag = McpTransportType.Http });
         TransportBox.SelectedIndex = 0;
     }
@@ -403,6 +404,19 @@ public partial class McpConfigPanel : UserControl
             {
                 TransportBox.SelectedItem = item;
                 return;
+            }
+        }
+        // SSE 选项已隐藏：已有 SSE 配置在 UI 中找不到对应项时，回退到 HTTP（而非 Stdio），
+        // 因为 HTTP 在传输模式上与 SSE 更接近，避免静默改变连接方式。
+        if (transport == McpTransportType.Sse)
+        {
+            foreach (var item in TransportBox.Items.OfType<ComboBoxItem>())
+            {
+                if (item.Tag is McpTransportType value && value == McpTransportType.Http)
+                {
+                    TransportBox.SelectedItem = item;
+                    return;
+                }
             }
         }
         TransportBox.SelectedIndex = 0;

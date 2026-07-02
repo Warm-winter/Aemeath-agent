@@ -116,7 +116,8 @@ public static class UiaControlTree
                 Left: (int)rect.X,
                 Top: (int)rect.Y,
                 Width: (int)rect.Width,
-                Height: (int)rect.Height));
+                Height: (int)rect.Height,
+                Element: el));
         }
         catch
         {
@@ -181,21 +182,27 @@ public static class UiaControlTree
         return new UIA.OrCondition(typeConditions);
     }
 
-    /// <summary>在截图上为每个控件画编号（移植自 UFO 的 annotation）。</summary>
-    public static void Annotate(string screenshotPath, IReadOnlyList<AnnotatedControl> controls, string outputPath)
+    /// <summary>
+    /// 在截图上为每个控件画编号（移植自 UFO 的 annotation）。
+    /// 控件边框和编号背景按控件类型颜色编码，数字文字保持白色。
+    /// 如果 lastActionControlId 不为 null，在该控件位置画粗红色边框标记上一步操作。
+    /// </summary>
+    public static void Annotate(string screenshotPath, IReadOnlyList<AnnotatedControl> controls, string outputPath, int? lastActionControlId = null)
     {
         using var bmp = new Bitmap(screenshotPath);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
         using var font = new Font("Arial", 11, FontStyle.Bold);
-        using var brush = new SolidBrush(Color.FromArgb(220, 220, 60, 60));
-        using var pen = new Pen(Color.FromArgb(220, 220, 60, 60), 2);
-        using var textBg = new SolidBrush(Color.FromArgb(230, 40, 40, 40));
+        // 数字编号文字保持白色
         using var textFg = new SolidBrush(Color.White);
 
         foreach (var c in controls)
         {
+            var color = GetControlColor(c.TypeName);
+            using var pen = new Pen(Color.FromArgb(220, color.R, color.G, color.B), 2);
+            using var labelBg = new SolidBrush(Color.FromArgb(230, color.R, color.G, color.B));
+
             // 画边框
             g.DrawRectangle(pen, c.Left, c.Top, Math.Max(1, c.Width - 1), Math.Max(1, c.Height - 1));
             // 编号标签画在控件左上角
@@ -204,11 +211,41 @@ public static class UiaControlTree
             var lx = c.Left;
             var ly = c.Top - size.Height;
             if (ly < 0) ly = c.Top;
-            g.FillRectangle(textBg, lx, ly, size.Width + 4, size.Height);
+            g.FillRectangle(labelBg, lx, ly, size.Width + 4, size.Height);
             g.DrawString(label, font, textFg, lx + 2, ly);
         }
 
+        // 上一步操作控件：粗红色边框标记
+        if (lastActionControlId.HasValue)
+        {
+            var last = controls.FirstOrDefault(x => x.Id == lastActionControlId.Value);
+            if (last is not null)
+            {
+                using var thickPen = new Pen(Color.FromArgb(255, 244, 67, 54), 4);
+                var pad = 3;
+                g.DrawRectangle(thickPen,
+                    last.Left - pad, last.Top - pad,
+                    Math.Max(1, last.Width + pad * 2 - 1),
+                    Math.Max(1, last.Height + pad * 2 - 1));
+            }
+        }
+
         bmp.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    /// <summary>按控件类型返回标注颜色。</summary>
+    private static Color GetControlColor(string typeName)
+    {
+        return typeName switch
+        {
+            "Button" => ColorTranslator.FromHtml("#2196F3"),       // 蓝色
+            "Edit" => ColorTranslator.FromHtml("#4CAF50"),          // 绿色
+            "ListItem" or "TreeItem" => ColorTranslator.FromHtml("#FF9800"), // 橙色
+            "Hyperlink" => ColorTranslator.FromHtml("#9C27B0"),     // 紫色
+            "ComboBox" => ColorTranslator.FromHtml("#00BCD4"),      // 青色
+            "Menu" or "MenuItem" => ColorTranslator.FromHtml("#795548"), // 棕色
+            _ => ColorTranslator.FromHtml("#F44336")                // 红色（默认）
+        };
     }
 
     [DllImport("user32.dll")]
@@ -216,8 +253,42 @@ public static class UiaControlTree
 }
 
 /// <summary>一个带编号和坐标的可交互控件。</summary>
-public sealed record AnnotatedControl(int Id, string Name, string TypeName, int Left, int Top, int Width, int Height)
+public sealed record AnnotatedControl(int Id, string Name, string TypeName, int Left, int Top, int Width, int Height, UIA.AutomationElement? Element = null)
 {
     /// <summary>控件中心点（用于点击）。</summary>
     public (int X, int Y) Center => (Left + Width / 2, Top + Height / 2);
+
+    /// <summary>
+    /// 尝试用 UIA 读取控件的文本值。依次尝试 ValuePattern、TextPattern，
+    /// 最后回退到 AutomationElement.Current.Name。
+    /// </summary>
+    public string? GetText()
+    {
+        if (Element is null) return null;
+
+        // ValuePattern（输入框、文档等可编辑控件的文本）
+        try
+        {
+            if (Element.GetCurrentPattern(UIA.ValuePattern.Pattern) is UIA.ValuePattern vp)
+            {
+                var val = vp.Current.Value;
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+        }
+        catch { /* 控件不支持 ValuePattern，继续尝试下一个 */ }
+
+        // TextPattern（文档、富文本控件）
+        try
+        {
+            if (Element.GetCurrentPattern(UIA.TextPattern.Pattern) is UIA.TextPattern tp)
+            {
+                var val = tp.DocumentRange.GetText(-1);
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+        }
+        catch { /* 控件不支持 TextPattern */ }
+
+        // 回退到 Name 属性
+        try { return Element.Current.Name; } catch { return null; }
+    }
 }

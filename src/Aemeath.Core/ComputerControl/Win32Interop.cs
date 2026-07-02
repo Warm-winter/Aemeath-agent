@@ -97,8 +97,9 @@ internal static class Win32Interop
     /// <summary>
     /// 最小化所有可见的顶层窗口（排除桌面/Shell、任务栏等），返回一个 scope，
     /// 调用方 Dispose 时恢复原状。用于电脑控制任务前清理桌面遮挡。
+    /// excludeHwnd：目标窗口句柄，不会被最小化（保护刚打开的目标应用窗口）。
     /// </summary>
-    public static MinimizeScope MinimizeAllWindows()
+    public static MinimizeScope MinimizeAllWindows(IntPtr? excludeHwnd = null)
     {
         var scope = new MinimizeScope();
         var shell = GetShellWindow();
@@ -110,6 +111,8 @@ internal static class Win32Interop
             {
                 if (!IsWindowVisible(hwnd)) return true;
                 if (hwnd == shell) return true;
+                // 排除目标窗口（不最小化目标应用）
+                if (excludeHwnd.HasValue && hwnd == excludeHwnd.Value) return true;
                 // 跳过有 owner 的窗口（如对话框/子窗口），避免误伤
                 if (GetWindowOwner(hwnd) != IntPtr.Zero) return true;
                 // 跳过无标题的工具窗口（任务栏等）
@@ -209,7 +212,6 @@ internal static class Win32Interop
                 try
                 {
                     if (!IsWindowVisible(hwnd)) return true;
-                    if (GetWindowOwner(hwnd) != IntPtr.Zero) return true; // 跳过子窗口/对话框
 
                     GetWindowThreadProcessId(hwnd, out var pid);
                     var procName = GetProcessNameSafe(pid);
@@ -223,15 +225,24 @@ internal static class Win32Interop
                     var clsStr = cls.ToString();
 
                     // 匹配条件：微信进程名（微信 4.x 的进程是 WeChatAppEx，不是 WeChat.exe！）
-                    // 或标题含微信/WeChat，或类名含 WeChat/Weixin
+                    // 或标题含微信/WeChat，或类名含 WeChat/Weixin/Androws
                     bool isWeChatProc = !string.IsNullOrEmpty(procName)
                         && (procName.StartsWith("WeChat", StringComparison.OrdinalIgnoreCase)
                             || procName.StartsWith("Weixin", StringComparison.OrdinalIgnoreCase)
-                            || procName.Equals("WeChatAppEx", StringComparison.OrdinalIgnoreCase));
+                            || procName.Equals("WeChatAppEx", StringComparison.OrdinalIgnoreCase)
+                            || procName.StartsWith("Androws", StringComparison.OrdinalIgnoreCase));
                     bool isWeChatTitle = titleStr.Contains("微信", StringComparison.Ordinal)
                                          || titleStr.Contains("WeChat", StringComparison.OrdinalIgnoreCase);
                     bool isWeChatClass = clsStr.IndexOf("WeChat", StringComparison.OrdinalIgnoreCase) >= 0
-                                         || clsStr.IndexOf("Weixin", StringComparison.OrdinalIgnoreCase) >= 0;
+                                         || clsStr.IndexOf("Weixin", StringComparison.OrdinalIgnoreCase) >= 0
+                                         || clsStr.IndexOf("Androws", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    // 微信相关窗口不跳过 owner 检查（WeChat 4.x 主窗口可能有 owner）；
+                    // 非微信窗口仍跳过有 owner 的（对话框/子窗口）。
+                    if (!isWeChatProc && !isWeChatTitle && !isWeChatClass)
+                    {
+                        if (GetWindowOwner(hwnd) != IntPtr.Zero) return true; // 跳过子窗口/对话框
+                    }
 
                     // 进程名匹配即可（微信 4.x 进程是 WeChatAppEx，窗口可能无标题）；
                     // 或类名/标题明显是微信。优先返回可见的主窗口。

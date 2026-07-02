@@ -923,8 +923,7 @@ public partial class ConfigWindow : Window
         var model = VisionModelBox.Text?.Trim();
         _settingsService.Current.VisionModel = string.IsNullOrWhiteSpace(model) ? null : model;
 
-        var key = VisionApiKeyBox.Text?.Trim();
-        _settingsService.Current.VisionApiKey = string.IsNullOrWhiteSpace(key) ? null : key;
+        // VisionApiKey 复用所选提供商已保存的 Key，无需独立输入
         // 选择新提供商时，旧的独立端点/Key 若为空则自动用该提供商
         if (string.IsNullOrWhiteSpace(_settingsService.Current.VisionEndpoint))
         {
@@ -1223,10 +1222,10 @@ public partial class ConfigWindow : Window
     /// <summary>切换到 MCP 配置 Tab（供聊天栏快速跳转调用）。</summary>
     public void SelectMcpTab()
     {
-        if (SettingsTabControl.Items.Count > 2)
+        if (SettingsTabControl.Items.Count > 3)
         {
-            // MCP 配置是第 3 个 Tab（索引 2）
-            SettingsTabControl.SelectedIndex = 2;
+            // Tab 顺序：0=提供商配置, 1=记忆管理, 2=电脑控制, 3=MCP配置
+            SettingsTabControl.SelectedIndex = 3;
         }
 
         _ = RefreshMcpOverallStatusAsync();

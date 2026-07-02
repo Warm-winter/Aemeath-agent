@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="clr-namespace:Aemeath.Desktop.Behaviors"
              x:Class="Aemeath.Desktop.App"
              RequestedThemeVariant="Light">
     <Application.DataTemplates>
@@ -53,6 +54,9 @@
         <Style Selector="ComboBox, TextBox">
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="MinHeight" Value="34"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="behaviors:ImeFixBehavior.EnableImeCursorFix" Value="True"/>
         </Style>
         <Style Selector="CheckBox, RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>

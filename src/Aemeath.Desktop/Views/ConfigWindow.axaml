@@ -277,8 +277,6 @@
                         <ComboBox x:Name="VisionProviderBox" MinWidth="280" PlaceholderText="复用当前对话提供商"/>
                         <TextBlock Text="视觉模型（留空则用该提供商默认模型）" Classes="subtle" Margin="0,4,0,0"/>
                         <ComboBox x:Name="VisionModelBox" MinWidth="280" IsEditable="True" PlaceholderText="例如 gpt-4o-mini"/>
-                        <TextBlock Text="视觉模型 API Key（留空则用该提供商已保存的 Key）" Classes="subtle" Margin="0,4,0,0"/>
-                        <TextBox x:Name="VisionApiKeyBox" PlaceholderText="留空复用提供商 Key" PasswordChar="•"/>
                       </StackPanel>
                     </StackPanel>
                   </Border>
