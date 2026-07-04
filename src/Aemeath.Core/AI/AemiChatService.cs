@@ -56,10 +56,10 @@ public class AemiChatService : IChatService, IAsyncDisposable
 
         return new Memory.Mem0ConnectionConfig(
             LlmModel: llmModel,
-            LlmBaseUrl: NormalizeBaseUrl(endpoint) ?? string.Empty,
+            LlmBaseUrl: OpenAIUrlHelper.NormalizeBaseUrl(endpoint) ?? string.Empty,
             LlmApiKey: apiKey,
             EmbedModel: embedModel,
-            EmbedBaseUrl: NormalizeBaseUrl(endpoint),
+            EmbedBaseUrl: OpenAIUrlHelper.NormalizeBaseUrl(endpoint),
             EmbedApiKey: apiKey,
             EmbedDims: s.Mem0EmbedDims > 0 ? s.Mem0EmbedDims : 1536,
             VectorProvider: "qdrant");
@@ -82,7 +82,7 @@ public class AemiChatService : IChatService, IAsyncDisposable
         var model = !string.IsNullOrWhiteSpace(s.VisionModel) ? s.VisionModel! : keyInfo?.ModelId ?? s.DefaultModel;
         // endpoint：优先独立视觉端点，否则用所选 Provider 的端点
         var endpointRaw = !string.IsNullOrWhiteSpace(s.VisionEndpoint) ? s.VisionEndpoint : keyInfo?.Endpoint;
-        var endpoint = NormalizeBaseUrl(endpointRaw);
+        var endpoint = OpenAIUrlHelper.NormalizeBaseUrl(endpointRaw);
         if (string.IsNullOrWhiteSpace(model))
         {
             return null;
@@ -91,29 +91,13 @@ public class AemiChatService : IChatService, IAsyncDisposable
         return (model, endpoint ?? string.Empty, apiKey);
     }
 
-    private static string? NormalizeBaseUrl(string? endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            return null;
-        }
-
-        var url = endpoint.Trim();
-        // 兼容用户填了完整路径的情况：截到 /v1 末尾
-        var idx = url.IndexOf("/v1", StringComparison.OrdinalIgnoreCase);
-        if (idx > 0)
-        {
-            url = url[..(idx + 3)];
-        }
-
-        return url.TrimEnd('/') + (url.Contains("/v1", StringComparison.OrdinalIgnoreCase) ? string.Empty : "/v1");
-    }
-
     private readonly Dictionary<string, Func<string, Task<string>>> _customTools = new();
     private readonly Dictionary<string, string> _customToolDescriptions = new();
     private readonly McpRuntimeService _mcpRuntime = new();
     private readonly SemaphoreSlim _mcpReloadLock = new(1, 1);
     private CancellationTokenSource? _mcpReloadCts;
+    // 持有 ReminderPlugin 引用以便订阅其 ReminderTriggered 事件并转发给上层
+    private ReminderPlugin? _reminderPlugin;
     // 总预算调高到 200s，确保不小于单服务最长超时（HTTP 后台 150s + 余量）。
     // 即使总预算耗尽，BuildEnabledPluginAsync 内部每个服务有独立超时，已成功的工具仍会注册。
     private const int McpReloadTimeoutSeconds = 200;
@@ -125,6 +109,12 @@ public class AemiChatService : IChatService, IAsyncDisposable
     public string? LastInitializationError { get; private set; }
     public string McpStatus { get; private set; } = "未加载";
     public event EventHandler<string>? McpStatusChanged;
+
+    /// <summary>
+    /// 提醒触发事件（由 ReminderPlugin 转发）。UI 层订阅后可弹桌宠气泡/通知。
+    /// 回调可能在 ThreadPool 线程触发，订阅者需自行切换到 UI 线程。
+    /// </summary>
+    public event EventHandler<string>? ReminderTriggered;
 
     public void SetUiThreadInvoker(Action<Action> invoker)
     {
@@ -291,7 +281,9 @@ public class AemiChatService : IChatService, IAsyncDisposable
         TryRegisterPlugin(new FileSystemPlugin(ToolConfirmationService), "filesystem");
         TryRegisterPlugin(new ScreenshotPlugin(), "screenshot");
         TryRegisterPlugin(new BrowserPlugin(ToolConfirmationService), "browser");
-        TryRegisterPlugin(new ReminderPlugin(), "reminder");
+        _reminderPlugin = new ReminderPlugin();
+        _reminderPlugin.ReminderTriggered += (s, msg) => ReminderTriggered?.Invoke(s, msg);
+        TryRegisterPlugin(_reminderPlugin, "reminder");
         TryRegisterPlugin(new KnowledgeBasePlugin(_knowledgeBase), "knowledge");
         TryRegisterPlugin(new VisionPlugin(BuildVisionConfig), "vision");
         TryRegisterPlugin(new ComputerControl.ComputerControlPlugin(
@@ -361,12 +353,22 @@ public class AemiChatService : IChatService, IAsyncDisposable
         IsProcessing = true;
         try
         {
+            var cleaner = new StreamingThinkCleaner();
             await foreach (var chunk in _currentKernel.SendMessageStreamingAsync(
                                EnrichMessageWithKnowledge(message),
                                attachments,
                                cancellationToken))
             {
-                yield return chunk;
+                var safe = cleaner.Feed(chunk);
+                if (!string.IsNullOrEmpty(safe))
+                {
+                    yield return safe;
+                }
+            }
+            var tail = cleaner.Finish();
+            if (!string.IsNullOrEmpty(tail))
+            {
+                yield return tail;
             }
         }
         finally

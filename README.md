@@ -1,4 +1,4 @@
-﻿# Aemeath Agent
+# Aemeath Agent
 
 一个写给鸣潮玩家的「爱弥斯」主题 Windows AI 桌宠助手。
 
@@ -118,13 +118,13 @@ Aemeath Agent 带有长期记忆系统。她会在对话进行一段时间后自
 - 如果已有，会提示无需下载
 - 如果缺失，会从多个国内镜像源自动降级下载
 
-下载后的文件会保存到：
+下载后的文件会保存到程序所在目录下的 `runtime\bin`（即 `<程序目录>\runtime\bin`，与可执行文件同级）。
 
 ```text
-%AppData%\Aemeath\tools\bin
+<程序目录>\runtime\bin
 ```
 
-下载成功后，程序会保存路径并重新配置内置 MCP Servers。
+例如发布后的默认路径为 `publish\Aemeath.Desktop\runtime\bin`。下载成功后，程序会保存路径并重新配置内置 MCP Servers。
 
 ## 技术栈
 
@@ -163,6 +163,17 @@ Aemeath/
 - Windows 10/11 x64
 - .NET SDK 8.0 或更高版本
 - 可选：Inno Setup，用于制作安装包
+
+### 运行权限说明
+
+程序启动时需要**管理员权限**（UAC 会弹出提权提示）。这是由 [app.manifest](src/Aemeath.Desktop/app.manifest) 中 `requestedExecutionLevel level="requireAdministrator"` 指定的。
+
+需要管理员权限的原因：
+
+- **电脑控制功能**（轨 A：UIAutomation + SendInput）操作其他进程窗口时需要提升权限，否则 `SetCursorPos`、`SendInput`、跨进程 UIA 调用会失败或被拒绝。
+- **UFO 后端**（可选的 Python 控制方案）在操控部分应用时同样依赖提升权限。
+
+如果你只使用聊天、记忆、知识库等基础功能，UAC 提权仍然会触发，但不会带来副作用。
 
 在仓库根目录执行：
 

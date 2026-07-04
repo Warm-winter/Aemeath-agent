@@ -37,6 +37,7 @@ public partial class App : Application
             if (_chatService is AemiChatService aemiService)
             {
                 aemiService.SetUiThreadInvoker(action => Dispatcher.UIThread.Post(action, DispatcherPriority.Normal));
+                aemiService.ReminderTriggered += OnReminderTriggered;
             }
             AppLogger.Info("app", "chat service created");
 
@@ -97,6 +98,24 @@ public partial class App : Application
     private void OnMcpStatusChanged(object? sender, string status)
     {
         AppLogger.Info("mcp", status);
+    }
+
+    private void OnReminderTriggered(object? sender, string message)
+    {
+        // ReminderPlugin 的 Timer.Elapsed 在 ThreadPool 线程触发，需切到 UI 线程操作桌宠
+        AppLogger.Info("reminder", $"reminder triggered: {message}");
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_petWindow is null)
+            {
+                return;
+            }
+
+            _ = _petWindow.PlayTemporaryStateAsync(
+                PetState.Review,
+                TimeSpan.FromSeconds(4),
+                $"⏰ 提醒：{message}");
+        }, DispatcherPriority.Normal);
     }
     private void OpenChatWindow()
     {

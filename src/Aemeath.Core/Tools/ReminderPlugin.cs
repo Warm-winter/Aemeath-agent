@@ -9,6 +9,12 @@ public class ReminderPlugin
     private readonly List<Timer> _activeTimers = new();
     private readonly object _timerLock = new();
 
+    /// <summary>
+    /// 提醒触发时触发。上层（AemiChatService → App）订阅后转交给 UI 层（如桌宠气泡）。
+    /// 注意：Timer.Elapsed 回调在 ThreadPool 线程触发，订阅者需自行切换到 UI 线程。
+    /// </summary>
+    public event EventHandler<string>? ReminderTriggered;
+
     [KernelFunction("set_reminder")]
     [Description("设置定时提醒")]
     public string SetReminder(
@@ -21,6 +27,14 @@ public class ReminderPlugin
             timer.Elapsed += (s, e) =>
             {
                 System.Diagnostics.Debug.WriteLine($"⏰ 提醒：{message}");
+                try
+                {
+                    ReminderTriggered?.Invoke(this, message);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"提醒事件订阅者异常：{ex.Message}");
+                }
                 timer.Dispose();
                 lock (_timerLock)
                 {

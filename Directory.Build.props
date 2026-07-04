@@ -4,7 +4,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AvaloniaVersion>11.2.1</AvaloniaVersion>
     <UseRidGraph>true</UseRidGraph>
   </PropertyGroup>
 

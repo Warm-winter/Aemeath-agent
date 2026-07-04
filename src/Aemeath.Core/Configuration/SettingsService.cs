@@ -12,6 +12,14 @@ public class SettingsService
 
     public Settings Current => _settings;
 
+    /// <summary>提供商/模型配置变更时触发，订阅者可据此刷新 UI。</summary>
+    public event Action? ProvidersChanged;
+
+    private void RaiseProvidersChanged()
+    {
+        ProvidersChanged?.Invoke();
+    }
+
     public SettingsService()
     {
         var appDataPath = Path.Combine(
@@ -52,7 +60,7 @@ public class SettingsService
                 foreach (var key in settings.ApiKeys.Values)
                 {
                     key.Key = TryDecrypt(key.Key);
-                    MigrateProviderModels(key, settings.DefaultModel);
+                    MigrateProviderModels(key);
                 }
 
                 // Azure 语音密钥同样走 DPAPI 解密（SEC-005）。旧版本明文存储时，
@@ -156,8 +164,9 @@ public class SettingsService
             _settings.ApiKeys[normalizedProvider].ModelId = modelId.Trim();
             EnsureModelExists(_settings.ApiKeys[normalizedProvider], modelId.Trim(), enabled: true);
         }
-        
+
         Save();
+        RaiseProvidersChanged();
     }
 
     public void SaveProviderModels(string provider, IEnumerable<ProviderModel> models, string? defaultModelId = null)
@@ -198,10 +207,11 @@ public class SettingsService
             {
                 _settings.DefaultModel = apiKey.ModelId;
             }
-            EnsureModelExists(apiKey, apiKey.ModelId, enabled: true);
+            // 不再调用 EnsureModelExists 强制启用默认模型——默认模型的启用状态由 UI 采集决定。
         }
 
         Save();
+        RaiseProvidersChanged();
     }
 
     public IReadOnlyList<ProviderModel> GetProviderModels(string provider, bool enabledOnly = false)
@@ -211,7 +221,7 @@ public class SettingsService
             return Array.Empty<ProviderModel>();
         }
 
-        MigrateProviderModels(apiKey, _settings.DefaultModel);
+        MigrateProviderModels(apiKey);
         var models = enabledOnly
             ? apiKey.Models.Where(m => m.IsEnabled)
             : apiKey.Models;
@@ -241,6 +251,7 @@ public class SettingsService
         _settings.DefaultModel = model;
         EnsureModelExists(apiKey, model, enabled: true);
         Save();
+        RaiseProvidersChanged();
         return true;
     }
 
@@ -275,7 +286,7 @@ public class SettingsService
 
         _settings.CurrentProvider = normalizedProvider;
         var apiKey = _settings.ApiKeys[normalizedProvider];
-        MigrateProviderModels(apiKey, _settings.DefaultModel);
+        MigrateProviderModels(apiKey);
         var modelId = apiKey.ModelId;
         if (string.IsNullOrWhiteSpace(modelId))
         {
@@ -287,6 +298,7 @@ public class SettingsService
         }
 
         Save();
+        RaiseProvidersChanged();
         return true;
     }
 
@@ -314,6 +326,7 @@ public class SettingsService
         }
 
         Save();
+        RaiseProvidersChanged();
         return true;
     }
 
@@ -344,10 +357,11 @@ public class SettingsService
             SupportsReasoning = model.SupportsReasoning
         };
 
-    private static void MigrateProviderModels(ApiKey apiKey, string defaultModel)
+    private static void MigrateProviderModels(ApiKey apiKey)
     {
-        var model = string.IsNullOrWhiteSpace(apiKey.ModelId) ? defaultModel : apiKey.ModelId.Trim();
         apiKey.Models ??= new List<ProviderModel>();
+        // 仅迁移该提供商自己的 ModelId，不使用全局 DefaultModel（可能来自其他提供商）。
+        var model = apiKey.ModelId?.Trim();
         if (!string.IsNullOrWhiteSpace(model) &&
             apiKey.Models.All(m => !string.Equals(m.Id, model, StringComparison.OrdinalIgnoreCase)))
         {
@@ -380,7 +394,7 @@ public class SettingsService
             return;
         }
 
-        existing.IsEnabled = existing.IsEnabled || enabled;
+        // 不修改已存在模型的 IsEnabled 状态——尊重用户在 UI 中的显式启用/禁用操作。
         existing.LastSeenAt ??= DateTimeOffset.UtcNow;
     }
 

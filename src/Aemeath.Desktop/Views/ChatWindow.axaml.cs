@@ -98,6 +98,8 @@ public partial class ChatWindow : Window
         AppLogger.Info("chat", "chat window constructor start");
         _chatService = chatService;
         _settingsService = settingsService;
+        _settingsService.ProvidersChanged += OnProvidersChanged;
+        Closed += (_, _) => _settingsService.ProvidersChanged -= OnProvidersChanged;
         _sessionStore = new ChatSessionStore();
         // Mem0 记忆编排器：每轮 add + 发送前 search 注入。config/python 由 AemiChatService 提供。
         if (chatService is AemiChatService aemiChatSvc)
@@ -1504,6 +1506,18 @@ public partial class ChatWindow : Window
             ResumeAmbientFlicker();
             UpdateProviderQuickSwitchEnabled();
         }
+    }
+
+    private void OnProvidersChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // 仅在非发送状态时刷新，避免发送过程中重置 UI
+            if (!_isSending)
+            {
+                RefreshProviderQuickSwitch();
+            }
+        });
     }
 
     private void RefreshProviderQuickSwitch(string? selectedProvider = null, string? selectedModel = null)

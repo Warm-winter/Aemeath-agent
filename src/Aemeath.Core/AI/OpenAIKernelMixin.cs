@@ -13,7 +13,7 @@ public sealed class OpenAIKernelMixin : KernelMixinBase, IDisposable
     private string? _apiKey;
     private string? _endpoint;
     private string _modelId = "gpt-4o";
-    // \u6301\u6709 HttpClient \u4ee5\u4fbf\u5728\u91cd\u65b0\u521d\u59cb\u5316/\u91ca\u653e\u65f6\u56de\u6536\u5e95\u5c42 socket\uff08RES-001\uff09\u3002
+    // 持有 HttpClient 以便在重新初始化/释放时回收底层 socket（RES-001）。
     private HttpClient? _httpClient;
     private bool _disposed;
 
@@ -39,10 +39,10 @@ public sealed class OpenAIKernelMixin : KernelMixinBase, IDisposable
     {
         if (string.IsNullOrEmpty(_apiKey))
         {
-            throw new InvalidOperationException("API Key \u672a\u8bbe\u7f6e");
+            throw new InvalidOperationException("API Key 未设置");
         }
 
-        // \u91cd\u65b0\u521d\u59cb\u5316\u524d\u91ca\u653e\u4e0a\u4e00\u4efd HttpClient\uff0c\u907f\u514d\u5207\u6362\u6a21\u578b/\u63d0\u4f9b\u5546\u65f6\u7d2f\u79ef socket\uff08RES-001\uff09\u3002
+        // 重新初始化前释放上一份 HttpClient，避免切换模型/提供商时累积 socket（RES-001）。
         _httpClient?.Dispose();
         _httpClient = CreateOpenAIHttpClient();
         if (!string.IsNullOrEmpty(_endpoint))
@@ -76,6 +76,8 @@ public sealed class OpenAIKernelMixin : KernelMixinBase, IDisposable
             // 上传大图片时必定 524。设为 5 分钟给源站充足处理时间。
             Timeout = TimeSpan.FromMinutes(5)
         };
+        // 设置默认 User-Agent，避免 Cloudflare Tunnel 端点因缺少 User-Agent 返回 HTTP 530。
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Aemeath-Agent/1.0");
         return client;
     }
 

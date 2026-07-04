@@ -258,7 +258,7 @@ public sealed class ComputerControlAgent
         }
 
         var prompt = BuildDecisionPrompt(request, controls, history, step);
-        var baseUrl = NormalizeBaseUrl(endpoint);
+        var baseUrl = OpenAIUrlHelper.NormalizeBaseUrlWithDefault(endpoint);
         var url = baseUrl.TrimEnd('/') + "/chat/completions";
 
         // 三轮重试：图片越小处理越快，越不容易触发 Cloudflare 524 超时。
@@ -877,16 +877,6 @@ public sealed class ComputerControlAgent
         return lower.Contains("打开") || lower.Contains("启动") || lower.Contains("开启")
                || lower.Contains("open ") || lower.Contains("launch ")
                || lower.Contains("start ") || lower.Contains("运行");
-    }
-
-    private static string NormalizeBaseUrl(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint)) return "https://api.openai.com/v1";
-        var url = endpoint.Trim();
-        var idx = url.IndexOf("/v1", StringComparison.OrdinalIgnoreCase);
-        if (idx > 0) url = url[..(idx + 3)];
-        else if (!url.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) url = url.TrimEnd('/') + "/v1";
-        return url;
     }
 
     [DllImport("user32.dll")]

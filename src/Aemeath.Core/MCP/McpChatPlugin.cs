@@ -1,22 +1,10 @@
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace Aemeath.Core.MCP;
 
 public class McpChatPlugin
 {
-    private readonly string _appDataPath;
-
-    public McpChatPlugin()
-    {
-        _appDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Aemeath");
-        Directory.CreateDirectory(_appDataPath);
-    }
-
     [KernelFunction("setup_builtin_mcp_servers")]
     [Description("配置内置 MCP servers，优先使用应用目录下的 uv.exe 和 bun.exe")]
     public string SetupBuiltinMcpServers(
@@ -37,46 +25,47 @@ public class McpChatPlugin
                 ? new[] { Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) }
                 : filesystemRoots.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-            var configPath = Path.Combine(_appDataPath, "mcp_servers.json");
+            // 使用 McpServerStore 统一 API 写入 mcp/servers/ 单文件，
+            // 与 McpRuntimeService 的读取位置一致，配置才会被实际加载。
+            var store = new McpServerStore();
 
-            var builtin = new Dictionary<string, object?>
+            var savedServers = new List<string>();
+
+            // filesystem：内置受保护服务，使用 bun 运行 @modelcontextprotocol/server-filesystem
+            // 注意：内置「记忆」MCP（@modelcontextprotocol/server-memory）已移除，
+            // 长期记忆改由 Mem0 提供（见 Aemeath.Core.Memory）。这里只保留 filesystem。
+            var filesystemConfig = new McpServerConfig
             {
-                // 注意：内置「记忆」MCP（@modelcontextprotocol/server-memory）已移除，
-                // 长期记忆改由 Mem0 提供（见 Aemeath.Core.Memory）。这里只保留 filesystem。
-                ["filesystem"] = new
-                {
-                    command = bunPath,
-                    args = BuildFilesystemArgs(roots)
-                }
+                Id = "filesystem",
+                Name = "filesystem",
+                Enabled = true,
+                Transport = McpTransportType.Stdio,
+                Command = bunPath,
+                Args = BuildFilesystemArgs(roots).ToList()
             };
+            store.SaveServer(filesystemConfig);
+            savedServers.Add("filesystem");
 
             // 仅当本机确有 odr.exe 时才写入 windows_odr（DATA-004 / 防止写入会崩溃的配置）。
             var odrPath = ResolveOdrExecutablePath();
             if (!string.IsNullOrWhiteSpace(odrPath) && File.Exists(odrPath))
             {
-                builtin["windows_odr"] = new
+                var odrConfig = new McpServerConfig
                 {
-                    command = odrPath,
-                    args = new[] { "list" }
+                    Id = "windows-odr",
+                    Name = "windows_odr",
+                    Enabled = true,
+                    Transport = McpTransportType.Stdio,
+                    Command = odrPath,
+                    Args = new List<string> { "list" }
                 };
+                store.SaveServer(odrConfig);
+                savedServers.Add("windows_odr");
             }
 
-            // 合并而非覆盖：保留用户已有的非内置服务（DATA-004）。
-            var existing = LoadExistingLegacyServers(configPath);
-            foreach (var kvp in existing)
-            {
-                if (!builtin.ContainsKey(kvp.Key))
-                {
-                    builtin[kvp.Key] = kvp.Value;
-                }
-            }
-
-            var config = new { mcpServers = builtin };
-            File.WriteAllText(configPath, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
-
-            var odrNote = !builtin.ContainsKey("windows_odr") ? "（未找到 odr.exe，已跳过 windows_odr）" : string.Empty;
             var uvNote = string.IsNullOrWhiteSpace(uvPath) ? "（未找到 uv.exe，仅启用 bun 方案）" : string.Empty;
-            return $"内置 MCP servers 配置完成：{configPath}{uvNote}{odrNote}";
+            var odrNote = !savedServers.Contains("windows_odr") ? "（未找到 odr.exe，已跳过 windows_odr）" : string.Empty;
+            return $"内置 MCP servers 配置完成：已写入 {store.ServersDirectory}（{string.Join("、", savedServers)}）{uvNote}{odrNote}";
         }
         catch (Exception ex)
         {
@@ -89,37 +78,6 @@ public class McpChatPlugin
         var args = new List<string> { "x", "@modelcontextprotocol/server-filesystem" };
         args.AddRange(roots);
         return args.ToArray();
-    }
-
-    /// <summary>读取已存在的 legacy mcp_servers.json 里的服务定义，供合并保留（DATA-004）。</summary>
-    private static Dictionary<string, object?> LoadExistingLegacyServers(string configPath)
-    {
-        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        if (!File.Exists(configPath))
-        {
-            return result;
-        }
-
-        try
-        {
-            var json = JsonNode.Parse(File.ReadAllText(configPath));
-            if (json is JsonObject obj && obj["mcpServers"] is JsonObject servers)
-            {
-                foreach (var kvp in servers)
-                {
-                    if (kvp.Key is not null && kvp.Value is not null)
-                    {
-                        result[kvp.Key] = kvp.Value.Deserialize<object?>();
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // 读不到就当空，不阻塞内置配置
-        }
-
-        return result;
     }
 
     private static string ResolveOdrExecutablePath()

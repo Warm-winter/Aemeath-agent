@@ -2,6 +2,10 @@ using Aemeath.Core.AI;
 using Aemeath.Core.Configuration;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -26,7 +30,7 @@ namespace Aemeath.Core.Tools;
 public class VisionPlugin
 {
     private const string FallbackVisionModel = "gpt-4o-mini";
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(120) };
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     private readonly Func<(string Model, string Endpoint, string ApiKey)?> _configFactory;
 
@@ -127,7 +131,64 @@ public class VisionPlugin
             return null;
         }
 
-        return ToDataUrl(data, GuessMimeFromExtension(source));
+        // 本地图片压缩：缩放到长边 ≤ 2048px + JPEG 85% 质量，
+        // 将 10MB 图片降到 ~200-500KB，避免 Cloudflare 524 超时。
+        // 压缩后统一为 JPEG，故 mime 用 image/jpeg（与 KernelMixinBase 一致）。
+        var compressed = CompressImageForChat(data);
+        return ToDataUrl(compressed, "image/jpeg");
+    }
+
+    /// <summary>
+    /// 压缩图片：缩放到长边 ≤ 2048px + JPEG 85% 质量。
+    /// 压缩失败（如 SVG/HEIC 等非标准格式）时回退原始字节，让 API 自行处理。
+    /// 实现与 KernelMixinBase.CompressImageForChat 等价。
+    /// </summary>
+    private static byte[] CompressImageForChat(byte[] sourceBytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(sourceBytes);
+            using var src = Image.FromStream(ms);
+            const int maxLongSide = 2048;
+            var scale = Math.Min(1.0, (double)maxLongSide / Math.Max(src.Width, src.Height));
+            // 已经足够小且是 JPEG → 直接返回原数据
+            if (scale >= 1.0 && src.RawFormat.Equals(ImageFormat.Jpeg))
+            {
+                return sourceBytes;
+            }
+
+            var w = (int)(src.Width * scale);
+            var h = (int)(src.Height * scale);
+            if (w < 1) w = 1;
+            if (h < 1) h = 1;
+
+            using var dst = new Bitmap(w, h);
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(src, 0, 0, w, h);
+            }
+
+            using var outMs = new MemoryStream();
+            var jpegEncoder = ImageCodecInfo.GetImageEncoders()
+                .FirstOrDefault(e => e.FormatID == ImageFormat.Jpeg.Guid);
+            var parms = new EncoderParameters(1);
+            parms.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
+            if (jpegEncoder is not null)
+            {
+                dst.Save(outMs, jpegEncoder, parms);
+            }
+            else
+            {
+                dst.Save(outMs, ImageFormat.Jpeg);
+            }
+            return outMs.ToArray();
+        }
+        catch
+        {
+            // 压缩失败（如 SVG/HEIC 等非标准格式）→ 返回原始数据，让 API 自行处理
+            return sourceBytes;
+        }
     }
 
     private static string ToDataUrl(byte[] bytes, string mime)
@@ -157,10 +218,11 @@ public class VisionPlugin
     /// <summary>
     /// 调用 OpenAI 兼容的 chat completions 接口，用 image_url 内容块请求视觉描述。
     /// 协议格式与 hermes-agent/auxiliary_client 一致：messages 含一个 image_url + text 的 user 消息。
+    /// 对瞬态异常（网络错误 / 5xx / Cloudflare 524）做最多 3 次重试，指数退避 1s → 2s → 4s。
     /// </summary>
     private static async Task<string> CallVisionModelAsync(string model, string endpoint, string apiKey, string prompt, string dataUrl)
     {
-        var baseUrl = NormalizeBaseUrl(endpoint);
+        var baseUrl = OpenAIUrlHelper.NormalizeBaseUrlWithDefault(endpoint);
         var url = baseUrl.TrimEnd('/') + "/chat/completions";
 
         var body = new
@@ -182,49 +244,68 @@ public class VisionPlugin
             }
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, url);
-        req.Headers.Add("Authorization", "Bearer " + apiKey);
-        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        // 预先序列化请求体，重试时复用（HttpClient 发送后 HttpRequestMessage 会被消费，需重新构造）
+        var jsonBody = JsonSerializer.Serialize(body);
 
-        using var resp = await HttpClient.SendAsync(req);
-        var json = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode)
+        Exception? lastException = null;
+        for (int attempt = 0; attempt <= 3; attempt++)
         {
-            throw new InvalidOperationException($"视觉模型返回 {(int)resp.StatusCode}：{Truncate(json, 300)}");
-        }
-
-        using var doc = JsonDocument.Parse(json);
-        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
-        {
-            var first = choices[0];
-            if (first.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+            try
             {
-                return content.GetString() ?? string.Empty;
+                using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                req.Headers.Add("Authorization", "Bearer " + apiKey);
+                req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+                using var resp = await HttpClient.SendAsync(req);
+                var json = await resp.Content.ReadAsStringAsync();
+                if (!resp.IsSuccessStatusCode)
+                {
+                    throw new InvalidOperationException($"视觉模型返回 {(int)resp.StatusCode}：{Truncate(json, 300)}");
+                }
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                {
+                    var first = choices[0];
+                    if (first.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+                    {
+                        return content.GetString() ?? string.Empty;
+                    }
+                }
+
+                throw new InvalidOperationException("视觉模型未返回有效内容：" + Truncate(json, 300));
+            }
+            catch (Exception ex) when (attempt < 3 && IsTransientException(ex))
+            {
+                Debug.WriteLine($"[vision-retry] 第 {attempt + 1} 次重试: {ex.Message}");
+                lastException = ex;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)));
             }
         }
 
-        throw new InvalidOperationException("视觉模型未返回有效内容：" + Truncate(json, 300));
+        throw new InvalidOperationException($"视觉模型调用失败（已重试 3 次）：{lastException?.Message}", lastException);
     }
 
-    private static string NormalizeBaseUrl(string endpoint)
+    /// <summary>
+    /// 判定异常是否为可重试的瞬态异常：
+    /// - OperationCanceledException：用户取消，不重试
+    /// - HttpRequestException：网络层错误，重试
+    /// - 包含 5xx / Cloudflare 524 / 530 状态码的 InvalidOperationException：重试
+    /// </summary>
+    private static bool IsTransientException(Exception ex)
     {
-        if (string.IsNullOrWhiteSpace(endpoint))
+        // 用户取消不重试（这里没有 CancellationToken，所以 OperationCanceledException 视为不可重试）
+        if (ex is OperationCanceledException) return false;
+        // 网络层错误重试
+        if (ex is HttpRequestException) return true;
+        // InvalidOperationException 中包含 5xx 状态码的也重试
+        var msg = ex.Message ?? string.Empty;
+        if (msg.Contains("524") || msg.Contains("500") || msg.Contains("502") ||
+            msg.Contains("503") || msg.Contains("504") || msg.Contains("530"))
         {
-            return "https://api.openai.com/v1";
+            return true;
         }
-
-        var url = endpoint.Trim();
-        var idx = url.IndexOf("/v1", StringComparison.OrdinalIgnoreCase);
-        if (idx > 0)
-        {
-            url = url[..(idx + 3)];
-        }
-        else if (!url.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
-        {
-            url = url.TrimEnd('/') + "/v1";
-        }
-
-        return url;
+        return false;
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";

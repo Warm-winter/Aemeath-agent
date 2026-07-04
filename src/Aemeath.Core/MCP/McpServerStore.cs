@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -314,13 +314,12 @@ public sealed class McpServerStore
     /// <summary>
     /// 修复旧的 MCP 配置中硬编码的 uv.exe / bun.exe 路径。
     /// 旧配置可能指向发布目录（如 E:\Aemeath\publish\...\bin\bun.exe），
-    /// 但实际下载到 %AppData%\Aemeath\tools\bin\。
+    /// 但实际下载到 McpDependencyService.DefaultBinDirectory（exe 同级 runtime/bin）。
     /// 这里统一更新为标准的下载目录路径。
     /// </summary>
     private void FixExecutablePathsIfNeeded()
     {
-        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath");
-        var standardBinDir = Path.Combine(appData, "tools", "bin");
+        var standardBinDir = McpDependencyService.DefaultBinDirectory;
         var uvExe = Path.Combine(standardBinDir, "uv.exe");
         var bunExe = Path.Combine(standardBinDir, "bun.exe");
 

@@ -1,10 +1,12 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 
 namespace Aemeath.Core.AI;
@@ -67,11 +69,34 @@ public abstract class KernelMixinBase
 #pragma warning restore SKEXP0001
         };
 
-        var response = await _chatService!.GetChatMessageContentAsync(
-            _chatHistory,
-            executionSettings: settings,
-            kernel: _kernel,
-            cancellationToken: cancellationToken);
+        // 重试循环：最多重试 3 次（共 4 次尝试），指数退避 1s → 2s → 4s。
+        // 仅对瞬态异常（超时/5xx/网络错误等）重试，用户主动取消不重试。
+        ChatMessageContent? response = null;
+        Exception? lastException = null;
+        for (int attempt = 0; attempt <= 3; attempt++)
+        {
+            try
+            {
+                response = await _chatService!.GetChatMessageContentAsync(
+                    _chatHistory,
+                    executionSettings: settings,
+                    kernel: _kernel,
+                    cancellationToken: cancellationToken);
+                break;
+            }
+            catch (Exception ex) when (attempt < 3 && IsTransientException(ex, cancellationToken))
+            {
+                Debug.WriteLine($"[retry] 第 {attempt + 1} 次重试: {ex.Message}");
+                lastException = ex;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
+            }
+        }
+
+        if (response is null)
+        {
+            // 重试耗尽或不可重试异常：抛出原始异常
+            throw lastException!;
+        }
 
         var text = response.Content ?? string.Empty;
         _chatHistory.AddAssistantMessage(text);
@@ -268,23 +293,94 @@ public abstract class KernelMixinBase
         };
 
         var builder = new StringBuilder();
-        await foreach (var chunk in _chatService!.GetStreamingChatMessageContentsAsync(
-                           _chatHistory,
-                           executionSettings: settings,
-                           kernel: _kernel,
-                           cancellationToken: cancellationToken))
+        // 阶段一：启动流并获取第一个非空 chunk（带重试）。
+        // 重试逻辑封装在辅助方法中，因为 C# 不允许在带 catch 的 try 块内使用 yield。
+        var (enumerator, firstChunkText) = await StartStreamWithRetryAsync(settings, cancellationToken);
+
+        // 阶段二：yield 第一个 chunk 并继续流式输出（不再重试）。
+        // try-finally 允许包含 yield，确保 enumerator 被释放。
+        try
         {
-            var text = chunk.Content;
-            if (string.IsNullOrEmpty(text))
+            if (firstChunkText is not null)
             {
-                continue;
+                builder.Append(firstChunkText);
+                yield return firstChunkText;
             }
 
-            builder.Append(text);
-            yield return text;
+            while (await enumerator.MoveNextAsync())
+            {
+                var text = enumerator.Current.Content;
+                if (string.IsNullOrEmpty(text))
+                {
+                    continue;
+                }
+                builder.Append(text);
+                yield return text;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
         }
 
         _chatHistory.AddAssistantMessage(builder.ToString());
+    }
+
+    /// <summary>
+    /// 启动流式请求并获取第一个非空 chunk，带重试机制。
+    /// 仅在第一个 chunk 到达之前重试（最多 3 次，指数退避 1s → 2s → 4s）。
+    /// 返回的 enumerator 已定位在第一个非空 chunk 之后，调用方负责继续枚举和释放。
+    /// 如果流以空内容结束，firstChunkText 为 null。
+    /// </summary>
+    private async Task<(IAsyncEnumerator<StreamingChatMessageContent> enumerator, string? firstChunkText)>
+        StartStreamWithRetryAsync(OpenAIPromptExecutionSettings settings, CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        while (true)
+        {
+            IAsyncEnumerator<StreamingChatMessageContent>? enumerator = null;
+            try
+            {
+                enumerator = _chatService!.GetStreamingChatMessageContentsAsync(
+                    _chatHistory,
+                    executionSettings: settings,
+                    kernel: _kernel,
+                    cancellationToken: cancellationToken)
+                    .GetAsyncEnumerator(cancellationToken);
+
+                // 尝试获取第一个非空 chunk
+                while (await enumerator.MoveNextAsync())
+                {
+                    var text = enumerator.Current.Content;
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        return (enumerator, text);
+                    }
+                }
+                // 流正常结束但无内容
+                return (enumerator, null);
+            }
+            catch (Exception ex)
+            {
+                // 任何异常都先释放 enumerator
+                if (enumerator is not null)
+                {
+                    try { await enumerator.DisposeAsync(); } catch { /* 忽略释放异常 */ }
+                }
+
+                // 仅在尚未输出 chunk、可重试、重试次数未耗尽时重试
+                if (attempt < 3 && IsTransientException(ex, cancellationToken))
+                {
+                    Debug.WriteLine($"[retry] 第 {attempt + 1} 次重试: {ex.Message}");
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
+                    attempt++;
+                    continue;
+                }
+
+                // 不可重试或重试耗尽：抛出原始异常
+                throw;
+            }
+        }
     }
 
     public void ClearHistory()
@@ -299,6 +395,45 @@ public abstract class KernelMixinBase
         {
             throw new InvalidOperationException("Kernel 未初始化，请先调用 InitializeAsync()");
         }
+    }
+
+    /// <summary>
+    /// 判断异常是否为可重试的瞬态异常。
+    /// 超时（非用户取消）、网络错误、5xx 服务端错误、SK 响应解析异常均视为可重试。
+    /// 用户主动取消（cancellationToken 已触发）不重试。
+    /// </summary>
+    private static bool IsTransientException(Exception ex, CancellationToken cancellationToken)
+    {
+        // 用户主动取消：不重试
+        if (ex is OperationCanceledException)
+        {
+            return !cancellationToken.IsCancellationRequested;
+        }
+
+        // HTTP 请求异常（网络层、DNS、连接失败等）
+        if (ex is HttpRequestException)
+        {
+            return true;
+        }
+
+        // 异常消息匹配常见瞬态错误标识
+        var msg = ex.Message ?? string.Empty;
+        if (msg.Contains("530") || msg.Contains("500") || msg.Contains("502") ||
+            msg.Contains("503") || msg.Contains("504") ||
+            msg.Contains("bad_response_status_code", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("do_request_failed", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Unknown ChatFinishReason", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // SK 响应解析时可能抛出 NullReferenceException
+        if (ex is NullReferenceException)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public void RegisterPlugin(object plugin)

@@ -136,7 +136,6 @@ public partial class ConfigWindow : Window
 
             _ = RefreshMcpDependencyStatusAsync();
             // 不再在每次打开设置窗口时自动调用 SetupBuiltinMcpServers。
-            // 该方法会重写 mcp_servers.json（旧格式），可能导致用户已删除的服务在迁移时被恢复。
             // 内置服务配置只在用户显式点击「一键配置内置服务」时执行。
             _ = RefreshMcpOverallStatusAsync();
         };
@@ -146,6 +145,11 @@ public partial class ConfigWindow : Window
         LoadFromSettings();
         _ = RefreshMemoryListAsync();
         _ = RefreshMem0StatusAsync();
+
+        // 订阅 Provider/Model 变更事件：用户在「提供商配置」Tab 保存新模型列表后，
+        // 自动刷新「电脑控制」Tab 的视觉模型下拉框，并尽量保留当前选择。
+        _settingsService.ProvidersChanged += OnProvidersChangedRefreshVision;
+        Closed += (_, _) => _settingsService.ProvidersChanged -= OnProvidersChangedRefreshVision;
     }
 
     private void LoadFromSettings()
@@ -610,9 +614,11 @@ public partial class ConfigWindow : Window
             .OfType<CheckBox>()
             .Where(c => c.IsChecked == true && c.Tag is string)
             .Select(c => (string)c.Tag!)
-            .Append(defaultModel)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 注意：不再强制将 defaultModel 加入 enabledIds。
+        // 默认模型的启用/禁用状态完全由用户在 UI 中的勾选决定。
 
         return _currentModelCandidates
             .Where(m => !string.IsNullOrWhiteSpace(m.Id))
@@ -915,6 +921,52 @@ public partial class ConfigWindow : Window
         }
     }
 
+    /// <summary>
+    /// 当 Provider/Model 配置变更时，刷新视觉模型下拉框，并尽量保留用户当前选择。
+    /// 通过 Dispatcher.UIThread.Post 切到 UI 线程执行，避免后台线程操作控件。
+    /// </summary>
+    private void OnProvidersChangedRefreshVision()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // 记录当前选择
+            var prevProviderTag = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+            var prevModel = VisionModelBox.Text?.Trim();
+
+            // 重新填充
+            PopulateVisionProviderBox();
+
+            // 尝试恢复 Provider 选择
+            if (prevProviderTag is not null)
+            {
+                for (int i = 0; i < VisionProviderBox.Items.Count; i++)
+                {
+                    if (VisionProviderBox.Items[i] is ComboBoxItem item &&
+                        string.Equals(item.Tag as string, prevProviderTag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        VisionProviderBox.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // PopulateVisionProviderBox 内部会调用 PopulateVisionModelBox，模型列表已刷新
+            // 尝试恢复 Model 选择（若新列表中仍存在）
+            if (!string.IsNullOrWhiteSpace(prevModel))
+            {
+                foreach (var item in VisionModelBox.Items)
+                {
+                    if (item is ComboBoxItem cbItem &&
+                        string.Equals(cbItem.Tag as string, prevModel, StringComparison.OrdinalIgnoreCase))
+                    {
+                        VisionModelBox.Text = prevModel;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
     private void SaveVisionProviderSelection()
     {
         var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
@@ -1150,10 +1202,8 @@ public partial class ConfigWindow : Window
 
         var result = plugin.SetupBuiltinMcpServers(uv, bun, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
-        // 注意：SetupBuiltinMcpServers 会写入旧格式的 mcp_servers.json，
-        // 但我们已经在 McpServerStore 构造时完成了一次性迁移（带 .migrated 标记）。
-        // 这里不再重复导入，避免覆盖用户的删除/修改操作。
-        // 如果用户真的需要重新导入，可以删除 .migrated 标记文件后重启应用。
+        // SetupBuiltinMcpServers 现已通过 McpServerStore.SaveServer 写入 mcp/servers/ 单文件，
+        // 与 McpRuntimeService 读取位置一致，无需再依赖旧 mcp_servers.json 聚合文件。
 
         if (!result.Contains("失败", StringComparison.Ordinal) && !result.Contains("未找到", StringComparison.Ordinal))
         {
