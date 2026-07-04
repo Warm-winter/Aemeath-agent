@@ -66,15 +66,19 @@ public class VisionPlugin
             question = "请详细描述这张图片的内容。";
         }
 
+        Debug.WriteLine($"[vision-analyze] 调用开始: image_source={image_source}, question={question}");
+
         try
         {
             var config = _configFactory();
             if (config is null)
             {
+                Debug.WriteLine("[vision-analyze] 视觉辅助配置为 null，无法调用");
                 return "图片识别失败：尚未配置视觉辅助模型。请在「设置 → 记忆管理」里配置辅助视觉模型，或确保当前 Provider 的模型支持图片。";
             }
 
             var (model, endpoint, apiKey) = config.Value;
+            Debug.WriteLine($"[vision-analyze] 配置: model={model}, endpoint={endpoint}");
             if (string.IsNullOrWhiteSpace(model))
             {
                 model = FallbackVisionModel;
@@ -87,13 +91,18 @@ public class VisionPlugin
                 return $"图片识别失败：无法读取图片来源 {image_source}（路径不在允许范围内或文件不存在）。";
             }
 
+            Debug.WriteLine($"[vision-analyze] 图片已转 data URL (长度={dataUrl.Length}), 开始调用视觉模型...");
             var prompt = "Fully describe and explain everything about this image, then answer the following question:\n\n" + question;
+            var sw = Stopwatch.StartNew();
             var description = await CallVisionModelAsync(model, endpoint, apiKey, prompt, dataUrl);
+            sw.Stop();
+            Debug.WriteLine($"[vision-analyze] 视觉模型返回成功, 描述长度={description.Length}, 耗时={sw.ElapsedMilliseconds}ms");
             // 把来源信息附上，方便主模型后续追问时复用
             return $"[图片识别结果]\n来源：{image_source}\n\n{description}";
         }
         catch (Exception ex)
         {
+            Debug.WriteLine($"[vision-analyze] 调用失败: {ex.Message}");
             return $"图片识别失败：{ex.Message}";
         }
     }

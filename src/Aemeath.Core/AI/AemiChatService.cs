@@ -331,17 +331,22 @@ public class AemiChatService : IChatService, IAsyncDisposable
             return (message, attachments ?? Array.Empty<ChatAttachment>());
         }
 
+        // 仅在 SupportsVision == false 时记录诊断日志
+        Debug.WriteLine($"[vision-preprocess] SupportsVision=false, visionConfig={(_visionPlugin is null ? "no_plugin" : (BuildVisionConfig() is null ? "null" : "configured"))}, imageCount={attachments.Count(a => a.Kind == ChatAttachmentKind.Image)}");
+
         var imageAttachments = attachments.Where(a => a.Kind == ChatAttachmentKind.Image).ToList();
         if (imageAttachments.Count == 0)
         {
             return (message, attachments);
         }
 
-        // 视觉辅助未配置：回退到原有提示路径，附加说明
+        // 视觉辅助未配置：移除图片附件，避免主模型收到无法处理的图片数据后幻觉或触发畸形工具调用
         if (BuildVisionConfig() is null)
         {
-            var hint = message + "\n\n[系统提示] 视觉辅助模型未配置，无法自动分析图片。请配置视觉辅助模型后再发送图片。";
-            return (hint, attachments);
+            Debug.WriteLine($"[vision-preprocess] 视觉辅助模型未配置，SupportsVision={_currentKernel?.SupportsVision}，移除 {attachments.Count(a => a.Kind == ChatAttachmentKind.Image)} 张图片附件");
+            var hint = message + "\n\n[系统提示] 未配置视觉辅助模型，无法识别图片。请在系统设置中配置视觉辅助模型后再发送图片。";
+            var remainingNonImage = attachments.Where(a => a.Kind != ChatAttachmentKind.Image).ToList();
+            return (hint, remainingNonImage);
         }
 
         var sb = new StringBuilder(message);
@@ -352,7 +357,7 @@ public class AemiChatService : IChatService, IAsyncDisposable
             try
             {
                 Debug.WriteLine($"[vision-auto] 自动分析图片: {img.Name} ({img.Path})");
-                var description = await _visionPlugin.AnalyzeImageAsync(img.Path, message);
+                var description = await _visionPlugin!.AnalyzeImageAsync(img.Path, message);
                 sb.AppendLine();
                 sb.AppendLine($"[图片自动分析结果] {img.Name}:");
                 sb.AppendLine(description);

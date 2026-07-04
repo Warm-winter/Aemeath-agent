@@ -15,6 +15,13 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        // 请求方向规范化：移除 assistant 消息中 function.name 为空的 tool_call，
+        // 避免历史记录里的畸形 tool_call 在下一轮被发回 API 时触发 HTTP 400
+        if (request.Method == HttpMethod.Post && IsChatCompletionRequest(request))
+        {
+            await NormalizeRequestBodyAsync(request, cancellationToken);
+        }
+
         var response = await base.SendAsync(request, cancellationToken);
         if (response.Content is null || !IsChatCompletionRequest(request))
         {
@@ -45,6 +52,103 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
 
     private static bool IsChatCompletionRequest(HttpRequestMessage request)
         => request.RequestUri?.AbsolutePath.Contains("chat/completions", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// 请求方向规范化：扫描 messages 数组中 assistant 消息的 tool_calls，
+    /// 移除 function.name 为空的 tool_call，避免历史记录里的畸形 tool_call
+    /// 在下一轮被发回 API 时触发 HTTP 400 "invalid tool_call function, function/name/arguments cannot be empty"。
+    /// 仅在确实发生变更时替换请求体，避免无谓的内存分配。
+    /// </summary>
+    private static async Task NormalizeRequestBodyAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.Content is null)
+        {
+            return;
+        }
+
+        var body = await request.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(body);
+            if (node is not JsonObject root)
+            {
+                return;
+            }
+            if (root["messages"] is not JsonArray messages)
+            {
+                return;
+            }
+
+            var anyChanged = false;
+            foreach (var msgNode in messages)
+            {
+                if (msgNode is not JsonObject msg)
+                {
+                    continue;
+                }
+
+                // 仅处理 assistant 消息（tool_calls 只出现在 assistant 消息中）
+                if (msg["role"] is not JsonValue roleVal ||
+                    !roleVal.TryGetValue<JsonElement>(out var roleEl) ||
+                    roleEl.ValueKind != JsonValueKind.String ||
+                    roleEl.GetString() != "assistant")
+                {
+                    continue;
+                }
+
+                if (msg["tool_calls"] is not JsonArray toolCalls)
+                {
+                    continue;
+                }
+                if (toolCalls.Count == 0)
+                {
+                    continue;
+                }
+
+                // 收集需要移除的索引（function.name 为空）
+                var indicesToRemove = new List<int>();
+                for (var i = 0; i < toolCalls.Count; i++)
+                {
+                    if (toolCalls[i] is not JsonObject toolCall)
+                    {
+                        continue;
+                    }
+                    if (toolCall["function"] is not JsonObject funcObj)
+                    {
+                        continue;
+                    }
+                    if (IsStringEmpty(funcObj["name"]))
+                    {
+                        indicesToRemove.Add(i);
+                    }
+                }
+
+                // 从后往前移除，避免索引错位
+                for (var j = indicesToRemove.Count - 1; j >= 0; j--)
+                {
+                    toolCalls.RemoveAt(indicesToRemove[j]);
+                    anyChanged = true;
+                }
+            }
+
+            // 仅在发生变更时替换请求体
+            if (anyChanged)
+            {
+                var normalized = root.ToJsonString();
+                var mediaType = request.Content.Headers.ContentType?.MediaType ?? "application/json";
+                request.Content = new StringContent(normalized, Encoding.UTF8, mediaType);
+            }
+        }
+        catch (JsonException)
+        {
+            // JSON 解析失败，保持请求体原样
+        }
+    }
 
     private static bool TryNormalizeJson(string body, out string normalized)
     {
@@ -149,7 +253,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
         }
         else if (toolCalls is JsonArray toolCallsArray)
         {
-            // 规范化每个 tool_call 的 id（空/缺失 → 生成唯一 id）
+            // 规范化 tool_calls：补全 id、移除 function.name 为空的项、补全空 arguments
             changed |= NormalizeToolCallsArray(toolCallsArray);
         }
 
@@ -163,16 +267,20 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
     }
 
     /// <summary>
-    /// 规范化 tool_calls 数组中每个元素的 id 字段。
-    /// 部分 OpenAI 兼容端点返回空字符串 id，会导致 SK 抛 ArgumentException。
-    /// 空/缺失的 id 替换为 call_<8位hex>，保证唯一性。
+    /// 规范化 tool_calls 数组：
+    /// - 空/缺失的 id 替换为 call_<8位hex>，保证唯一性（避免 SK 抛 ArgumentException）
+    /// - function.name 为空时整体移除该 tool_call（API 会以 400 拒绝）
+    /// - function.arguments 为空字符串时替换为 "{}"（API 要求非空）
     /// </summary>
     private static bool NormalizeToolCallsArray(JsonArray toolCalls)
     {
         var changed = false;
-        foreach (var node in toolCalls)
+        // 收集需要移除的索引（function.name 为空），后续从后往前删除避免索引错位
+        var indicesToRemove = new List<int>();
+
+        for (var i = 0; i < toolCalls.Count; i++)
         {
-            if (node is not JsonObject toolCall)
+            if (toolCalls[i] is not JsonObject toolCall)
             {
                 continue;
             }
@@ -182,10 +290,8 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
             {
                 toolCall["id"] = "call_" + Guid.NewGuid().ToString("N").Substring(0, 8);
                 changed = true;
-                continue;
             }
-
-            if (idNode is JsonValue value &&
+            else if (idNode is JsonValue value &&
                 value.TryGetValue<JsonElement>(out var element) &&
                 element.ValueKind == JsonValueKind.String)
             {
@@ -196,6 +302,31 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
                     changed = true;
                 }
             }
+
+            // 规范化 function 字段
+            if (toolCall["function"] is JsonObject funcObj)
+            {
+                // function.name 为空 → 标记移除整个 tool_call（无法仅靠补全 name 修复）
+                if (IsStringEmpty(funcObj["name"]))
+                {
+                    indicesToRemove.Add(i);
+                    changed = true;
+                    continue;
+                }
+
+                // function.arguments 为空 → 替换为 "{}"（空 JSON 对象，避免 API 报 arguments cannot be empty）
+                if (IsStringEmpty(funcObj["arguments"]))
+                {
+                    funcObj["arguments"] = "{}";
+                    changed = true;
+                }
+            }
+        }
+
+        // 从后往前移除被标记的 tool_call，避免索引错位
+        for (var j = indicesToRemove.Count - 1; j >= 0; j--)
+        {
+            toolCalls.RemoveAt(indicesToRemove[j]);
         }
 
         return changed;
@@ -211,6 +342,27 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
         return node is JsonValue value &&
                value.TryGetValue<JsonElement>(out var element) &&
                element.ValueKind == JsonValueKind.Null;
+    }
+
+    /// <summary>
+    /// 判断 JsonNode 是否为空字符串：null/缺失、或字符串类型的空白值。
+    /// 非字符串类型（数字、对象、数组等）返回 false，不视为空。
+    /// </summary>
+    private static bool IsStringEmpty(JsonNode? node)
+    {
+        if (node is null)
+        {
+            return true;
+        }
+
+        if (node is JsonValue value &&
+            value.TryGetValue<JsonElement>(out var element) &&
+            element.ValueKind == JsonValueKind.String)
+        {
+            return string.IsNullOrWhiteSpace(element.GetString());
+        }
+
+        return false;
     }
 
     private static HttpContent CreateReplacementContent(string body, HttpContent original, string defaultMediaType)
