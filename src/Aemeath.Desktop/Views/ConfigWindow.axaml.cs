@@ -569,7 +569,8 @@ public partial class ConfigWindow : Window
 
         foreach (var model in _currentModelCandidates.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
         {
-            var checkBox = new CheckBox
+            // 启用复选框：控制模型是否在默认模型列表中可用
+            var enableCheckBox = new CheckBox
             {
                 Content = string.IsNullOrWhiteSpace(model.OwnedBy) ? model.Id : $"{model.Id}  ({model.OwnedBy})",
                 Tag = model.Id,
@@ -578,7 +579,25 @@ public partial class ConfigWindow : Window
                 Padding = new Thickness(6, 4),
                 Margin = new Thickness(0, 0, 0, 2)
             };
-            ModelsPanel.Children.Add(checkBox);
+
+            // 视觉复选框：手动标记该模型是否支持图片输入（null 默认勾选，多数现代模型支持视觉）
+            var visionCheckBox = new CheckBox
+            {
+                Content = "视觉",
+                Tag = "vision:" + model.Id,
+                IsChecked = model.SupportsImageInput ?? true,
+                Foreground = AemiUi.Brush(AemiUi.Ghost),
+                Padding = new Thickness(6, 4),
+                Margin = new Thickness(12, 0, 0, 2)
+            };
+            ToolTip.SetTip(visionCheckBox, "勾选表示该模型支持图片输入，图片会以 ImageContent 直接发送；取消勾选则触发 vision_analyze 工具调用");
+
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children = { enableCheckBox, visionCheckBox }
+            };
+            ModelsPanel.Children.Add(row);
 
             var item = new ComboBoxItem
             {
@@ -610,12 +629,23 @@ public partial class ConfigWindow : Window
 
     private IEnumerable<ProviderModel> CollectModels(string defaultModel)
     {
-        var enabledIds = ModelsPanel.Children
-            .OfType<CheckBox>()
-            .Where(c => c.IsChecked == true && c.Tag is string)
+        // 每个模型行是横向 StackPanel，内含启用复选框（Tag = model.Id）与视觉复选框（Tag = "vision:" + model.Id）
+        var rowCheckBoxes = ModelsPanel.Children
+            .OfType<StackPanel>()
+            .SelectMany(sp => sp.Children.OfType<CheckBox>())
+            .ToList();
+
+        var enabledIds = rowCheckBoxes
+            .Where(c => c.IsChecked == true && c.Tag is string id && !id.StartsWith("vision:", StringComparison.OrdinalIgnoreCase))
             .Select(c => (string)c.Tag!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 收集视觉复选框状态：Tag 形如 "vision:{modelId}"，勾选 = true（支持视觉），未勾选 = false
+        var visionStates = rowCheckBoxes
+            .Where(c => c.Tag is string id && id.StartsWith("vision:", StringComparison.OrdinalIgnoreCase))
+            .Select(c => new { Id = ((string)c.Tag!).Substring("vision:".Length), Checked = c.IsChecked ?? true })
+            .ToDictionary(x => x.Id, x => x.Checked, StringComparer.OrdinalIgnoreCase);
 
         // 注意：不再强制将 defaultModel 加入 enabledIds。
         // 默认模型的启用/禁用状态完全由用户在 UI 中的勾选决定。
@@ -626,6 +656,11 @@ public partial class ConfigWindow : Window
             {
                 var clone = CloneModel(m);
                 clone.IsEnabled = enabledIds.Contains(clone.Id);
+                // 根据视觉复选框状态设置 SupportsImageInput；未在 UI 中出现的模型保持 null（下游默认 true）
+                if (visionStates.TryGetValue(clone.Id, out var supportsVision))
+                {
+                    clone.SupportsImageInput = supportsVision;
+                }
                 return clone;
             })
             .Concat(enabledIds

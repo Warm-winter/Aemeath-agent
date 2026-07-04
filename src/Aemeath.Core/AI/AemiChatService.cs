@@ -247,7 +247,10 @@ public class AemiChatService : IChatService, IAsyncDisposable
                 name.Contains("deepseek-r1") || name.Contains("o1-mini") ||
                 name.Contains("o3-mini") || name.Contains("llama-3.1") ||
                 name.Contains("qwen2.5-") || name.Contains("mistral") ||
-                name.Contains("yi-") || name.Contains("baichuan"))
+                name.Contains("yi-") || name.Contains("baichuan") ||
+                // 新增不支持视觉的模型：deepseek-v3 / deepseek-chat（纯文本），qwen3- 非 VL 版本
+                name.Contains("deepseek-v3") || name.Contains("deepseek-chat") ||
+                name.Contains("qwen3-"))
             {
                 // 但要排除这些系列的 VL 版本
                 if (!name.Contains("vl") && !name.Contains("vision") && !name.Contains("omni"))
@@ -265,7 +268,11 @@ public class AemiChatService : IChatService, IAsyncDisposable
                 name.Contains("minicpm-v") || name.Contains("yi-vl") ||
                 name.Contains("-vl") || name.Contains("vision") ||
                 name.Contains("-omni") || name.Contains("llava") ||
-                name.Contains("multimodal") || name.Contains("gemini-2"))
+                name.Contains("multimodal") || name.Contains("gemini-2") ||
+                // 新增支持视觉的模型：qwen3-vl / glm-4.6v / 豆包视觉系列 / gemini-2.5
+                name.Contains("qwen3-vl") || name.Contains("glm-4.6v") ||
+                name.Contains("doubao-vision") || name.Contains("doubao-1.5-vision") ||
+                name.Contains("gemini-2.5"))
             {
                 return true;
             }

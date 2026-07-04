@@ -202,9 +202,7 @@ public abstract class KernelMixinBase
                 // 改为文本提示。此分支为兜底路径——通常 AemiChatService 会先自动调用
                 // vision_analyze 并注入 [图片自动分析结果]；若走到这里说明自动调用未触发
                 // （如视觉辅助未配置），仍提示模型可主动调用工具，并明确禁止编造内容。
-                textBuilder.AppendLine($"图片已附加但当前模型不支持直接查看图片。严禁编造图片内容。");
-                textBuilder.AppendLine($"图片路径：{attachment.Path}");
-                textBuilder.AppendLine($"请基于 vision_analyze 工具结果或系统注入的图片描述回答；若无法获取描述，请明确告知用户。");
+                textBuilder.AppendLine($"已检测到图片附件 {attachment.Name}，路径 {attachment.Path}。你必须调用 vision_analyze(path=\"{attachment.Path}\", question=\"...\") 获取图片描述后再回答用户问题。严禁编造图片内容。");
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
