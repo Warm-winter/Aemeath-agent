@@ -199,10 +199,12 @@ public abstract class KernelMixinBase
             else
             {
                 // 模型不支持视觉：不发送 ImageContent（会导致 API 报错），
-                // 改为文本提示，让模型调用 vision_analyze 工具分析图片。
-                textBuilder.AppendLine($"图片已附加但当前模型不支持直接查看图片。");
+                // 改为文本提示。此分支为兜底路径——通常 AemiChatService 会先自动调用
+                // vision_analyze 并注入 [图片自动分析结果]；若走到这里说明自动调用未触发
+                // （如视觉辅助未配置），仍提示模型可主动调用工具，并明确禁止编造内容。
+                textBuilder.AppendLine($"图片已附加但当前模型不支持直接查看图片。严禁编造图片内容。");
                 textBuilder.AppendLine($"图片路径：{attachment.Path}");
-                textBuilder.AppendLine($"请调用 vision_analyze 工具（传入此路径）来获取图片描述，然后基于描述回答用户。");
+                textBuilder.AppendLine($"请基于 vision_analyze 工具结果或系统注入的图片描述回答；若无法获取描述，请明确告知用户。");
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)

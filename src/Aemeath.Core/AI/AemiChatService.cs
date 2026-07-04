@@ -18,6 +18,7 @@ public class AemiChatService : IChatService, IAsyncDisposable
     private string _currentProvider = "OpenAI";
     private readonly KnowledgeBaseService _knowledgeBase = new();
     private readonly SkillService _skillService = new();
+    private VisionPlugin? _visionPlugin;
 
     /// <summary>Skill 服务（供 UI 面板管理复用同一实例）。</summary>
     public SkillService SkillService => _skillService;
@@ -285,7 +286,8 @@ public class AemiChatService : IChatService, IAsyncDisposable
         _reminderPlugin.ReminderTriggered += (s, msg) => ReminderTriggered?.Invoke(s, msg);
         TryRegisterPlugin(_reminderPlugin, "reminder");
         TryRegisterPlugin(new KnowledgeBasePlugin(_knowledgeBase), "knowledge");
-        TryRegisterPlugin(new VisionPlugin(BuildVisionConfig), "vision");
+        _visionPlugin = new VisionPlugin(BuildVisionConfig);
+        TryRegisterPlugin(_visionPlugin, "vision");
         TryRegisterPlugin(new ComputerControl.ComputerControlPlugin(
             BuildVisionConfig,
             ToolConfirmationService,
@@ -306,6 +308,65 @@ public class AemiChatService : IChatService, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 预处理图片附件：当主模型不支持视觉时，自动调用 vision_analyze 获取描述并注入消息文本，
+    /// 避免主模型幻觉式编造图片内容。已分析的图片附件从列表中移除。
+    /// </summary>
+    private async Task<(string processedMessage, IReadOnlyList<ChatAttachment> remainingAttachments)> PreprocessImageAttachmentsAsync(
+        string message,
+        IReadOnlyList<ChatAttachment>? attachments,
+        CancellationToken cancellationToken)
+    {
+        // 视觉模型直接发送 ImageContent，无需预处理
+        // 无视觉插件、无附件、或无图片附件时也跳过
+        if (_currentKernel?.SupportsVision != false || _visionPlugin is null || attachments is null || attachments.Count == 0)
+        {
+            return (message, attachments ?? Array.Empty<ChatAttachment>());
+        }
+
+        var imageAttachments = attachments.Where(a => a.Kind == ChatAttachmentKind.Image).ToList();
+        if (imageAttachments.Count == 0)
+        {
+            return (message, attachments);
+        }
+
+        // 视觉辅助未配置：回退到原有提示路径，附加说明
+        if (BuildVisionConfig() is null)
+        {
+            var hint = message + "\n\n[系统提示] 视觉辅助模型未配置，无法自动分析图片。请配置视觉辅助模型后再发送图片。";
+            return (hint, attachments);
+        }
+
+        var sb = new StringBuilder(message);
+        var analyzedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var img in imageAttachments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                Debug.WriteLine($"[vision-auto] 自动分析图片: {img.Name} ({img.Path})");
+                var description = await _visionPlugin.AnalyzeImageAsync(img.Path, message);
+                sb.AppendLine();
+                sb.AppendLine($"[图片自动分析结果] {img.Name}:");
+                sb.AppendLine(description);
+                analyzedPaths.Add(img.Path);
+            }
+            catch (Exception ex)
+            {
+                // 单张图片分析失败不阻断其他图片处理
+                Debug.WriteLine($"[vision-auto] 图片分析失败 {img.Name}: {ex.Message}");
+                sb.AppendLine();
+                sb.AppendLine($"[图片分析失败] {img.Name}: {ex.Message}");
+                // 失败的图片仍从附件列表移除（已有失败提示），避免 KernelMixinBase 再生成重复提示
+                analyzedPaths.Add(img.Path);
+            }
+        }
+
+        // 从附件列表移除已分析的图片附件，保留非图片附件
+        var remaining = attachments.Where(a => a.Kind != ChatAttachmentKind.Image || !analyzedPaths.Contains(a.Path)).ToList();
+        return (sb.ToString(), remaining);
+    }
+
     public Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default)
         => SendMessageAsync(message, null, cancellationToken);
 
@@ -322,9 +383,10 @@ public class AemiChatService : IChatService, IAsyncDisposable
         IsProcessing = true;
         try
         {
+            var (processedMessage, remainingAttachments) = await PreprocessImageAttachmentsAsync(message, attachments, cancellationToken);
             var response = await _currentKernel.SendMessageAsync(
-                EnrichMessageWithKnowledge(message),
-                attachments,
+                EnrichMessageWithKnowledge(processedMessage),
+                remainingAttachments,
                 cancellationToken);
             return FormatAemiResponse(response);
         }
@@ -353,10 +415,11 @@ public class AemiChatService : IChatService, IAsyncDisposable
         IsProcessing = true;
         try
         {
+            var (processedMessage, remainingAttachments) = await PreprocessImageAttachmentsAsync(message, attachments, cancellationToken);
             var cleaner = new StreamingThinkCleaner();
             await foreach (var chunk in _currentKernel.SendMessageStreamingAsync(
-                               EnrichMessageWithKnowledge(message),
-                               attachments,
+                               EnrichMessageWithKnowledge(processedMessage),
+                               remainingAttachments,
                                cancellationToken))
             {
                 var safe = cleaner.Feed(chunk);
