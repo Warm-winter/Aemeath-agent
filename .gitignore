@@ -21,8 +21,6 @@
 .sisyphus/
 .trae/
 
-# Local review reports (not for remote)
-项目评审报告.txt
 
 # Duplicate/source-package assets not used by the solution
 /文件包/
