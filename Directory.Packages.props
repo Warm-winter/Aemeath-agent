@@ -3,10 +3,10 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Avalonia" Version="12.1.999-cibuild0067153-alpha" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.999-cibuild0067153-alpha" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.999-cibuild0067153-alpha" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.999-cibuild0067153-alpha" />
+    <PackageVersion Include="Avalonia" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.0" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.20.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.20.0" />
