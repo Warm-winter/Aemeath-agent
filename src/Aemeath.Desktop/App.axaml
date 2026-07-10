@@ -16,76 +16,22 @@
 
     <Application.Styles>
         <FluentTheme />
-        <Style Selector="Window">
-            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
-            <Setter Property="Background" Value="{DynamicResource AemiBackgroundBrush}"/>
-        </Style>
-        <Style Selector="TextBlock.pixel">
-            <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
-        </Style>
-        <Style Selector="Button">
-            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
-            <Setter Property="Background" Value="{DynamicResource AemiPinkBrush}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="12,7"/>
-            <Setter Property="MinHeight" Value="34"/>
-        </Style>
-        <Style Selector="Button:pointerover">
-            <Setter Property="Background" Value="{DynamicResource AemiPinkDeepBrush}"/>
-        </Style>
-        <Style Selector="Button.ghost">
-            <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
-        </Style>
-        <Style Selector="Button.danger">
-            <Setter Property="Background" Value="#FFEAF0"/>
-            <Setter Property="Foreground" Value="{DynamicResource AemiErrorBrush}"/>
-            <Setter Property="BorderBrush" Value="#F0A9B8"/>
-        </Style>
-        <Style Selector="ComboBox, TextBox, ListBox">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
-        </Style>
-        <Style Selector="ComboBox, TextBox">
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="MinHeight" Value="34"/>
-        </Style>
-        <Style Selector="TextBox">
-            <Setter Property="behaviors:ImeFixBehavior.EnableImeCursorFix" Value="True"/>
-        </Style>
-        <Style Selector="CheckBox, RadioButton">
-            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
-        </Style>
-        <Style Selector="ContextMenu">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style Selector="MenuItem">
-            <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
-            <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
-        </Style>
-        <Style Selector="MenuItem:pointerover">
-            <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
-        </Style>
+        <StyleInclude Source="avares://Aemeath-agent/Styles/AemeathControls.axaml" />
     </Application.Styles>
 
     <TrayIcon.Icons>
         <TrayIcons>
             <TrayIcon Icon="avares://Aemeath-agent/Assets/static/app.ico"
-                      ToolTipText="Aemeath / &#x5C0F;&#x7231;">
+                      ToolTipText="Aemeath · &#x7231;&#x5F25;&#x65AF;">
                 <TrayIcon.Menu>
                     <NativeMenu>
-                        <NativeMenuItem Header="&#x5524;&#x51FA;&#x5C0F;&#x7231;" Click="OnTrayShowPetClick"/>
-                        <NativeMenuItem Header="&#x6536;&#x8D77;&#x684C;&#x5BA0;" Click="OnTrayHidePetClick"/>
+                        <NativeMenuItem Header="&#x6253;&#x5F00;&#x5BF9;&#x8BDD;" Click="OnTrayOpenChatClick"/>
+                        <NativeMenuItem Header="&#x6253;&#x5F00;&#x8BBE;&#x7F6E;" Click="OnTrayOpenConfigClick"/>
                         <NativeMenuItemSeparator/>
-                        <NativeMenuItem Header="&#x9000;&#x51FA; Aemeath" Click="OnTrayExitClick"/>
+                        <NativeMenuItem Header="&#x663E;&#x793A;&#x684C;&#x5BA0;" Click="OnTrayShowPetClick"/>
+                        <NativeMenuItem Header="&#x9690;&#x85CF;&#x684C;&#x5BA0;" Click="OnTrayHidePetClick"/>
+                        <NativeMenuItemSeparator/>
+                        <NativeMenuItem Header="&#x9000;&#x51FA;&#x7231;&#x5F25;&#x65AF;&#x52A9;&#x624B;" Click="OnTrayExitClick"/>
                     </NativeMenu>
                 </TrayIcon.Menu>
             </TrayIcon>

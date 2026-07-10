@@ -1,389 +1,406 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:effects="clr-namespace:Aemeath.Pet.Effects;assembly=Aemeath.Pet"
         xmlns:views="clr-namespace:Aemeath.Desktop.Views"
         x:Class="Aemeath.Desktop.Views.ConfigWindow"
-        Width="1040" Height="820"
-        MinWidth="780" MinHeight="680"
+        x:CompileBindings="False"
+        Width="1100" Height="800"
+        MinWidth="720" MinHeight="640"
         Title="设置中心"
+        WindowDecorations="BorderOnly"
         Icon="avares://Aemeath-agent/Assets/static/app.ico">
   <Window.Styles>
-    <Style Selector="TextBlock.subtle">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
-    </Style>
-    <Style Selector="TextBlock.faint">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextFaintBrush}"/>
-    </Style>
-    <Style Selector="Button">
-      <Setter Property="Background" Value="#FF69B4"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="13,8"/>
-      <Setter Property="MinHeight" Value="36"/>
-      <Setter Property="HorizontalContentAlignment" Value="Center"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Button:pointerover">
-      <Setter Property="Background" Value="#E84D8E"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
-    </Style>
-    <Style Selector="Button:focus">
-      <Setter Property="BorderBrush" Value="{StaticResource AemiFocusBrush}"/>
-    </Style>
-    <Style Selector="Button:disabled">
-      <Setter Property="Opacity" Value="0.48"/>
-    </Style>
-    <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
-      <Setter Property="Foreground" Value="#4A2A3A"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiHaloSoftBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-    </Style>
-    <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#FFE1EE"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
-    </Style>
-    <Style Selector="Button.danger">
-      <Setter Property="Background" Value="#FFEAF0"/>
-      <Setter Property="BorderBrush" Value="#F0A9B8"/>
-      <Setter Property="Foreground" Value="#D94A62"/>
-    </Style>
-    <Style Selector="TextBox">
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="CornerRadius" Value="10"/>
-      <Setter Property="Padding" Value="12,9"/>
-    </Style>
-    <Style Selector="ComboBox">
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="MinHeight" Value="34"/>
-    </Style>
-    <Style Selector="CheckBox">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-    </Style>
-    <Style Selector="RadioButton">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-    </Style>
-    <Style Selector="ListBox">
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-    </Style>
-    <Style Selector="TabControl#SettingsTabControl">
+    <Style Selector="ListBox#SettingsTabControl">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Padding" Value="0"/>
     </Style>
-    <Style Selector="TabControl#SettingsTabControl TabItem">
-      <Setter Property="MinWidth" Value="170"/>
-      <Setter Property="Margin" Value="0,0,0,8"/>
-      <Setter Property="Padding" Value="14,12"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Style Selector="ListBox#SettingsTabControl ListBoxItem">
+      <Setter Property="MinHeight" Value="48"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+      <Setter Property="Padding" Value="13,9"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
-      <Setter Property="Background" Value="#FFE1EE"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="11"/>
     </Style>
-    <Style Selector="TabControl#SettingsTabControl TabItem:pointerover">
+    <Style Selector="ListBox#SettingsTabControl ListBoxItem:pointerover">
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
+      <Setter Property="Background" Value="{StaticResource AemiPanelSoftBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
     </Style>
-    <Style Selector="TabControl#SettingsTabControl TabItem:selected">
+    <Style Selector="ListBox#SettingsTabControl ListBoxItem:selected">
       <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="Background" Value="#FFD1E5"/>
+      <Setter Property="Background" Value="{StaticResource AemiPinkSoftBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
+    </Style>
+    <Style Selector="ListBox#SettingsTabControl ListBoxItem:focus-visible">
+      <Setter Property="BorderBrush" Value="{StaticResource AemiFocusBrush}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+    </Style>
+    <Style Selector="ListBox#SettingsTabControl ListBoxItem.group-heading">
+      <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="Margin" Value="4,10,4,4"/>
+      <Setter Property="Padding" Value="4,2"/>
+      <Setter Property="Opacity" Value="1"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
     </Style>
   </Window.Styles>
 
-  <Grid>
-    <Grid x:Name="BackgroundContainer" IsHitTestVisible="False">
-      <Grid.Background>
-        <RadialGradientBrush Center="50%,34%" GradientOrigin="50%,34%" RadiusX="1" RadiusY="1">
-          <GradientStop Color="#FFF1F6" Offset="0.0"/>
-          <GradientStop Color="#FFF8FB" Offset="0.60"/>
-          <GradientStop Color="#FFE1EE" Offset="1.0"/>
-        </RadialGradientBrush>
-      </Grid.Background>
-      <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.28"/>
-      <Border x:Name="GlowLayerPink" IsHitTestVisible="False">
-        <Border.Background>
-          <RadialGradientBrush Center="13%,22%" RadiusX="58%" RadiusY="58%">
-            <GradientStop Color="#55FFD1E5" Offset="0"/>
-            <GradientStop Color="#00FFD1E5" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
-      <Border x:Name="GlowLayerBlue" IsHitTestVisible="False">
-        <Border.Background>
-          <RadialGradientBrush Center="88%,72%" RadiusX="62%" RadiusY="62%">
-            <GradientStop Color="#55FFE1EE" Offset="0"/>
-            <GradientStop Color="#00FFE1EE" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
-      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.48">
-        <Border.Background>
-          <RadialGradientBrush Center="52%,5%" RadiusX="72%" RadiusY="42%">
-            <GradientStop Color="#33FFFFFF" Offset="0"/>
-            <GradientStop Color="#00FFFFFF" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
+  <Grid RowDefinitions="Auto,*">
+    <Grid x:Name="BackgroundContainer" Grid.RowSpan="2" IsHitTestVisible="False" Background="{StaticResource AemiWindowBackgroundBrush}">
+      <effects:ParticleField x:Name="BackgroundParticleCanvas" Opacity="0.24"/>
+      <Border x:Name="GlowLayerPink" IsHitTestVisible="False" Background="{StaticResource AemiGlowPinkBrush}"/>
+      <Border x:Name="GlowLayerBlue" IsHitTestVisible="False" Background="{StaticResource AemiGlowHaloBrush}"/>
+      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.48" Background="{StaticResource AemiGlowWhiteBrush}"/>
     </Grid>
 
-    <Grid Margin="18" RowDefinitions="Auto,*,Auto">
-      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="16">
+    <views:AemeathTitleBar Grid.Row="0" Title="&#x7231;&#x5F25;&#x65AF;&#x52A9;&#x624B; &#x00B7; &#x8BBE;&#x7F6E;&#x4E2D;&#x5FC3;"/>
+
+    <Grid Grid.Row="1" Margin="16" RowDefinitions="Auto,*">
+      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Padding="14">
         <Grid ColumnDefinitions="Auto,*">
-          <Border Width="58" Height="58" CornerRadius="29" Background="#FFFFFF" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5">
-            <Image Source="avares://Aemeath-agent/Assets/static/app.ico" Stretch="Uniform" Margin="10"/>
+          <Border Width="54" Height="54" CornerRadius="27" Background="White" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5">
+            <Image Source="avares://Aemeath-agent/Assets/static/app.ico" Stretch="Uniform" Margin="9"/>
           </Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3" Margin="14,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="星炬学院档案库" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-              <Border CornerRadius="999" Padding="8,3" Background="#FFD1E5" BorderBrush="#F3C2D4" BorderThickness="1">
-                <TextBlock Text="Startorch Archive" FontSize="12" Foreground="{StaticResource AemiHaloSoftBrush}" FontWeight="SemiBold"/>
+              <TextBlock Text="爱弥斯设置中心" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
+              <Border CornerRadius="999" Padding="8,3" Background="{StaticResource AemiPinkSoftBrush}" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1">
+                <TextBlock Text="Startorch Archive" FontSize="12" Foreground="{StaticResource AemiIconBrush}" FontWeight="SemiBold"/>
               </Border>
             </StackPanel>
-            <TextBlock Text="配置 Provider、记忆、MCP、语音与桌宠行为，让小爱的本地终端保持同步。" Classes="subtle" FontSize="13"/>
+            <TextBlock Text="管理连接、能力与个性化；简单偏好自动保存，服务配置由你确认后再写入。" Classes="subtle" FontSize="13" TextWrapping="Wrap"/>
           </StackPanel>
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Margin="0,14,0,0">
-        <TabControl x:Name="SettingsTabControl" TabStripPlacement="Left" FontSize="14" Padding="12">
-          <TabItem Header="提供商配置">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <Grid ColumnDefinitions="310,*">
-                <Grid RowDefinitions="Auto,Auto,Auto,*" MinHeight="0">
-                  <TextBlock Grid.Row="0" Text="已保存提供商" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <TextBlock Grid.Row="1" Text="Resonance Provider Registry" Classes="muted" FontSize="12" Margin="0,8,0,0"/>
-                  <Button Grid.Row="2" x:Name="NewProviderButton" Content="新增提供商" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,12,0,0"/>
-                  <ScrollViewer Grid.Row="3" MinHeight="180" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="ProviderCardsPanel" Spacing="10"/>
+      <Border Grid.Row="1" CornerRadius="20" Background="{StaticResource AemiGlassBrush}" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Margin="0,12,0,0" Padding="10">
+        <Grid x:Name="SettingsShellGrid" ColumnDefinitions="176,*" MinHeight="0">
+          <Border Grid.Column="0" Background="{StaticResource AemiPanelSoftBrush}" BorderBrush="{StaticResource AemiBorderSoftBrush}" BorderThickness="1" CornerRadius="14" Padding="9">
+            <ListBox x:Name="SettingsTabControl" SelectionMode="Single" AutomationProperties.Name="设置页面导航">
+              <ListBoxItem x:Name="ConnectionGroupItem" Classes="group-heading" IsEnabled="False" Focusable="False" IsHitTestVisible="False" AutomationProperties.Name="连接分组">
+                <TextBlock Text="连接" FontSize="11" FontWeight="SemiBold"/>
+              </ListBoxItem>
+              <ListBoxItem x:Name="ProviderNavigationItem" IsSelected="True">
+                <ListBoxItem.Content><TextBlock Text="AI 服务" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid x:Name="ProviderLayoutGrid" ColumnDefinitions="270,*" RowDefinitions="Auto" Margin="2">
+                      <Border x:Name="ProviderListPane" Classes="card" Padding="14">
+                        <Grid RowDefinitions="Auto,Auto,Auto,*" MinHeight="0">
+                          <TextBlock Grid.Row="0" Text="已保存提供商" Classes="heading" FontSize="18"/>
+                          <TextBlock Grid.Row="1" Text="选择一个连接进行编辑，切换前会保护未保存内容。" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                          <Button Grid.Row="2" x:Name="NewProviderButton" Content="新增提供商" Classes="ghost" HorizontalAlignment="Stretch" Margin="0,12,0,0"/>
+                          <ScrollViewer x:Name="ProviderCardsScrollViewer" Grid.Row="3" MaxHeight="500" MinHeight="180" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="ProviderCardsPanel" Spacing="10"/>
+                          </ScrollViewer>
+                        </Grid>
+                      </Border>
+
+                      <Border x:Name="ProviderEditorPane" Grid.Column="1" Classes="card" Padding="16" Margin="14,0,0,0">
+                        <StackPanel Spacing="12">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="3">
+                              <TextBlock Text="连接与模型" Classes="heading"/>
+                              <TextBlock x:Name="ProviderDirtyText" Text="有未保存更改" Foreground="{StaticResource AemiWarningBrush}" IsVisible="False"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" x:Name="ToggleApiKeyButton" Content="显示密钥" Classes="ghost" MinWidth="88" AutomationProperties.Name="显示或隐藏 API Key"/>
+                          </Grid>
+                          <Border Classes="status">
+                            <TextBlock x:Name="ProviderStatusText" Text="选择或新增一个提供商" Classes="subtle" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                          </Border>
+                          <ProgressBar x:Name="ProviderBusyProgress" Height="4" IsIndeterminate="True" IsVisible="False" AutomationProperties.Name="提供商操作进度"/>
+
+                          <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="6">
+                              <TextBlock Text="Provider 预设" Classes="subtle"/>
+                              <ComboBox x:Name="ProviderPresetBox" PlaceholderText="选择预设（可选）" AutomationProperties.Name="Provider 预设"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6" Margin="12,0,0,0">
+                              <TextBlock Text="提供商名称" Classes="subtle"/>
+                              <TextBox x:Name="ProviderNameBox" PlaceholderText="openai / deepseek / custom" AutomationProperties.Name="提供商名称"/>
+                              <TextBlock x:Name="ProviderNameErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+                            </StackPanel>
+                          </Grid>
+
+                          <TextBlock Text="API Key" Classes="subtle"/>
+                          <TextBox x:Name="ApiKeyBox" PasswordChar="●" AutomationProperties.Name="API Key"/>
+
+                          <TextBlock Text="OpenAI 兼容 URL" Classes="subtle"/>
+                          <TextBox x:Name="EndpointBox" PlaceholderText="https://api.openai.com/v1" AutomationProperties.Name="OpenAI 兼容 URL"/>
+                          <TextBlock x:Name="EndpointErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+
+                          <TextBlock Text="默认模型（仅列出已启用模型）" Classes="subtle"/>
+                          <ComboBox x:Name="DefaultModelBox" AutomationProperties.Name="默认模型"/>
+                          <TextBlock x:Name="DefaultModelErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBox x:Name="ManualModelBox" PlaceholderText="手动添加模型 ID" AutomationProperties.Name="手动添加模型 ID"/>
+                            <Button Grid.Column="1" x:Name="AddManualModelButton" Content="添加" Classes="ghost" Margin="8,0,0,0"/>
+                          </Grid>
+                          <Border Classes="card" Padding="10" MinHeight="130">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="240">
+                              <StackPanel x:Name="ModelsPanel" Spacing="6"/>
+                            </ScrollViewer>
+                          </Border>
+                          <WrapPanel>
+                            <Button x:Name="SaveProviderButton" Content="保存更改" Classes="primary" MinWidth="112" Margin="0,0,8,8"/>
+                            <Button x:Name="CancelProviderButton" Content="取消更改" Classes="ghost" MinWidth="104" Margin="0,0,8,8" IsEnabled="False"/>
+                            <Button x:Name="TestProviderButton" Content="测试连接" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
+                            <Button x:Name="FetchModelsButton" Content="获取模型" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
+                          </WrapPanel>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
                   </ScrollViewer>
-                </Grid>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
 
-                <ScrollViewer Grid.Column="1" Margin="18,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                  <StackPanel Spacing="12">
-                    <TextBlock Text="连接与模型" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                    <Border CornerRadius="999" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1" Padding="10,5">
-                      <TextBlock x:Name="ProviderStatusText" Text="选择或新增一个提供商" Classes="subtle" TextWrapping="Wrap"/>
-                    </Border>
-                    <Grid ColumnDefinitions="*,*">
-                      <StackPanel Spacing="8">
-                        <TextBlock Text="Provider 预设" Classes="subtle"/>
-                        <ComboBox x:Name="ProviderPresetBox"/>
-                      </StackPanel>
-                      <StackPanel Grid.Column="1" Spacing="8" Margin="12,0,0,0">
-                        <TextBlock Text="提供商名称" Classes="subtle"/>
-                        <TextBox x:Name="ProviderNameBox" PlaceholderText="openai / deepseek / custom"/>
-                      </StackPanel>
-                    </Grid>
-                    <TextBlock Text="API Key" Classes="subtle"/>
-                    <TextBox x:Name="ApiKeyBox" PasswordChar="*"/>
-                    <TextBlock Text="OpenAI 兼容 URL" Classes="subtle"/>
-                    <TextBox x:Name="EndpointBox" PlaceholderText="https://api.openai.com/v1"/>
-                    <TextBlock Text="默认模型" Classes="subtle"/>
-                    <ComboBox x:Name="DefaultModelBox"/>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBox x:Name="ManualModelBox" PlaceholderText="手动添加模型 ID"/>
-                      <Button Grid.Column="1" x:Name="AddManualModelButton" Content="添加" Classes="ghost" Margin="8,0,0,0"/>
-                    </Grid>
-                    <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="12" MinHeight="130">
-                      <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="ModelsPanel" Spacing="8"/>
-                      </ScrollViewer>
-                    </Border>
-                    <WrapPanel>
-                      <Button x:Name="SaveProviderButton" Content="保存提供商" Classes="primary" MinWidth="118" Margin="0,0,8,8"/>
-                      <Button x:Name="TestProviderButton" Content="测试连接" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
-                      <Button x:Name="FetchModelsButton" Content="获取模型" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
-                    </WrapPanel>
-                  </StackPanel>
-                </ScrollViewer>
-              </Grid>
-            </Border>
-          </TabItem>
+              <ListBoxItem x:Name="CapabilityGroupItem" Classes="group-heading" IsEnabled="False" Focusable="False" IsHitTestVisible="False" AutomationProperties.Name="能力分组">
+                <TextBlock Text="能力" FontSize="11" FontWeight="SemiBold"/>
+              </ListBoxItem>
+              <ListBoxItem x:Name="MemoryNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="记忆" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid x:Name="MemoryLayoutGrid" ColumnDefinitions="360,*" RowDefinitions="Auto" Margin="2">
+                      <Border x:Name="MemoryListPane" Classes="card" Padding="14">
+                        <StackPanel Spacing="11">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="长期记忆" Classes="heading"/>
+                              <TextBlock Text="全局与当前会话的 Mem0 记忆" Classes="muted" FontSize="12"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" x:Name="RefreshMemoryButton" Content="刷新" Classes="ghost" MinWidth="72"/>
+                          </Grid>
+                          <Border Classes="card" Background="{StaticResource AemiPanelSoftBrush}" Padding="12">
+                            <StackPanel Spacing="7">
+                              <TextBlock Text="Mem0 运行环境" FontWeight="SemiBold"/>
+                              <TextBlock x:Name="Mem0InstallStatusText" Text="正在检测…" TextWrapping="Wrap" Classes="subtle" AutomationProperties.LiveSetting="Polite"/>
+                              <Button x:Name="Mem0InstallButton" Content="安装 Mem0 依赖" Classes="primary" HorizontalAlignment="Left" MinWidth="160"/>
+                            </StackPanel>
+                          </Border>
+                          <Grid ColumnDefinitions="*,132">
+                            <TextBox x:Name="MemorySearchBox" PlaceholderText="搜索记忆内容" AutomationProperties.Name="搜索长期记忆"/>
+                            <ComboBox Grid.Column="1" x:Name="MemoryScopeBox" Margin="8,0,0,0" SelectedIndex="0" AutomationProperties.Name="记忆范围筛选">
+                              <ComboBoxItem Content="全部范围" Tag="all"/>
+                              <ComboBoxItem Content="全局" Tag="全局"/>
+                              <ComboBoxItem Content="当前会话" Tag="会话"/>
+                            </ComboBox>
+                          </Grid>
+                          <TextBlock x:Name="MemoryStatusText" Text="本地记忆仅保存在这台电脑" Classes="subtle" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                          <ListBox x:Name="MemoryListBox" MinHeight="300" MaxHeight="430" AutomationProperties.Name="长期记忆列表"/>
+                          <WrapPanel>
+                            <Button x:Name="DeleteMemoryButton" Content="删除选中" Classes="danger" MinWidth="104" Margin="0,0,8,8" IsEnabled="False"/>
+                            <Button x:Name="ClearCurrentSessionMemoryButton" Content="清空当前会话" Classes="danger" MinWidth="128" Margin="0,0,8,8"/>
+                            <Button x:Name="ClearAllMemoryButton" Content="清空全部" Classes="danger" MinWidth="104" Margin="0,0,8,8"/>
+                          </WrapPanel>
+                        </StackPanel>
+                      </Border>
 
-          <TabItem Header="记忆管理">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <Grid ColumnDefinitions="330,*">
-                <StackPanel Spacing="12">
-                  <TextBlock Text="长期记忆（Mem0）" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <Border Background="#FFF6F2F7" CornerRadius="10" Padding="12">
-                    <StackPanel Spacing="8">
-                      <TextBlock Text="Mem0 记忆引擎依赖独立的 Python 环境（放在桌宠运行目录下，不占用 C 盘）。首次使用请点击下方按钮一键安装。" TextWrapping="Wrap" Classes="subtle"/>
-                      <TextBlock x:Name="Mem0InstallStatusText" Text="正在检测…" TextWrapping="Wrap" Classes="subtle"/>
-                      <Button x:Name="Mem0InstallButton" Content="安装 Mem0 依赖" Classes="primary" HorizontalAlignment="Left" MinWidth="160"/>
+                      <Border x:Name="MemoryDetailPane" Grid.Column="1" Classes="card" Padding="16" Margin="14,0,0,0">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="记忆详情" Classes="heading"/>
+                          <TextBlock Text="选择一条记忆后可查看完整内容。删除与清空操作都会再次确认。" Classes="subtle" TextWrapping="Wrap"/>
+                          <Border Classes="card" Background="{StaticResource AemiPanelSoftBrush}" Padding="12">
+                            <StackPanel Spacing="8">
+                              <TextBlock x:Name="MemoryDetailScopeText" Text="尚未选择" Classes="muted"/>
+                              <TextBox x:Name="MemoryDetailText" Text="从左侧选择一条记忆。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="220" AutomationProperties.Name="记忆完整内容"/>
+                            </StackPanel>
+                          </Border>
+                          <TextBlock Text="爱弥斯会在相关对话前检索记忆。全局记忆跨会话生效；会话记忆只属于当前对话。" Classes="subtle" TextWrapping="Wrap" LineHeight="22"/>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
+                  </ScrollViewer>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
+
+              <ListBoxItem x:Name="ComputerControlNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="电脑控制" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid x:Name="ComputerControlLayoutGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="2">
+                      <Border x:Name="ComputerControlMainPane" Classes="card" Padding="16">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="电脑控制" Classes="heading"/>
+                          <TextBlock Text="所有真实操作仍会先显示确认卡。视觉模型是识别界面的必填依赖。" TextWrapping="Wrap" Classes="subtle"/>
+                          <TextBlock Text="控制后端" Classes="subtle"/>
+                          <ComboBox x:Name="ComputerControlBackendBox" AutomationProperties.Name="电脑控制后端">
+                            <ComboBoxItem Content="自动选择（优先 UI Automation）" Tag="auto"/>
+                            <ComboBoxItem Content="UI Automation（稳定、轻量）" Tag="uia"/>
+                            <ComboBoxItem Content="UFO（复杂视觉任务）" Tag="ufo"/>
+                          </ComboBox>
+                          <Border Classes="card" Background="{StaticResource AemiPanelSoftBrush}" Padding="12">
+                            <StackPanel Spacing="7">
+                              <TextBlock Text="视觉模型" FontWeight="SemiBold"/>
+                              <TextBlock Text="请选择已配置的视觉模型；必要时先回到 AI 服务页启用模型。" TextWrapping="Wrap" Classes="subtle"/>
+                              <TextBlock Text="提供商" Classes="subtle"/>
+                              <ComboBox x:Name="VisionProviderBox" PlaceholderText="复用当前对话提供商" AutomationProperties.Name="视觉模型提供商"/>
+                              <TextBlock Text="模型（必填）" Classes="subtle"/>
+                              <ComboBox x:Name="VisionModelBox" IsEditable="True" PlaceholderText="例如 gpt-4o-mini" AutomationProperties.Name="视觉模型"/>
+                              <TextBlock x:Name="VisionModelErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                      </Border>
+
+                      <Border x:Name="ComputerControlAdvancedPane" Grid.Column="1" Classes="card" Padding="16" Margin="14,0,0,0">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="高级设置" Classes="heading"/>
+                          <TextBlock Text="只有选择 UFO 后端时才需要配置下列路径。检测不会自动保存。" Classes="subtle" TextWrapping="Wrap"/>
+                          <Expander Header="UFO 运行环境" IsExpanded="False">
+                            <StackPanel Spacing="8" Margin="0,10,0,0">
+                              <TextBlock Text="UFO 专用 Python 解释器路径" Classes="subtle"/>
+                              <TextBox x:Name="UfoPythonBox" PlaceholderText="…\Scripts\python.exe" AutomationProperties.Name="UFO Python 路径"/>
+                              <TextBlock x:Name="UfoStatusText" Text="UFO 状态：未检测" TextWrapping="Wrap" Classes="subtle" AutomationProperties.LiveSetting="Polite"/>
+                              <Button x:Name="UfoCheckButton" Content="检测 UFO 是否可用" Classes="ghost" HorizontalAlignment="Left" MinWidth="180"/>
+                            </StackPanel>
+                          </Expander>
+                        </StackPanel>
+                      </Border>
+
+                      <Border x:Name="ComputerControlActionsPane" Grid.Row="1" Grid.ColumnSpan="2" Classes="card" Padding="12" Margin="0,14,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock x:Name="ComputerControlDirtyText" Text="更改尚未保存" Foreground="{StaticResource AemiWarningBrush}" IsVisible="False"/>
+                            <TextBlock x:Name="ComputerControlStatusText" Text="保存后新的电脑控制任务会使用此配置。" Classes="subtle" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                          </StackPanel>
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="CancelComputerControlButton" Content="取消更改" Classes="ghost" MinWidth="104" IsEnabled="False"/>
+                            <Button x:Name="SaveComputerControlButton" Content="保存电脑控制" Classes="primary" MinWidth="132"/>
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </Grid>
+                  </ScrollViewer>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
+
+              <ListBoxItem x:Name="McpNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="MCP" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <Border Classes="card" Padding="14"><views:McpConfigPanel x:Name="McpPanel"/></Border>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
+
+              <ListBoxItem x:Name="SkillNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="Skill" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <Border Classes="card" Padding="14"><views:SkillConfigPanel x:Name="SkillPanel"/></Border>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
+
+              <ListBoxItem x:Name="PersonalizationGroupItem" Classes="group-heading" IsEnabled="False" Focusable="False" IsHitTestVisible="False" AutomationProperties.Name="个性化分组">
+                <TextBlock Text="个性化" FontSize="11" FontWeight="SemiBold"/>
+              </ListBoxItem>
+              <ListBoxItem x:Name="PetNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="桌宠与界面" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="14" Margin="2">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="3">
+                          <TextBlock Text="桌宠与界面" Classes="heading"/>
+                          <TextBlock Text="这些偏好会立即保存。透明度在停止拖动约 250ms 后写入。" Classes="subtle" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" x:Name="SimpleSettingsStatusText" Text="已同步" Foreground="{StaticResource AemiSuccessBrush}" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+                      </Grid>
+                      <Border Classes="card" Padding="16">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="窗口行为" FontSize="18" FontWeight="SemiBold"/>
+                          <CheckBox x:Name="AlwaysOnTopBox" Content="桌宠保持窗口最上层"/>
+                          <CheckBox x:Name="MinimizeToTrayBox" Content="关闭时收纳到系统托盘"/>
+                          <CheckBox x:Name="AutoStartBox" Content="开机自启动"/>
+                        </StackPanel>
+                      </Border>
+                      <Border Classes="card" Padding="16">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="动态效果" FontSize="18" FontWeight="SemiBold"/>
+                          <CheckBox x:Name="ParticleEffectsBox" Content="开启背景粒子动效"/>
+                          <CheckBox x:Name="ReduceMotionBox" Content="减少动态效果"/>
+                          <TextBlock Text="减少动态效果会关闭粒子、平移与持续闪烁，只保留必要的短淡入。" Classes="subtle" TextWrapping="Wrap"/>
+                        </StackPanel>
+                      </Border>
+                      <Border Classes="card" Padding="16">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="桌宠外观与互动" FontSize="18" FontWeight="SemiBold"/>
+                          <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="7">
+                              <TextBlock Text="尺寸档位" Classes="subtle"/>
+                              <ComboBox x:Name="PetSizeBox" AutomationProperties.Name="桌宠尺寸档位"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="7" Margin="14,0,0,0">
+                              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="透明度" Classes="subtle"/><TextBlock Grid.Column="1" x:Name="PetOpacityValueText" Classes="muted"/></Grid>
+                              <Slider x:Name="PetOpacitySlider" Minimum="0.65" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" AutomationProperties.Name="桌宠透明度"/>
+                            </StackPanel>
+                          </Grid>
+                          <CheckBox x:Name="EnablePetBubblesBox" Content="开启桌宠气泡台词"/>
+                          <CheckBox x:Name="EnablePetIdleGreetingBox" Content="开启闲置问候"/>
+                          <CheckBox x:Name="EnablePetEdgeSnapBox" Content="开启边缘吸附"/>
+                        </StackPanel>
+                      </Border>
                     </StackPanel>
-                  </Border>
-                  <TextBlock x:Name="MemoryStatusText" Text="本地记忆仅保存在这台电脑" Classes="subtle"/>
-                  <ListBox x:Name="MemoryListBox" MinHeight="430"/>
-                  <WrapPanel>
-                    <Button x:Name="DeleteMemoryButton" Content="删除选中" Classes="danger" MinWidth="104" Margin="0,0,8,8"/>
-                    <Button x:Name="ClearCurrentSessionMemoryButton" Content="清空当前会话" Classes="danger" MinWidth="128" Margin="0,0,8,8"/>
-                    <Button x:Name="ClearAllMemoryButton" Content="清空全部" Classes="danger" MinWidth="104" Margin="0,0,8,8"/>
-                  </WrapPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="12" Margin="18,0,0,0">
-                  <TextBlock Text="记忆说明" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="22">
-小爱会在每轮对话后自动把重要信息存入 Mem0（由 Mem0 内部 AI 自动抽取，无需手动整理），
-并在下次相关对话时自动回忆。左侧列表可查看、删除、清空这些记忆。
-                  </TextBlock>
-                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="22" Margin="0,8,0,0">
-记忆按「全局」与「会话」两类存放：全局记忆跨所有对话保留漂泊者的长期偏好；
-会话记忆只属于当前打开的对话。关闭某个对话会保留其记忆，删除对话才会清除。
-                  </TextBlock>
-                </StackPanel>
-              </Grid>
-            </Border>
-          </TabItem>
+                  </ScrollViewer>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
 
-          <TabItem Header="电脑控制">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <Grid ColumnDefinitions="420,*">
-                <StackPanel Spacing="14">
-                  <TextBlock Text="电脑控制" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="20">
-小爱可以自动操作电脑（点击界面、输入文字）来完成「打开微信给某人发消息」这类任务。
-这会真实操控你的电脑，因此每次执行前都会弹确认卡片，你同意后小爱才操作。
-                  </TextBlock>
+              <ListBoxItem x:Name="AppearanceNavigationItem">
+                <ListBoxItem.Content><TextBlock Text="头像与背景" FontWeight="SemiBold"/></ListBoxItem.Content>
+                <ListBoxItem.Tag>
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid x:Name="AppearanceLayoutGrid" ColumnDefinitions="*,*" RowDefinitions="Auto" Margin="2">
+                      <Border x:Name="AvatarPane" Classes="card" Padding="16">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="你的头像" Classes="heading"/>
+                          <TextBlock Text="选择后立即保存，并用于新的对话消息。" Classes="subtle"/>
+                          <Border Width="112" Height="112" CornerRadius="56" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="White" HorizontalAlignment="Left">
+                            <Image x:Name="AvatarPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
+                          </Border>
+                          <RadioButton x:Name="AvatarMaleRadio" Content="男（默认）" GroupName="AvatarType"/>
+                          <RadioButton x:Name="AvatarFemaleRadio" Content="女" GroupName="AvatarType"/>
+                          <RadioButton x:Name="AvatarCustomRadio" Content="自定义头像" GroupName="AvatarType"/>
+                          <Button x:Name="BrowseAvatarButton" Content="选择自定义头像" Classes="ghost" HorizontalAlignment="Left" MinWidth="150"/>
+                        </StackPanel>
+                      </Border>
 
-                  <StackPanel Spacing="6" Margin="0,4,0,0">
-                    <TextBlock Text="控制后端" Classes="subtle"/>
-                    <ComboBox x:Name="ComputerControlBackendBox" MinWidth="280">
-                      <ComboBoxItem Content="auto（推荐：优先 UFO，未安装则用内置控制）" Tag="auto"/>
-                      <ComboBoxItem Content="内置 C# 控制（无需安装，开箱即用）" Tag="uia"/>
-                      <ComboBoxItem Content="UFO（需先安装，能力更强）" Tag="ufo"/>
-                    </ComboBox>
-                  </StackPanel>
-
-                  <Border Background="#FFF6F2F7" CornerRadius="10" Padding="12" Margin="0,4,0,0">
-                    <StackPanel Spacing="8">
-                      <TextBlock Text="辅助视觉模型（电脑控制和图片识别都用它，需支持图片输入）" FontWeight="SemiBold" Classes="subtle"/>
-                      <TextBlock Text="从已配置的提供商里选一个模型，或选择「复用当前对话模型」。" TextWrapping="Wrap" Classes="subtle"/>
-                      <StackPanel Spacing="6">
-                        <TextBlock Text="视觉模型提供商" Classes="subtle"/>
-                        <ComboBox x:Name="VisionProviderBox" MinWidth="280" PlaceholderText="复用当前对话提供商"/>
-                        <TextBlock Text="视觉模型（留空则用该提供商默认模型）" Classes="subtle" Margin="0,4,0,0"/>
-                        <ComboBox x:Name="VisionModelBox" MinWidth="280" IsEditable="True" PlaceholderText="例如 gpt-4o-mini"/>
-                      </StackPanel>
-                    </StackPanel>
-                  </Border>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Spacing="12" Margin="18,0,0,0">
-                  <TextBlock Text="UFO（可选高阶后端）" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <TextBlock TextWrapping="Wrap" Classes="subtle" LineHeight="20">
-UFO 是微软开源的电脑控制 Agent，视觉理解能力更强，适合复杂任务。
-它体积较大、依赖较多，默认不启用；需要时按下方步骤安装。
-                  </TextBlock>
-                  <StackPanel Spacing="6" Margin="0,4,0,0">
-                    <TextBlock Text="UFO 专用 Python 解释器路径（安装 UFO 后填入，如 ...runtime\Aemeath-Agent-Ufo\Scripts\python.exe）" TextWrapping="Wrap" Classes="subtle"/>
-                    <TextBox x:Name="UfoPythonBox" PlaceholderText="留空则不启用 UFO" />
-                    <TextBlock x:Name="UfoStatusText" Text="UFO 状态：未检测" TextWrapping="Wrap" Classes="subtle" Margin="0,4,0,0"/>
-                    <Button x:Name="UfoCheckButton" Content="检测 UFO 是否可用" Classes="primary" HorizontalAlignment="Left" MinWidth="180"/>
-                  </StackPanel>
-                </StackPanel>
-              </Grid>
-            </Border>
-          </TabItem>
-
-
-          <TabItem Header="MCP 配置">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <views:McpConfigPanel x:Name="McpPanel"/>
-            </Border>
-          </TabItem>
-
-          <TabItem Header="Skill 管理">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <views:SkillConfigPanel x:Name="SkillPanel"/>
-            </Border>
-          </TabItem>
-
-          <TabItem Header="界面与行为">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <StackPanel Spacing="14">
-                <TextBlock Text="桌面行为" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                <CheckBox x:Name="AlwaysOnTopBox" Content="桌宠保持窗口最上层"/>
-                <CheckBox x:Name="MinimizeToTrayBox" Content="关闭时收纳到系统托盘"/>
-                <CheckBox x:Name="AutoStartBox" Content="开机自启动"/>
-                <CheckBox x:Name="ParticleEffectsBox" Content="开启背景粒子动效"/>
-                <Border CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="16" Margin="0,10,0,0">
-                  <StackPanel Spacing="12">
-                    <TextBlock Text="桌宠外观与互动" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                    <Grid ColumnDefinitions="*,*">
-                      <StackPanel Spacing="8">
-                        <TextBlock Text="尺寸档位" Classes="subtle"/>
-                        <ComboBox x:Name="PetSizeBox"/>
-                      </StackPanel>
-                      <StackPanel Grid.Column="1" Spacing="8" Margin="14,0,0,0">
-                        <TextBlock Text="透明度" Classes="subtle"/>
-                        <Slider x:Name="PetOpacitySlider" Minimum="0.65" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/>
-                      </StackPanel>
+                      <Border x:Name="ChatBackgroundPane" Grid.Column="1" Classes="card" Padding="16" Margin="14,0,0,0">
+                        <StackPanel Spacing="12">
+                          <TextBlock Text="聊天背景" Classes="heading"/>
+                          <TextBlock Text="图片会裁剪并压缩为适合桌面显示的尺寸。" Classes="subtle" TextWrapping="Wrap"/>
+                          <Border Height="190" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="White">
+                            <Image x:Name="ChatBackgroundPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
+                          </Border>
+                          <WrapPanel>
+                            <Button x:Name="BrowseChatBackgroundButton" Content="选择背景图" Classes="primary" MinWidth="120" Margin="0,0,8,8"/>
+                            <Button x:Name="ClearChatBackgroundButton" Content="清除背景图" Classes="danger" MinWidth="120" Margin="0,0,8,8"/>
+                          </WrapPanel>
+                          <TextBlock x:Name="AppearanceStatusText" Text="更改会立即保存。" Classes="subtle" AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                      </Border>
                     </Grid>
-                    <CheckBox x:Name="EnablePetBubblesBox" Content="开启桌宠气泡台词"/>
-                    <CheckBox x:Name="EnablePetIdleGreetingBox" Content="开启闲置问候"/>
-                    <CheckBox x:Name="EnablePetEdgeSnapBox" Content="开启边缘吸附"/>
-                  </StackPanel>
-                </Border>
-              </StackPanel>
-            </Border>
-          </TabItem>
+                  </ScrollViewer>
+                </ListBoxItem.Tag>
+              </ListBoxItem>
+            </ListBox>
+          </Border>
 
-          <TabItem Header="用户头像">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <Grid ColumnDefinitions="Auto,*">
-                <Border Width="112" Height="112" CornerRadius="56" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="#FFFFFF">
-                  <Image x:Name="AvatarPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
-                </Border>
-                <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Center" Margin="20,0,0,0">
-                  <TextBlock Text="头像档案" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                  <RadioButton x:Name="AvatarMaleRadio" Content="男（默认）"/>
-                  <RadioButton x:Name="AvatarFemaleRadio" Content="女"/>
-                  <RadioButton x:Name="AvatarCustomRadio" Content="自定义头像"/>
-                  <Button x:Name="BrowseAvatarButton" Content="选择自定义头像" Classes="ghost" HorizontalAlignment="Left" MinWidth="150"/>
-                </StackPanel>
-              </Grid>
-            </Border>
-          </TabItem>
-
-          <TabItem Header="聊天背景">
-            <Border Background="#FFFFFFFF" Padding="20" CornerRadius="0,18,18,0">
-              <StackPanel Spacing="14">
-                <TextBlock Text="通讯背景" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-                <Border Height="180" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF">
-                  <Image x:Name="ChatBackgroundPreviewImage" Stretch="UniformToFill" ClipToBounds="True"/>
-                </Border>
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Button x:Name="BrowseChatBackgroundButton" Content="选择背景图" Classes="primary" MinWidth="120"/>
-                  <Button x:Name="ClearChatBackgroundButton" Content="清除背景图" Classes="danger" MinWidth="120"/>
-                </StackPanel>
-              </StackPanel>
-            </Border>
-          </TabItem>
-        </TabControl>
-      </Border>
-
-      <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="14" Margin="0,14,0,0">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Text="Provider 请在卡片页单独保存；这里保存界面、语音、头像和背景设置。" Classes="subtle"/>
-          <Button Grid.Column="1" x:Name="SaveAllButton" Content="保存非 Provider 设置" Classes="primary" MinWidth="170"/>
+          <TransitioningContentControl Grid.Column="1" x:Name="SettingsContentHost" Margin="10,0,0,0" ClipToBounds="True"
+                                       Content="{Binding SelectedItem.Tag, ElementName=SettingsTabControl}">
+            <TransitioningContentControl.PageTransition>
+              <CompositePageTransition>
+                <PageSlide Duration="0:0:0.22" Orientation="Horizontal"/>
+                <CrossFade Duration="0:0:0.18"/>
+              </CompositePageTransition>
+            </TransitioningContentControl.PageTransition>
+          </TransitioningContentControl>
         </Grid>
       </Border>
     </Grid>
   </Grid>
 </Window>
-
-

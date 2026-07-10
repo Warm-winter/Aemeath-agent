@@ -2,109 +2,114 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Aemeath.Desktop.Views.McpConfigPanel"
              Background="Transparent">
-
   <Grid RowDefinitions="Auto,*">
-
-    <!-- 顶部工具栏 -->
-    <Border Grid.Row="0" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="14,10">
+    <Border Grid.Row="0" Classes="card" Padding="14,10">
       <Grid ColumnDefinitions="*,Auto">
-        <!-- 左：标题 + 计数 + 整体状态 -->
-        <StackPanel Grid.Column="0" Spacing="2">
+        <StackPanel Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="10">
-            <TextBlock Text="MCP 服务" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}" VerticalAlignment="Center"/>
-            <TextBlock x:Name="CountText" Text="" Classes="muted" VerticalAlignment="Center"/>
+            <TextBlock Text="MCP 服务" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock x:Name="CountText" Classes="muted" VerticalAlignment="Center"/>
           </StackPanel>
-          <TextBlock x:Name="OverallStatusText" Text="未加载" Classes="muted" TextWrapping="Wrap"/>
+          <TextBlock x:Name="OverallStatusText" Text="未加载" Classes="muted" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+          <TextBlock x:Name="ActionStatusText" Classes="muted" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
         </StackPanel>
-        <!-- 右：操作按钮组 -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button x:Name="DownloadMcpDependenciesButton" Content="环境依赖" Classes="ghost" MinWidth="92" ToolTip.Tip="检测/下载 uv.exe、bun.exe 运行依赖"/>
-          <Button x:Name="RefreshMcpButton" Content="重新加载" Classes="ghost" MinWidth="92"/>
-          <Button x:Name="AddButton" Content="+ 添加" Classes="primary" MinWidth="86"/>
-        </StackPanel>
+        <WrapPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+          <Button x:Name="DownloadMcpDependenciesButton" Content="环境依赖" Classes="ghost" MinWidth="92" Margin="0,0,8,8" ToolTip.Tip="检测或下载 uv.exe、bun.exe"/>
+          <Button x:Name="RefreshMcpButton" Content="重新加载" Classes="ghost" MinWidth="92" Margin="0,0,8,8"/>
+          <Button x:Name="AddButton" Content="添加" Classes="primary" MinWidth="86" Margin="0,0,0,8"/>
+        </WrapPanel>
       </Grid>
     </Border>
 
-    <!-- 左右分栏：左列表 + 右详情 -->
-    <Grid Grid.Row="1" ColumnDefinitions="300,*" Margin="0,12,0,0" MinHeight="0">
-
-      <!-- 左：服务列表 -->
-      <Border Grid.Column="0" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="10">
+    <Grid x:Name="McpLayoutGrid" Grid.Row="1" ColumnDefinitions="288,*" RowDefinitions="*" Margin="0,12,0,0" MinHeight="0">
+      <Border x:Name="ServerListPane" Classes="card" Padding="10">
         <Grid RowDefinitions="Auto,*">
-          <TextBlock Grid.Row="0" Text="服务列表" Classes="subtle" Margin="4,0,0,6"/>
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="ServerCardsPanel" Spacing="6"/>
-          </ScrollViewer>
+          <TextBlock Grid.Row="0" Text="服务列表" Classes="subtle" Margin="4,0,0,7"/>
+          <ListBox Grid.Row="1" x:Name="ServerListBox" AutomationProperties.Name="MCP 服务列表"/>
         </Grid>
       </Border>
 
-      <!-- 右：选中服务详情 / 空状态 -->
-      <Border Grid.Column="1" CornerRadius="14" BorderBrush="{StaticResource AemiBorderBrush}" BorderThickness="1" Background="#FFFFFF" Padding="14" Margin="12,0,0,0">
+      <Border x:Name="ServerEditorPane" Grid.Column="1" Classes="card" Padding="14" Margin="12,0,0,0">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="10">
-            <!-- 依赖状态（紧凑） -->
-            <TextBlock x:Name="McpDependencyStatusText" Text="" Classes="muted" TextWrapping="Wrap" IsVisible="False"/>
+            <TextBlock x:Name="McpDependencyStatusText" Classes="muted" TextWrapping="Wrap" IsVisible="False" AutomationProperties.LiveSetting="Polite"/>
 
-            <!-- 空状态 -->
             <StackPanel x:Name="EmptyHintPanel" Spacing="6" IsVisible="True">
-              <TextBlock Text="未选择服务" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-              <TextBlock Text="点击左侧选择一个服务编辑，或点右上「+ 添加」创建新的 MCP 服务。" Classes="muted" TextWrapping="Wrap"/>
+              <TextBlock Text="未选择服务" FontSize="16" FontWeight="SemiBold"/>
+              <TextBlock Text="从左侧选择服务，或使用“添加”创建和导入 MCP 配置。" Classes="muted" TextWrapping="Wrap"/>
             </StackPanel>
 
-            <!-- 编辑表单 -->
-            <StackPanel x:Name="EditFormPanel" Spacing="10" IsVisible="False">
+            <StackPanel x:Name="EditFormPanel" Spacing="11" IsVisible="False">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="服务详情" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}" VerticalAlignment="Center"/>
-                <CheckBox Grid.Column="1" x:Name="EnabledBox" Content="启用"/>
+                <StackPanel Spacing="2">
+                  <TextBlock Text="服务详情" FontSize="18" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="DirtyText" Text="有未保存更改" Foreground="{StaticResource AemiWarningBrush}" IsVisible="False"/>
+                </StackPanel>
+                <CheckBox Grid.Column="1" x:Name="EnabledBox" Content="启用" VerticalAlignment="Center"/>
               </Grid>
+
               <Grid ColumnDefinitions="*,*">
-                <StackPanel Spacing="4">
+                <StackPanel Spacing="5">
                   <TextBlock Text="服务 ID" Classes="subtle"/>
-                  <TextBox x:Name="ServerIdBox" PlaceholderText="filesystem"/>
+                  <TextBox x:Name="ServerIdBox" PlaceholderText="filesystem" AutomationProperties.Name="MCP 服务 ID"/>
+                  <TextBlock x:Name="ServerIdErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="5">
                   <TextBlock Text="显示名称" Classes="subtle"/>
-                  <TextBox x:Name="ServerNameBox" PlaceholderText="文件系统"/>
+                  <TextBox x:Name="ServerNameBox" PlaceholderText="文件系统" AutomationProperties.Name="MCP 服务显示名称"/>
                 </StackPanel>
               </Grid>
-              <Grid ColumnDefinitions="*,*">
-                <StackPanel Spacing="4">
-                  <TextBlock Text="连接方式" Classes="subtle"/>
-                  <ComboBox x:Name="TransportBox" HorizontalAlignment="Stretch"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
-                  <TextBlock Text="URL（HTTP）" Classes="subtle"/>
-                  <TextBox x:Name="UrlBox" PlaceholderText="https://example.com/mcp"/>
-                </StackPanel>
-              </Grid>
-              <StackPanel Spacing="4">
-                <TextBlock Text="命令 Command（stdio）" Classes="subtle"/>
-                <TextBox x:Name="CommandBox" PlaceholderText="bun / uvx / npx / 可执行文件路径"/>
+
+              <StackPanel Spacing="5">
+                <TextBlock Text="连接方式" Classes="subtle"/>
+                <ComboBox x:Name="TransportBox" HorizontalAlignment="Stretch" AutomationProperties.Name="MCP 连接方式"/>
               </StackPanel>
-              <StackPanel Spacing="4">
-                <TextBlock Text="参数 Args（每行一个）" Classes="subtle"/>
-                <TextBox x:Name="ArgsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60"/>
-              </StackPanel>
-              <StackPanel Spacing="4">
-                <TextBlock Text="工作目录（stdio，可空）" Classes="subtle"/>
-                <TextBox x:Name="WorkingDirectoryBox" PlaceholderText="C:\path\to\project"/>
-              </StackPanel>
-              <Grid ColumnDefinitions="*,*">
-                <StackPanel Spacing="4">
-                  <TextBlock Text="环境变量（KEY=VALUE）" Classes="subtle"/>
-                  <TextBox x:Name="EnvBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
+
+              <Border x:Name="StdioFieldsPanel" Classes="card" Background="{StaticResource AemiPanelSoftBrush}" Padding="12">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="本地命令（stdio）" FontWeight="SemiBold"/>
+                  <TextBlock Text="命令" Classes="subtle"/>
+                  <TextBox x:Name="CommandBox" PlaceholderText="bun / uvx / npx / 可执行文件路径" AutomationProperties.Name="stdio 命令"/>
+                  <TextBlock x:Name="CommandErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+                  <TextBlock Text="参数（每行一个）" Classes="subtle"/>
+                  <TextBox x:Name="ArgsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" AutomationProperties.Name="stdio 参数"/>
+                  <TextBlock Text="工作目录（可空）" Classes="subtle"/>
+                  <TextBox x:Name="WorkingDirectoryBox" PlaceholderText="C:\path\to\project" AutomationProperties.Name="stdio 工作目录"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4">
-                  <TextBlock Text="请求头 Headers（KEY=VALUE）" Classes="subtle"/>
-                  <TextBox x:Name="HeadersBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
+              </Border>
+
+              <Border x:Name="HttpFieldsPanel" Classes="card" Background="{StaticResource AemiPanelSoftBrush}" Padding="12" IsVisible="False">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="HTTP 服务" FontWeight="SemiBold"/>
+                  <TextBlock Text="URL" Classes="subtle"/>
+                  <TextBox x:Name="UrlBox" PlaceholderText="https://example.com/mcp" AutomationProperties.Name="MCP HTTP URL"/>
+                  <TextBlock x:Name="UrlErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
                 </StackPanel>
-              </Grid>
+              </Border>
+
+              <Expander Header="高级设置" IsExpanded="False">
+                <StackPanel Spacing="10" Margin="0,10,0,0">
+                  <StackPanel x:Name="EnvFieldsPanel" Spacing="5">
+                    <TextBlock Text="环境变量（KEY=VALUE，每行一个）" Classes="subtle"/>
+                    <TextBox x:Name="EnvBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" AutomationProperties.Name="MCP 环境变量"/>
+                    <TextBlock x:Name="EnvErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+                  </StackPanel>
+                  <StackPanel x:Name="HeaderFieldsPanel" Spacing="5" IsVisible="False">
+                    <TextBlock Text="请求头（KEY=VALUE，每行一个）" Classes="subtle"/>
+                    <TextBox x:Name="HeadersBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" AutomationProperties.Name="MCP HTTP 请求头"/>
+                    <TextBlock x:Name="HeadersErrorText" Foreground="{StaticResource AemiErrorBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive"/>
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <ProgressBar x:Name="BusyProgress" Height="4" IsIndeterminate="True" IsVisible="False" AutomationProperties.Name="MCP 操作进度"/>
               <WrapPanel>
-                <Button x:Name="SaveButton" Content="保存" Classes="primary" MinWidth="92" Margin="0,0,8,0"/>
-                <Button x:Name="TestButton" Content="测试连接" Classes="ghost" MinWidth="92" Margin="0,0,8,0"/>
-                <Button x:Name="DeleteButton" Content="删除" Classes="danger" MinWidth="92"/>
+                <Button x:Name="SaveButton" Content="保存更改" Classes="primary" MinWidth="104" Margin="0,0,8,8"/>
+                <Button x:Name="CancelChangesButton" Content="取消更改" Classes="ghost" MinWidth="104" Margin="0,0,8,8" IsEnabled="False"/>
+                <Button x:Name="TestButton" Content="测试连接" Classes="ghost" MinWidth="104" Margin="0,0,8,8"/>
+                <Button x:Name="DeleteButton" Content="删除服务" Classes="danger" MinWidth="104" Margin="0,0,0,8"/>
               </WrapPanel>
-              <TextBlock x:Name="StatusText" Text="" Classes="muted" TextWrapping="Wrap"/>
+              <TextBlock x:Name="StatusText" Classes="muted" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

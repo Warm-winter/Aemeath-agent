@@ -1,5 +1,6 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Aemeath.Core.Configuration;
@@ -23,17 +24,18 @@ public partial class PetWindow : Window
     private readonly Action? _openConfigAction;
     private readonly Action? _exitAction;
     private readonly SettingsService? _settingsService;
+    private bool _reduceMotion;
     private readonly Random _random = new();
     private readonly string[] _tapLines =
     [
         "小爱在这里哦~",
-        "漂泊者需要小爱帮忙吗？",
+        "需要小爱帮忙吗？",
         "嘿嘿，收到摸摸啦！"
     ];
     private readonly string[] _idleLines =
     [
         "小爱待机中，有事随时叫我呀。",
-        "漂泊者休息一下也很重要哦。",
+        "休息一下也很重要哦。",
         "星海终端运行良好，小爱守着呢。"
     ];
 
@@ -63,6 +65,7 @@ public partial class PetWindow : Window
         _openConfigAction = openConfigAction;
         _exitAction = exitAction;
         _settingsService = settingsService;
+        _reduceMotion = settings?.ReduceMotion ?? false;
 
         _viewModel = new PetViewModel();
         DataContext = _viewModel;
@@ -81,13 +84,26 @@ public partial class PetWindow : Window
 
         _animationService = new GifAnimationService(PetImage);
         _followService = new FollowService(this);
+        BubblePopup.PlacementTarget = PetGrid;
+        BubblePopup.Topmost = Topmost;
 
         SetupEventHandlers();
+        if (_settingsService is not null)
+        {
+            _settingsService.SettingsChanged += OnSettingsChanged;
+        }
         _ = LoadGifAssetsAsync();
-        StartAnimationLoop();
         StartFollowLoop();
         StartBubbleLoop();
         StartIdleGreetingLoop();
+        Opened += (_, _) => UpdateRuntimeActivity();
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty || e.Property == WindowStateProperty)
+            {
+                UpdateRuntimeActivity();
+            }
+        };
     }
 
     public async Task PlayTemporaryStateAsync(PetState state, TimeSpan duration, string? bubble = null)
@@ -155,7 +171,7 @@ public partial class PetWindow : Window
         await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-failed.gif", PetState.Failed);
         await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-waiting.gif", PetState.Waiting);
         await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-running-left.gif", PetState.FollowLeft);
-        await _animationService.LoadGifAsync($"{AssetRoot}/daiji.gif", PetState.Running);
+        _animationService.AliasState(PetState.Idle, PetState.Running);
         await _animationService.LoadGifAsync($"{AssetRoot}/aemeath-mini-review.gif", PetState.Review);
         RestoreBaseState();
     }
@@ -177,7 +193,6 @@ public partial class PetWindow : Window
 
             UpdateFollowAnimation(_followService.UpdateFollowPosition());
         };
-        _followTimer.Start();
     }
 
     private void StartBubbleLoop()
@@ -185,7 +200,7 @@ public partial class PetWindow : Window
         _bubbleTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.2) };
         _bubbleTimer.Tick += (_, _) =>
         {
-            BubbleHost.IsVisible = false;
+            BubblePopup.IsOpen = false;
             _bubbleTimer?.Stop();
         };
     }
@@ -209,7 +224,60 @@ public partial class PetWindow : Window
                 _viewModel.LastOperateTime = DateTime.Now;
             }
         };
-        _idleGreetingTimer.Start();
+    }
+
+    private void UpdateRuntimeActivity()
+    {
+        var shouldRun = IsVisible && WindowState != WindowState.Minimized;
+        if (shouldRun)
+        {
+            if (_reduceMotion)
+            {
+                _animationService.Stop();
+                _followTimer?.Stop();
+            }
+            else
+            {
+                StartAnimationLoop();
+                _followTimer?.Start();
+            }
+
+            _idleGreetingTimer?.Start();
+            return;
+        }
+
+        _animationService.Stop();
+        _followTimer?.Stop();
+        _idleGreetingTimer?.Stop();
+        _bubbleTimer?.Stop();
+        BubblePopup.IsOpen = false;
+    }
+
+    private void OnSettingsChanged()
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplySettings(_settingsService.Current));
+    }
+
+    private void ApplySettings(Settings settings)
+    {
+        _reduceMotion = settings.ReduceMotion;
+        ApplySize(settings.PetWidth, settings.PetHeight);
+        _viewModel.IsFollowing = settings.IsPetFollowing;
+        Topmost = settings.EnableAlwaysOnTop;
+        BubblePopup.Topmost = Topmost;
+        Opacity = Math.Clamp(settings.PetOpacity, 0.65, 1.0);
+        if (!settings.EnablePetBubbles)
+        {
+            _bubbleTimer?.Stop();
+            BubblePopup.IsOpen = false;
+        }
+
+        UpdateRuntimeActivity();
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -219,6 +287,8 @@ public partial class PetWindow : Window
             return;
         }
 
+        BubblePopup.IsOpen = false;
+        _bubbleTimer?.Stop();
         _isDragging = true;
         _movedDuringPointerPress = false;
         e.Pointer?.Capture(this);
@@ -316,16 +386,6 @@ public partial class PetWindow : Window
 
     private void OnDoubleClickInteraction()
     {
-        var offsetX = _random.Next(-30, 31);
-        var offsetY = _random.Next(-30, 31);
-        var screen = Screens.ScreenFromPoint(Position);
-        if (screen != null)
-        {
-            var newX = Math.Max(screen.Bounds.X, Math.Min(Position.X + offsetX, screen.Bounds.X + screen.Bounds.Width - (int)Width));
-            var newY = Math.Max(screen.Bounds.Y, Math.Min(Position.Y + offsetY, screen.Bounds.Y + screen.Bounds.Height - (int)Height));
-            Position = new PixelPoint(newX, newY);
-        }
-
         ShowBubble("小爱打开通讯终端啦。");
         _openChatAction?.Invoke();
         _viewModel.LastOperateTime = DateTime.Now;
@@ -333,29 +393,33 @@ public partial class PetWindow : Window
 
     private void OnContextRequested(object? sender, ContextRequestedEventArgs e)
     {
+        var menu = BuildContextMenu();
+        menu.Open(this);
+        e.Handled = true;
+    }
+
+    internal ContextMenu BuildContextMenu()
+    {
         var menu = new ContextMenu();
 
-        var titleItem = new MenuItem
-        {
-            Header = "快捷菜单 · Ameath",
-            IsEnabled = false
-        };
+        var chatItem = new MenuItem { Header = "打开对话" };
+        chatItem.Click += (_, _) => _openChatAction?.Invoke();
 
         var interactItem = new MenuItem { Header = "摸摸小爱" };
         interactItem.Click += async (_, _) => await TriggerSingleClickInteractionAsync();
 
         var greetingItem = new MenuItem { Header = "随机问候" };
-        greetingItem.Click += async (_, _) => await PlayTemporaryStateAsync(PetState.Wave, TimeSpan.FromSeconds(1), PickLine(_idleLines.Concat(_tapLines).ToArray()));
+        greetingItem.Click += async (_, _) => await PlayTemporaryStateAsync(
+            PetState.Wave,
+            TimeSpan.FromSeconds(1),
+            PickLine(_idleLines.Concat(_tapLines).ToArray()));
 
-        var dockItem = new MenuItem { Header = "回到屏幕边缘" };
-        dockItem.Click += (_, _) => DockToNearestEdge(showBubble: true);
-
-        var chatItem = new MenuItem { Header = "打开小爱对话" };
-        chatItem.Click += (_, _) => _openChatAction?.Invoke();
-
-        var configItem = new MenuItem { Header = "打开系统配置" };
+        var configItem = new MenuItem { Header = "打开设置" };
         configItem.Click += (_, _) => _openConfigAction?.Invoke();
 
+        var windowMenu = new MenuItem { Header = "窗口行为" };
+        var dockItem = new MenuItem { Header = "回到屏幕边缘" };
+        dockItem.Click += (_, _) => DockToNearestEdge(showBubble: true);
         var followItem = new MenuItem
         {
             Header = "跟随鼠标",
@@ -363,7 +427,6 @@ public partial class PetWindow : Window
             IsChecked = _viewModel.IsFollowing
         };
         followItem.Click += (_, _) => ToggleFollow(followItem);
-
         var topmostItem = new MenuItem
         {
             Header = "窗口置顶",
@@ -371,58 +434,60 @@ public partial class PetWindow : Window
             IsChecked = Topmost
         };
         topmostItem.Click += (_, _) => ToggleTopmost(topmostItem);
-
-        var bubbleItem = BuildToggleMenuItem("气泡台词", _settingsService?.Current.EnablePetBubbles ?? true, value =>
-        {
-            if (_settingsService is null)
-            {
-                return;
-            }
-
-            _settingsService.Current.EnablePetBubbles = value;
-            if (!value)
-            {
-                BubbleHost.IsVisible = false;
-            }
-            _settingsService.Save();
-        });
-
-        var idleGreetingItem = BuildToggleMenuItem("闲置问候", _settingsService?.Current.EnablePetIdleGreeting ?? true, value =>
-        {
-            if (_settingsService is null)
-            {
-                return;
-            }
-
-            _settingsService.Current.EnablePetIdleGreeting = value;
-            _settingsService.Save();
-        });
-
         var edgeSnapItem = BuildToggleMenuItem("边缘吸附", _settingsService?.Current.EnablePetEdgeSnap ?? true, value =>
         {
             if (_settingsService is null)
             {
                 return;
             }
-
             _settingsService.Current.EnablePetEdgeSnap = value;
             _settingsService.Save();
         });
+        windowMenu.Items.Add(dockItem);
+        windowMenu.Items.Add(followItem);
+        windowMenu.Items.Add(topmostItem);
+        windowMenu.Items.Add(edgeSnapItem);
 
+        var appearanceMenu = new MenuItem { Header = "外观" };
+        var bubbleItem = BuildToggleMenuItem("气泡台词", _settingsService?.Current.EnablePetBubbles ?? true, value =>
+        {
+            if (_settingsService is null)
+            {
+                return;
+            }
+            _settingsService.Current.EnablePetBubbles = value;
+            if (!value)
+            {
+                BubblePopup.IsOpen = false;
+            }
+            _settingsService.Save();
+        });
+        var idleGreetingItem = BuildToggleMenuItem("闲置问候", _settingsService?.Current.EnablePetIdleGreeting ?? true, value =>
+        {
+            if (_settingsService is null)
+            {
+                return;
+            }
+            _settingsService.Current.EnablePetIdleGreeting = value;
+            _settingsService.Save();
+        });
         var sizeMenu = new MenuItem { Header = "大小" };
         sizeMenu.Items.Add(BuildSizeMenuItem("小巧", "small", 96));
         sizeMenu.Items.Add(BuildSizeMenuItem("标准", "normal", 125));
         sizeMenu.Items.Add(BuildSizeMenuItem("醒目", "large", 160));
-
         var opacityMenu = new MenuItem { Header = "透明度" };
         opacityMenu.Items.Add(BuildOpacityMenuItem("70%", 0.70));
         opacityMenu.Items.Add(BuildOpacityMenuItem("85%", 0.85));
         opacityMenu.Items.Add(BuildOpacityMenuItem("100%", 1.0));
+        appearanceMenu.Items.Add(bubbleItem);
+        appearanceMenu.Items.Add(idleGreetingItem);
+        appearanceMenu.Items.Add(sizeMenu);
+        appearanceMenu.Items.Add(opacityMenu);
 
         var trayItem = new MenuItem { Header = "收纳到系统托盘" };
         trayItem.Click += (_, _) => Hide();
 
-        var exitItem = new MenuItem { Header = "退出 Aemeath" };
+        var exitItem = new MenuItem { Header = "退出爱弥斯助手" };
         exitItem.Click += (_, _) =>
         {
             if (_exitAction is not null)
@@ -430,32 +495,19 @@ public partial class PetWindow : Window
                 _exitAction.Invoke();
                 return;
             }
-
             Close();
         };
 
-        menu.Items.Add(titleItem);
-        menu.Items.Add(new Separator());
+        menu.Items.Add(chatItem);
         menu.Items.Add(interactItem);
         menu.Items.Add(greetingItem);
-        menu.Items.Add(dockItem);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(chatItem);
         menu.Items.Add(configItem);
+        menu.Items.Add(windowMenu);
+        menu.Items.Add(appearanceMenu);
         menu.Items.Add(new Separator());
-        menu.Items.Add(followItem);
-        menu.Items.Add(topmostItem);
-        menu.Items.Add(bubbleItem);
-        menu.Items.Add(idleGreetingItem);
-        menu.Items.Add(edgeSnapItem);
-        menu.Items.Add(sizeMenu);
-        menu.Items.Add(opacityMenu);
         menu.Items.Add(trayItem);
-        menu.Items.Add(new Separator());
         menu.Items.Add(exitItem);
-
-        menu.Open(this);
-        e.Handled = true;
+        return menu;
     }
 
     private MenuItem BuildToggleMenuItem(string header, bool isChecked, Action<bool> onChanged)
@@ -523,12 +575,13 @@ public partial class PetWindow : Window
         }
 
         RestoreBaseState();
-        ShowBubble(_viewModel.IsFollowing ? "小爱跟上漂泊者啦。" : "小爱在这里等你。");
+        ShowBubble(_viewModel.IsFollowing ? "小爱跟上你啦。" : "小爱在这里等你。");
     }
 
     private void ToggleTopmost(MenuItem topmostItem)
     {
         Topmost = !Topmost;
+        BubblePopup.Topmost = Topmost;
         topmostItem.IsChecked = Topmost;
         if (_settingsService is not null)
         {
@@ -539,15 +592,34 @@ public partial class PetWindow : Window
 
     private void ShowBubble(string text)
     {
-        if (_settingsService?.Current.EnablePetBubbles == false || string.IsNullOrWhiteSpace(text))
+        if (_settingsService?.Current.EnablePetBubbles == false || string.IsNullOrWhiteSpace(text) || !IsVisible)
         {
             return;
         }
 
         BubbleText.Text = text;
-        BubbleHost.IsVisible = true;
+        UpdateBubblePlacement();
+        BubblePopup.Topmost = Topmost;
+        BubblePopup.IsOpen = true;
         _bubbleTimer?.Stop();
         _bubbleTimer?.Start();
+    }
+
+    private void UpdateBubblePlacement()
+    {
+        var screen = Screens.ScreenFromPoint(Position);
+        if (screen is null)
+        {
+            BubblePopup.Placement = PlacementMode.Top;
+            BubblePopup.VerticalOffset = -8;
+            return;
+        }
+
+        var spaceAbove = Position.Y - screen.Bounds.Y;
+        var spaceBelow = screen.Bounds.Bottom - (Position.Y + Height);
+        var placeAbove = spaceAbove >= 110 || spaceAbove >= spaceBelow;
+        BubblePopup.Placement = placeAbove ? PlacementMode.Top : PlacementMode.Bottom;
+        BubblePopup.VerticalOffset = placeAbove ? -8 : 8;
     }
 
     private string PickLine(string[] lines)
@@ -686,6 +758,10 @@ public partial class PetWindow : Window
     {
         _temporaryStateCts?.Cancel();
         _temporaryStateCts?.Dispose();
+        if (_settingsService is not null)
+        {
+            _settingsService.SettingsChanged -= OnSettingsChanged;
+        }
         _animationService.Dispose();
         _followTimer?.Stop();
         _bubbleTimer?.Stop();

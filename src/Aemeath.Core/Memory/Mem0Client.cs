@@ -568,7 +568,7 @@ public sealed record Mem0HealthResult(bool Installed, string? Error);
 /// <summary>Mem0 记忆作用域：user_id（全局用户记忆）/ agent_id / run_id（会话）。</summary>
 public sealed record Mem0Scope(string? UserId = null, string? AgentId = null, string? RunId = null)
 {
-    /// <summary>全局用户记忆：所有会话共享的漂泊者档案。</summary>
+    /// <summary>全局用户记忆：所有会话共享的用户档案。</summary>
     public static Mem0Scope GlobalUser => new(UserId: "drifter", AgentId: "aemi");
 
     /// <summary>会话记忆：run_id = 会话 id。</summary>

@@ -1,4 +1,4 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aemeath.Pet.PetWindow"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -12,29 +12,29 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         WindowDecorations="None">
-
-    <Grid Name="PetGrid" Background="Transparent">
-        <Image Name="PetImage"
-               Stretch="Uniform"
-               IsHitTestVisible="False"/>
-        <Border Name="BubbleHost"
-                IsVisible="False"
-                IsHitTestVisible="False"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                MaxWidth="236"
-                Padding="12,8"
-                CornerRadius="14"
-                Background="#F8FFFFFF"
-                BorderBrush="#F3C2D4"
-                BorderThickness="1">
-            <TextBlock Name="BubbleText"
-                       Margin="2"
-                       TextWrapping="Wrap"
-                       Foreground="#4A2A3A"
-                       FontSize="12"
-                       LineHeight="17"/>
-        </Border>
-    </Grid>
+  <Grid Name="PetGrid" Background="Transparent">
+    <Image Name="PetImage" Stretch="Uniform" IsHitTestVisible="False"/>
+    <Popup Name="BubblePopup"
+           IsOpen="False"
+           Placement="Top"
+           PlacementConstraintAdjustment="All"
+           IsLightDismissEnabled="False"
+           TakesFocusFromNativeControl="False"
+           IsHitTestVisible="False"
+           VerticalOffset="-8">
+      <Border MaxWidth="260"
+              MinWidth="120"
+              Padding="13,9"
+              CornerRadius="14"
+              Background="{DynamicResource AemiPanelBrush}"
+              BorderBrush="{DynamicResource AemiBorderBrush}"
+              BorderThickness="1">
+        <TextBlock Name="BubbleText"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource AemiTextPrimaryBrush}"
+                   FontSize="12"
+                   LineHeight="18"/>
+      </Border>
+    </Popup>
+  </Grid>
 </Window>
-

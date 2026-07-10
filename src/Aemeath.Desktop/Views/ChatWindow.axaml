@@ -1,221 +1,209 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:effects="clr-namespace:Aemeath.Pet.Effects;assembly=Aemeath.Pet"
+        xmlns:views="clr-namespace:Aemeath.Desktop.Views"
         xmlns:i="using:Avalonia.Input"
         x:Class="Aemeath.Desktop.Views.ChatWindow"
-        Width="940" Height="780"
-        MinWidth="660" MinHeight="620"
+        Width="1040" Height="800"
+        MinWidth="720" MinHeight="620"
         Title="&#x5C0F;&#x7231;&#x5BF9;&#x8BDD;"
+        WindowDecorations="BorderOnly"
         Icon="avares://Aemeath-agent/Assets/static/app.ico">
-  <Window.Styles>
-    <Style Selector="TextBlock.subtle">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextSecondaryBrush}"/>
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextMutedBrush}"/>
-    </Style>
-    <Style Selector="TextBlock.faint">
-      <Setter Property="Foreground" Value="{StaticResource AemiTextFaintBrush}"/>
-    </Style>
-    <Style Selector="Button">
-      <Setter Property="Background" Value="#FF69B4"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="13,8"/>
-      <Setter Property="MinHeight" Value="36"/>
-      <Setter Property="HorizontalContentAlignment" Value="Center"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Button:pointerover">
-      <Setter Property="Background" Value="#E84D8E"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderStrongBrush}"/>
-    </Style>
-    <Style Selector="Button:pressed">
-      <Setter Property="Background" Value="#D93E80"/>
-    </Style>
-    <Style Selector="Button:focus">
-      <Setter Property="BorderBrush" Value="{StaticResource AemiFocusBrush}"/>
-    </Style>
-    <Style Selector="Button:disabled">
-      <Setter Property="Opacity" Value="0.48"/>
-    </Style>
-    <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{StaticResource AemiPrimaryGradientBrush}"/>
-      <Setter Property="Foreground" Value="#4A2A3A"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiHaloSoftBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-    </Style>
-    <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="#FFE1EE"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderSoftBrush}"/>
-    </Style>
-    <Style Selector="Button.danger">
-      <Setter Property="Background" Value="#FFEAF0"/>
-      <Setter Property="BorderBrush" Value="#F0A9B8"/>
-      <Setter Property="Foreground" Value="#D94A62"/>
-    </Style>
-    <Style Selector="Button.icon">
-      <Setter Property="Padding" Value="6"/>
-      <Setter Property="MinWidth" Value="44"/>
-      <Setter Property="MinHeight" Value="44"/>
-    </Style>
-    <Style Selector="ComboBox">
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="MinHeight" Value="34"/>
-    </Style>
-    <Style Selector="TextBox">
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="Foreground" Value="{StaticResource AemiTextPrimaryBrush}"/>
-      <Setter Property="CaretBrush" Value="{StaticResource AemiFocusBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource AemiBorderBrush}"/>
-      <Setter Property="CornerRadius" Value="10"/>
-      <Setter Property="Padding" Value="12,9"/>
-    </Style>
-  </Window.Styles>
 
-  <Grid>
-    <Grid x:Name="BackgroundContainer" IsHitTestVisible="False">
-      <Grid.Background>
-        <RadialGradientBrush Center="52%,38%" GradientOrigin="52%,38%" RadiusX="1.08" RadiusY="1.08">
-          <GradientStop Color="#FFF1F6" Offset="0.0"/>
-          <GradientStop Color="#FFF8FB" Offset="0.58"/>
-          <GradientStop Color="#FFE1EE" Offset="1.0"/>
-        </RadialGradientBrush>
-      </Grid.Background>
-      <Canvas x:Name="BackgroundParticleCanvas" IsHitTestVisible="False" Opacity="0.30"/>
-      <Border x:Name="GlowLayerPink" IsHitTestVisible="False">
-        <Border.Background>
-          <RadialGradientBrush Center="11%,18%" RadiusX="58%" RadiusY="58%">
-            <GradientStop Color="#55FFD1E5" Offset="0"/>
-            <GradientStop Color="#00FFD1E5" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
-      <Border x:Name="GlowLayerBlue" IsHitTestVisible="False">
-        <Border.Background>
-          <RadialGradientBrush Center="90%,68%" RadiusX="62%" RadiusY="62%">
-            <GradientStop Color="#55FFE1EE" Offset="0"/>
-            <GradientStop Color="#00FFE1EE" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
-      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.52">
-        <Border.Background>
-          <RadialGradientBrush Center="50%,5%" RadiusX="76%" RadiusY="42%">
-            <GradientStop Color="#33FFFFFF" Offset="0"/>
-            <GradientStop Color="#00FFFFFF" Offset="1"/>
-          </RadialGradientBrush>
-        </Border.Background>
-      </Border>
+  <Grid RowDefinitions="Auto,*">
+    <Grid x:Name="BackgroundContainer" Grid.RowSpan="2" IsHitTestVisible="False" Background="{StaticResource AemiWindowBackgroundBrush}">
+      <effects:ParticleField x:Name="BackgroundParticleCanvas" Opacity="0.28"/>
+      <Border x:Name="GlowLayerPink" IsHitTestVisible="False" Background="{StaticResource AemiGlowPinkBrush}"/>
+      <Border x:Name="GlowLayerBlue" IsHitTestVisible="False" Background="{StaticResource AemiGlowHaloBrush}"/>
+      <Border x:Name="GlowLayerWhite" IsHitTestVisible="False" Opacity="0.52" Background="{StaticResource AemiGlowWhiteBrush}"/>
     </Grid>
 
-    <Grid Margin="18" RowDefinitions="Auto,*,Auto">
-      <Border Grid.Row="0" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="14">
-        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-          <Border Width="64" Height="64" CornerRadius="32" BorderBrush="{StaticResource AemiStarBrush}" BorderThickness="1.5" Background="#FFFFFF">
-            <Grid>
-              <Ellipse Stroke="#F3C2D4" StrokeThickness="1" Margin="3"/>
-              <Image Source="avares://Aemeath-agent/Assets/static/xiaoai-avatar.png" Stretch="UniformToFill" ClipToBounds="True"/>
+    <views:AemeathTitleBar Grid.Row="0" Title="&#x7231;&#x5F25;&#x65AF;&#x52A9;&#x624B; &#x00B7; &#x5BF9;&#x8BDD;"/>
+
+    <SplitView Grid.Row="1" x:Name="ChatSplitView"
+               DisplayMode="Inline"
+               PanePlacement="Left"
+               OpenPaneLength="248"
+               CompactPaneLength="0"
+               IsPaneOpen="True">
+      <SplitView.Pane>
+        <Border Margin="16,16,0,16" Classes="card" Padding="12">
+          <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2">
+                <TextBlock Text="&#x901A;&#x8BAF;&#x6863;&#x6848;" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock x:Name="SessionCountText" Text="" Classes="muted" FontSize="12"/>
+              </StackPanel>
+              <Button Grid.Column="1"
+                      x:Name="CloseSidebarButton"
+                      Content="&#x2039;"
+                      Classes="ghost icon"
+                      Width="42"
+                      Height="42"
+                      AutomationProperties.Name="&#x6536;&#x8D77;&#x4F1A;&#x8BDD;&#x4FA7;&#x680F;"/>
+            </Grid>
+
+            <TextBox Grid.Row="1"
+                     x:Name="SessionSearchBox"
+                     Margin="0,12,0,10"
+                     PlaceholderText="&#x641C;&#x7D22;&#x5BF9;&#x8BDD;"
+                     AutomationProperties.Name="&#x641C;&#x7D22;&#x5386;&#x53F2;&#x5BF9;&#x8BDD;"/>
+
+            <ListBox Grid.Row="2"
+                     x:Name="SessionListBox"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     AutomationProperties.Name="&#x5386;&#x53F2;&#x5BF9;&#x8BDD;&#x5217;&#x8868;"/>
+
+            <Grid Grid.Row="3" ColumnDefinitions="*,*,*" Margin="0,10,0,0">
+              <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;" Classes="primary" MinWidth="0"/>
+              <Button Grid.Column="1" x:Name="RenameSessionButton" Content="&#x91CD;&#x547D;&#x540D;" Classes="ghost" MinWidth="0" Margin="6,0"/>
+              <Button Grid.Column="2" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;" Classes="danger" MinWidth="0"/>
+            </Grid>
+          </Grid>
+        </Border>
+      </SplitView.Pane>
+
+      <SplitView.Content>
+        <Grid Margin="16" RowDefinitions="Auto,*,Auto">
+          <Border Grid.Row="0" Classes="card" Padding="12">
+            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto,Auto">
+              <Border Width="54" Height="54" CornerRadius="27" BorderBrush="{StaticResource AemiPinkBrush}" BorderThickness="1.5" Background="White">
+                <Image Source="avares://Aemeath-agent/Assets/static/xiaoai-avatar.png" Stretch="UniformToFill" ClipToBounds="True"/>
+              </Border>
+
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3" Margin="12,0,0,0">
+                <TextBlock Text="&#x7231;&#x5F25;&#x65AF;" FontSize="21" FontWeight="SemiBold"/>
+                <TextBlock Text="&#x98DE;&#x884C;&#x96EA;&#x7ED2;&#x9891;&#x9053; &#x00B7; &#x672C;&#x5730;&#x7EC8;&#x7AEF;" Classes="subtle" FontSize="12"/>
+              </StackPanel>
+
+              <Button Grid.Column="2"
+                      x:Name="ToggleSidebarButton"
+                      Content="&#x4F1A;&#x8BDD;"
+                      Classes="ghost"
+                      MinWidth="76"
+                      AutomationProperties.Name="&#x6253;&#x5F00;&#x6216;&#x6536;&#x8D77;&#x4F1A;&#x8BDD;&#x4FA7;&#x680F;"/>
+              <Button Grid.Column="3"
+                      x:Name="OpenSettingsButton"
+                      Content="&#x8BBE;&#x7F6E;"
+                      Classes="ghost"
+                      MinWidth="76"
+                      Margin="8,0,0,0"
+                      AutomationProperties.Name="&#x6253;&#x5F00;&#x8BBE;&#x7F6E;&#x4E2D;&#x5FC3;"/>
+
+              <Grid Grid.Row="1" Grid.ColumnSpan="4" ColumnDefinitions="*,*" Margin="0,12,0,0">
+                <ComboBox x:Name="ProviderQuickSwitchBox"
+                          HorizontalAlignment="Stretch"
+                          PlaceholderText="Provider"
+                          AutomationProperties.Name="&#x5F53;&#x524D; Provider"/>
+                <ComboBox Grid.Column="1"
+                          x:Name="ModelQuickSwitchBox"
+                          HorizontalAlignment="Stretch"
+                          Margin="8,0,0,0"
+                          PlaceholderText="&#x6A21;&#x578B;"
+                          AutomationProperties.Name="&#x5F53;&#x524D;&#x6A21;&#x578B;"/>
+              </Grid>
+
+              <Border Grid.Row="2"
+                      Grid.ColumnSpan="4"
+                      x:Name="ProviderSwitchStatusBorder"
+                      Classes="status"
+                      Margin="0,10,0,0"
+                      IsVisible="False">
+                <TextBlock x:Name="ProviderSwitchStatusText"
+                           Text=""
+                           Classes="muted"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite"/>
+              </Border>
             </Grid>
           </Border>
 
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Margin="14,0,0,0">
-            <TextBlock Text="爱弥斯" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-            <TextBlock Text="星炬学院通讯终端" Classes="subtle" FontSize="13"/>
-          </StackPanel>
+          <Border Grid.Row="1"
+                  x:Name="ChatBackgroundHost"
+                  CornerRadius="20"
+                  Background="White"
+                  BorderBrush="{StaticResource AemiBorderBrush}"
+                  BorderThickness="1"
+                  Margin="0,12,0,0">
+            <Grid>
+              <Border IsHitTestVisible="False" Margin="1" CornerRadius="19" BorderBrush="{StaticResource AemiBorderSoftBrush}" BorderThickness="1"/>
+              <ScrollViewer x:Name="ChatScrollViewer"
+                            Padding="18"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Disabled"
+                            AutomationProperties.Name="&#x5BF9;&#x8BDD;&#x6D88;&#x606F;">
+                <StackPanel x:Name="MessagesPanel" Spacing="12" Margin="0,0,0,54"/>
+              </ScrollViewer>
 
-          <StackPanel Grid.Column="2" Spacing="8" Width="430" VerticalAlignment="Center">
-            <Grid ColumnDefinitions="160,*">
-              <ComboBox x:Name="ProviderQuickSwitchBox" HorizontalAlignment="Stretch"/>
-              <ComboBox Grid.Column="1" x:Name="ModelQuickSwitchBox" HorizontalAlignment="Stretch" Margin="8,0,0,0"/>
+              <StackPanel x:Name="EmptyStatePanel"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          MaxWidth="520"
+                          Spacing="12"
+                          Margin="24">
+                <Border Width="76" Height="76" CornerRadius="38" Background="{StaticResource AemiGlassSoftBrush}" BorderBrush="{StaticResource AemiPinkBrush}" BorderThickness="1.5" HorizontalAlignment="Center">
+                  <Image Source="avares://Aemeath-agent/Assets/static/xiaoai-avatar.png" Stretch="UniformToFill" ClipToBounds="True"/>
+                </Border>
+                <TextBlock x:Name="EmptyStateTitle" Text="&#x542C;&#x5F97;&#x5230;&#x5417;&#xFF1F;" FontSize="22" FontWeight="SemiBold" TextAlignment="Center"/>
+                <TextBlock x:Name="EmptyStateText" Text="&#x4ECA;&#x5929;&#x60F3;&#x804A;&#x4EC0;&#x4E48;&#xFF1F;&#x4E5F;&#x53EF;&#x4EE5;&#x628A;&#x56FE;&#x7247;&#x6216;&#x6587;&#x4EF6;&#x4EA4;&#x7ED9;&#x6211;&#x3002;" Classes="subtle" TextAlignment="Center" TextWrapping="Wrap" LineHeight="21"/>
+                <WrapPanel HorizontalAlignment="Center">
+                  <Button x:Name="PromptIntroButton" Content="&#x4ECB;&#x7ECD;&#x4E00;&#x4E0B;&#x4F60;&#x81EA;&#x5DF1;" Classes="ghost" Margin="4"/>
+                  <Button x:Name="PromptPlanButton" Content="&#x5E2E;&#x6211;&#x6574;&#x7406;&#x4ECA;&#x5929;&#x7684;&#x8BA1;&#x5212;" Classes="ghost" Margin="4"/>
+                  <Button x:Name="PromptImageButton" Content="&#x770B;&#x770B;&#x6211;&#x7684;&#x56FE;&#x7247;" Classes="ghost" Margin="4"/>
+                </WrapPanel>
+                <Button x:Name="EmptyStateActionButton" Content="&#x5F00;&#x59CB;&#x5BF9;&#x8BDD;" Classes="primary" HorizontalAlignment="Center" MinWidth="132"/>
+              </StackPanel>
+
+              <Button x:Name="JumpToLatestButton"
+                      Content="&#x56DE;&#x5230;&#x6700;&#x65B0;"
+                      Classes="ghost"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,16,14"
+                      IsVisible="False"
+                      AutomationProperties.Name="&#x6EDA;&#x52A8;&#x5230;&#x6700;&#x65B0;&#x6D88;&#x606F;"/>
             </Grid>
-            <Border x:Name="ProviderSwitchStatusBorder" CornerRadius="999" Background="#FFE1EE" BorderBrush="#F3C2D4" BorderThickness="1" Padding="8,4" IsVisible="False">
-              <TextBlock x:Name="ProviderSwitchStatusText" Text="" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"/>
-            </Border>
-          </StackPanel>
+          </Border>
 
-          <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="Auto,Auto,*" Margin="0,12,0,0">
-            <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;&#x5BF9;&#x8BDD;" Classes="ghost" MinWidth="96"/>
-            <Button Grid.Column="1" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;&#x5BF9;&#x8BDD;" Classes="danger" MinWidth="96" Margin="8,0,0,0"/>
-            <ComboBox Grid.Column="2" x:Name="SessionSelector" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="8,0,0,0"/>
-          </Grid>
+          <Border Grid.Row="2" Classes="card" Padding="12" Margin="0,12,0,0">
+            <Grid RowDefinitions="Auto,Auto">
+              <WrapPanel x:Name="AttachmentPanel" IsVisible="False" Margin="0,0,0,10"/>
+              <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                <Button x:Name="UploadButton" Classes="icon ghost" Width="50" Height="50" AutomationProperties.Name="&#x6DFB;&#x52A0;&#x56FE;&#x7247;&#x6216;&#x6587;&#x4EF6;"/>
+                <Button Grid.Column="1" x:Name="McpToolsButton" Classes="icon ghost" Width="50" Height="50" Margin="8,0,0,0" AutomationProperties.Name="MCP &#x5DE5;&#x5177;"/>
+                <TextBox Grid.Column="2"
+                         x:Name="InputBox"
+                         PlaceholderText="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
+                         AcceptsReturn="False"
+                         TextWrapping="Wrap"
+                         TextChanged="InputBox_OnTextChanged"
+                         i:InputMethod.IsInputMethodEnabled="True"
+                         Margin="8,0,0,0"
+                         MinHeight="50"
+                         MaxHeight="126"
+                         VerticalContentAlignment="Center"
+                         AutomationProperties.Name="&#x6D88;&#x606F;&#x8F93;&#x5165;&#x6846;"/>
+                <Button Grid.Column="2"
+                        x:Name="VoiceRecordButton"
+                        IsVisible="False"
+                        Content="&#x6309;&#x4F4F;&#x8BF4;&#x8BDD;"
+                        MinHeight="50"
+                        Height="50"
+                        HorizontalAlignment="Stretch"
+                        Margin="8,0,0,0"
+                        Classes="ghost"
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        AutomationProperties.Name="&#x6309;&#x4F4F;&#x5F00;&#x59CB;&#x5F55;&#x97F3;"/>
+                <Button Grid.Column="3" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="8,0,0,0" AutomationProperties.Name="&#x5207;&#x6362;&#x8BED;&#x97F3;&#x8F93;&#x5165;"/>
+                <Button Grid.Column="4" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="8,0,0,0" AutomationProperties.Name="&#x53D1;&#x9001;&#x6D88;&#x606F;"/>
+              </Grid>
+            </Grid>
+          </Border>
         </Grid>
-      </Border>
-
-      <Border Grid.Row="1"
-              x:Name="ChatBackgroundHost"
-              CornerRadius="20"
-              Background="#FFFFFFFF"
-              BorderBrush="#F3C2D4"
-              BorderThickness="1"
-              Margin="0,14,0,0">
-        <Grid>
-          <Border IsHitTestVisible="False" Margin="1" CornerRadius="19" BorderBrush="#F8D8E4" BorderThickness="1"/>
-          <Grid IsHitTestVisible="False" Opacity="0.10">
-            <Grid.Background>
-              <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                <GradientStop Color="#00FFFFFF" Offset="0"/>
-                <GradientStop Color="#44FFFFFF" Offset="0.48"/>
-                <GradientStop Color="#00FFFFFF" Offset="1"/>
-              </LinearGradientBrush>
-            </Grid.Background>
-          </Grid>
-          <ScrollViewer x:Name="ChatScrollViewer"
-                        Padding="18"
-                        VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="MessagesPanel" Spacing="12" Margin="0,0,0,44"/>
-          </ScrollViewer>
-        </Grid>
-      </Border>
-
-      <Border Grid.Row="2" CornerRadius="18" Background="{StaticResource AemiGlassBrush}" BorderBrush="#F3C2D4" BorderThickness="1" Padding="12" Margin="0,14,0,0">
-        <Grid RowDefinitions="Auto,Auto">
-          <WrapPanel x:Name="AttachmentPanel" IsVisible="False" Margin="0,0,0,10"/>
-          <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
-            <Button x:Name="UploadButton" Classes="icon ghost" Width="50" Height="50"/>
-            <Button Grid.Column="1" x:Name="McpToolsButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
-            <TextBox Grid.Column="2"
-                     x:Name="InputBox"
-                     PlaceholderText="&#x5411;&#x5C0F;&#x7231;&#x53D1;&#x9001;&#x6D88;&#x606F;..."
-                     AcceptsReturn="False"
-                     TextWrapping="Wrap"
-                     TextChanged="InputBox_OnTextChanged"
-                     i:InputMethod.IsInputMethodEnabled="True"
-                     FontFamily="{StaticResource AemiBodyFontFamily}"
-                     CaretBrush="{StaticResource AemiFocusBrush}"
-                     SelectionBrush="#FFD1E5"
-                     SelectionForegroundBrush="{StaticResource AemiTextPrimaryBrush}"
-                      Margin="10,0,0,0"
-                     MinHeight="50"
-                     MaxHeight="126"
-                     VerticalContentAlignment="Center"/>
-            <Button Grid.Column="2"
-                    x:Name="VoiceRecordButton"
-                    IsVisible="False"
-                    Content="&#x6309;&#x4F4F;&#x8BF4;&#x8BDD;"
-                    MinHeight="50"
-                    Height="50"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center"
-                    Margin="10,0,0,0"
-                    FontSize="15"
-                    FontWeight="SemiBold"
-                    Background="#FFFFFF"
-                    BorderBrush="#F3C2D4"
-                    Foreground="{StaticResource AemiTextPrimaryBrush}"/>
-            <Button Grid.Column="3" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="10,0,0,0"/>
-            <Button Grid.Column="4" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="10,0,0,0"/>
-          </Grid>
-        </Grid>
-      </Border>
-    </Grid>
+      </SplitView.Content>
+    </SplitView>
   </Grid>
 </Window>
-
-

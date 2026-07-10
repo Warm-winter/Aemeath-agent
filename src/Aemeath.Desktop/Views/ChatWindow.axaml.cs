@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -38,6 +39,8 @@ public partial class ChatWindow : Window
     private readonly ParticleEffect _particleEffect;
     private readonly ToolConfirmationService? _toolConfirmationService;
     private readonly AttachmentService _attachments = new();
+    private readonly AttachmentThumbnailCache _attachmentThumbnailCache;
+    private CancellationTokenSource _attachmentRenderCts = new();
     private readonly DispatcherTimer _pendingTimer;
     private readonly DispatcherTimer _flickerTimer;
     private readonly DispatcherTimer _statusHideTimer;
@@ -47,6 +50,11 @@ public partial class ChatWindow : Window
     private TextBlock? _pendingTextBlock;
     private bool _isSending;
     private bool _scrollPending;
+    private bool _isUpdatingSessionList;
+    private bool _userNearBottom = true;
+    private CancellationTokenSource? _sendCancellationTokenSource;
+    private readonly ChatInteractionStateMachine _interactionState = new();
+    private const double AutoScrollThreshold = 96;
     private double _flickerPhase;
 
     private readonly Bitmap _assistantAvatar;
@@ -55,6 +63,7 @@ public partial class ChatWindow : Window
     private Bitmap? _customUserAvatar;
     private string? _customUserAvatarPath;
     private Bitmap? _chatBackgroundBitmap;
+    private string? _appliedChatBackgroundPath;
     private readonly DrawingImage _copyIcon;
     private readonly DrawingImage _deleteIcon;
     private readonly DrawingImage _retryIcon;
@@ -88,19 +97,34 @@ public partial class ChatWindow : Window
 
     public event EventHandler<ChatActivityChangedEventArgs>? ActivityChanged;
 
-    public ChatWindow() : this(new NoOpChatService(), new SettingsService())
+    public ChatWindow() : this(new NoOpChatService(), new SettingsService(), null, null)
     {
     }
 
     public ChatWindow(IChatService chatService, SettingsService settingsService)
+        : this(chatService, settingsService, null, null)
+    {
+    }
+
+    internal ChatWindow(
+        IChatService chatService,
+        SettingsService settingsService,
+        ChatSessionStore? sessionStore,
+        AttachmentThumbnailCache? attachmentThumbnailCache)
     {
         InitializeComponent();
         AppLogger.Info("chat", "chat window constructor start");
         _chatService = chatService;
         _settingsService = settingsService;
         _settingsService.ProvidersChanged += OnProvidersChanged;
-        Closed += (_, _) => _settingsService.ProvidersChanged -= OnProvidersChanged;
-        _sessionStore = new ChatSessionStore();
+        _settingsService.SettingsChanged += OnSettingsChanged;
+        Closed += (_, _) =>
+        {
+            _settingsService.ProvidersChanged -= OnProvidersChanged;
+            _settingsService.SettingsChanged -= OnSettingsChanged;
+        };
+        _sessionStore = sessionStore ?? new ChatSessionStore();
+        _attachmentThumbnailCache = attachmentThumbnailCache ?? new AttachmentThumbnailCache();
         // Mem0 记忆编排器：每轮 add + 发送前 search 注入。config/python 由 AemiChatService 提供。
         if (chatService is AemiChatService aemiChatSvc)
         {
@@ -140,7 +164,7 @@ public partial class ChatWindow : Window
             "M7 6 L17 6 L17 20 L7 20 Z " +
             "M9 8 L9 18 L11 18 L11 8 Z " +
             "M13 8 L13 18 L15 18 L15 8 Z",
-            24, 24);
+            24, 24, AemiUi.Error);
         // Retry / refresh icon (circular arrow)
         _retryIcon = AemiUi.CreateVectorIcon(
             "M17.65 6.35 C16.2 4.9 14.21 4 12 4 C7.58 4 4.01 7.58 4.01 12 C4.01 16.42 7.58 20 12 20 C15.73 20 18.84 17.45 19.73 14 L17.65 14 " +
@@ -213,37 +237,60 @@ public partial class ChatWindow : Window
             ProviderSwitchStatusBorder.IsVisible = false;
         };
 
-        SendButton.Click += async (_, _) => await SendAsync();
+        SendButton.Click += async (_, _) =>
+        {
+            if (_isSending)
+            {
+                CancelCurrentSend();
+                return;
+            }
+            await SendAsync();
+        };
         UploadButton.Click += (_, _) => ShowUploadMenu();
         McpToolsButton.Click += (_, _) => ShowMcpToolsMenu();
         VoiceButton.Click += (_, _) => ToggleVoiceMode();
         VoiceRecordButton.AddHandler(PointerPressedEvent, VoiceRecordButton_OnPointerPressed, RoutingStrategies.Tunnel, true);
         VoiceRecordButton.AddHandler(PointerReleasedEvent, VoiceRecordButton_OnPointerReleased, RoutingStrategies.Tunnel, true);
         VoiceRecordButton.AddHandler(PointerCaptureLostEvent, VoiceRecordButton_OnPointerCaptureLost, RoutingStrategies.Tunnel, true);
-        NewSessionButton.Click += (_, _) => StartNewSession();
-        DeleteSessionButton.Click += (_, _) =>
+
+        ToggleSidebarButton.Click += (_, _) => ToggleChatSidebar();
+        CloseSidebarButton.Click += (_, _) => ToggleChatSidebar(forceOpen: false);
+        OpenSettingsButton.Click += (_, _) => OpenSettings();
+        NewSessionButton.Click += (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(_currentSessionId))
+            if (CanNavigateSessions()) StartNewSession();
+        };
+        RenameSessionButton.Click += async (_, _) => await RenameCurrentSessionAsync();
+        DeleteSessionButton.Click += async (_, _) => await DeleteCurrentSessionAsync();
+        SessionSearchBox.TextChanged += (_, _) => RefreshSessionSelector(_currentSessionId);
+        SessionListBox.SelectionChanged += (_, _) =>
+        {
+            if (_isUpdatingSessionList || !CanNavigateSessions())
             {
                 return;
             }
 
-            _sessionStore.DeleteSession(_currentSessionId);
-            // 删除该会话的 Mem0 记忆（后台，忽略失败）
-            _ = Task.Run(() => _memoryOrchestrator.DeleteAllAsync(Mem0Scope.ForSession(_currentSessionId)));
-            LoadLatestSessionOrEmpty();
+            if (SessionListBox.SelectedItem is ListBoxItem { Tag: string id } &&
+                !string.IsNullOrWhiteSpace(id) &&
+                !string.Equals(id, _currentSessionId, StringComparison.Ordinal))
+            {
+                LoadSession(id);
+                if (ChatSplitView.DisplayMode == SplitViewDisplayMode.Overlay)
+                {
+                    ToggleChatSidebar(forceOpen: false);
+                }
+            }
         };
+
+        JumpToLatestButton.Click += (_, _) => ScrollToBottom(force: true);
+        ChatScrollViewer.ScrollChanged += (_, _) => UpdateScrollProximity();
+        PromptIntroButton.Click += (_, _) => SetPromptText("介绍一下你自己吧。");
+        PromptPlanButton.Click += (_, _) => SetPromptText("帮我整理一下今天的计划。");
+        PromptImageButton.Click += async (_, _) => await PickAttachmentsAsync(imagesOnly: true);
+        EmptyStateActionButton.Click += (_, _) => HandleEmptyStateAction();
 
         ProviderQuickSwitchBox.SelectionChanged += async (_, _) => await SwitchQuickProviderAsync();
         ModelQuickSwitchBox.SelectionChanged += async (_, _) => await SwitchQuickModelAsync();
-
-        SessionSelector.SelectionChanged += (_, _) =>
-        {
-            if (SessionSelector.SelectedItem is ComboBoxItem { Tag: string id } && !string.IsNullOrWhiteSpace(id))
-            {
-                LoadSession(id);
-            }
-        };
 
         InputBox.KeyDown += async (_, e) =>
         {
@@ -266,21 +313,201 @@ public partial class ChatWindow : Window
             await SendAsync();
         };
 
+        KeyDown += ChatWindow_OnKeyDown;
+        SizeChanged += (_, _) => UpdateResponsiveLayout();
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+            {
+                UpdateAmbientAnimationState();
+            }
+        };
+
         Opened += (_, _) =>
         {
             AppLogger.Info("chat", "chat window opened");
             ApplyChatBackgroundImage();
-            _flickerTimer.Start();
-            if (_settingsService.Current.EnableParticleEffects)
-            {
-                _particleEffect.Start(120);
-            }
+            UpdateAmbientAnimationState();
 
+            ChatSplitView.IsPaneOpen = _settingsService.Current.IsChatSidebarOpen;
             LoadLatestSessionOrCreateIfEmpty();
             RefreshProviderQuickSwitch();
+            UpdateResponsiveLayout();
+            UpdateEmptyState();
+            SetUiState(ChatUiState.Idle);
         };
     }
 
+    private async void ChatWindow_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (e.Key == Key.Escape)
+            {
+                if (_isSending)
+                {
+                    CancelCurrentSend();
+                    e.Handled = true;
+                }
+                else if (_isVoiceMode)
+                {
+                    ToggleVoiceMode();
+                    e.Handled = true;
+                }
+                else if (ChatSplitView.DisplayMode == SplitViewDisplayMode.Overlay && ChatSplitView.IsPaneOpen)
+                {
+                    ToggleChatSidebar(forceOpen: false);
+                    e.Handled = true;
+                }
+            }
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.N:
+                if (CanNavigateSessions()) StartNewSession();
+                e.Handled = true;
+                break;
+            case Key.O:
+                await PickAttachmentsAsync(imagesOnly: false);
+                e.Handled = true;
+                break;
+            case Key.OemComma:
+                OpenSettings();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void ToggleChatSidebar(bool? forceOpen = null)
+    {
+        ChatSplitView.IsPaneOpen = forceOpen ?? !ChatSplitView.IsPaneOpen;
+        _settingsService.Current.IsChatSidebarOpen = ChatSplitView.IsPaneOpen;
+        _settingsService.Save();
+        CloseSidebarButton.IsVisible = ChatSplitView.IsPaneOpen;
+    }
+
+    private void UpdateResponsiveLayout()
+    {
+        var narrow = Bounds.Width > 0 && Bounds.Width < 900;
+        ChatSplitView.DisplayMode = narrow ? SplitViewDisplayMode.Overlay : SplitViewDisplayMode.Inline;
+        CloseSidebarButton.IsVisible = ChatSplitView.IsPaneOpen;
+    }
+
+    private void OpenSettings()
+    {
+        if (Avalonia.Application.Current is App app)
+        {
+            app.OpenConfigFromUi();
+        }
+    }
+
+    private void SetPromptText(string text)
+    {
+        if (_isVoiceMode) ToggleVoiceMode();
+        InputBox.Text = text;
+        InputBox.CaretIndex = text.Length;
+        InputBox.Focus();
+    }
+
+    private void HandleEmptyStateAction()
+    {
+        if (_settingsService.ListProviders().Count == 0)
+        {
+            OpenSettings();
+            return;
+        }
+        InputBox.Focus();
+    }
+
+    private void CancelCurrentSend()
+    {
+        if (_sendCancellationTokenSource is null || _sendCancellationTokenSource.IsCancellationRequested) return;
+        SendButton.IsEnabled = false;
+        SendButton.Content = "正在停止…";
+        _sendCancellationTokenSource.Cancel();
+    }
+
+    private bool CanNavigateSessions()
+        => !_isSending && !_voiceHolding && _pendingToolActions.Count == 0;
+
+    private async Task RenameCurrentSessionAsync()
+    {
+        if (!CanNavigateSessions() || string.IsNullOrWhiteSpace(_currentSessionId)) return;
+        var session = _sessionStore.GetSession(_currentSessionId);
+        if (session is null) return;
+
+        var title = await DialogService.PromptAsync(this, "重命名对话", "输入一个便于查找的名称。", session.Title, "保存名称");
+        if (title is null) return;
+        if (_sessionStore.RenameSession(_currentSessionId, title))
+        {
+            RefreshSessionSelector(_currentSessionId);
+            ShowStatusMessage("对话名称已更新。");
+        }
+    }
+
+    private async Task DeleteCurrentSessionAsync()
+    {
+        if (!CanNavigateSessions() || string.IsNullOrWhiteSpace(_currentSessionId)) return;
+        var session = _sessionStore.GetSession(_currentSessionId);
+        var title = session?.Title ?? "当前对话";
+        if (!await DialogService.ConfirmAsync(this, "删除对话", $"确定删除「{title}」吗？相关会话记忆也会一并清理。", "删除对话")) return;
+
+        var deletedId = _currentSessionId;
+        _sessionStore.DeleteSession(deletedId);
+        _ = Task.Run(() => _memoryOrchestrator.DeleteAllAsync(Mem0Scope.ForSession(deletedId)));
+        LoadLatestSessionOrEmpty();
+        ShowStatusMessage("对话已删除。");
+    }
+
+    private void SetUiState(ChatUiState state)
+    {
+        _interactionState.TransitionTo(state);
+        var streaming = _interactionState.IsStreaming;
+        var locked = _interactionState.IsInteractionLocked;
+        var hasProvider = _settingsService.ListProviders().Count > 0;
+
+        SendButton.IsEnabled = streaming || hasProvider;
+        SendButton.Content = streaming ? "停止" : "发送";
+        SendButton.Classes.Remove("primary");
+        SendButton.Classes.Remove("danger");
+        SendButton.Classes.Add(streaming ? "danger" : "primary");
+        InputBox.IsEnabled = !locked && hasProvider;
+        VoiceButton.IsEnabled = !locked && hasProvider;
+        VoiceRecordButton.IsEnabled = !streaming && state != ChatUiState.WaitingConfirmation;
+        NewSessionButton.IsEnabled = !locked;
+        RenameSessionButton.IsEnabled = !locked && !string.IsNullOrWhiteSpace(_currentSessionId);
+        DeleteSessionButton.IsEnabled = !locked && !string.IsNullOrWhiteSpace(_currentSessionId);
+        SessionListBox.IsEnabled = !locked;
+        SessionSearchBox.IsEnabled = !locked;
+        OpenSettingsButton.IsEnabled = !streaming;
+        UpdateProviderQuickSwitchEnabled();
+    }
+
+    private void UpdateEmptyState()
+    {
+        var isEmpty = _displayMessages.Count == 0 && _pendingToolActions.Count == 0;
+        EmptyStatePanel.IsVisible = isEmpty;
+        if (!isEmpty) return;
+
+        var hasProvider = _settingsService.ListProviders().Count > 0;
+        EmptyStateTitle.Text = hasProvider ? "听得到吗？" : "先接通信号吧";
+        EmptyStateText.Text = hasProvider
+            ? "今天想聊什么？也可以把图片或文件交给我。"
+            : "还没有可用的 AI 服务。完成一次 Provider 配置后，我们就能开始聊天。";
+        EmptyStateActionButton.Content = hasProvider ? "开始对话" : "前往设置";
+        PromptIntroButton.IsVisible = hasProvider;
+        PromptPlanButton.IsVisible = hasProvider;
+        PromptImageButton.IsVisible = hasProvider;
+    }
+
+    private void UpdateScrollProximity()
+    {
+        var remaining = ChatScrollViewer.Extent.Height - ChatScrollViewer.Viewport.Height - ChatScrollViewer.Offset.Y;
+        _userNearBottom = remaining <= AutoScrollThreshold;
+        JumpToLatestButton.IsVisible = !_userNearBottom && _displayMessages.Count > 0;
+    }
     private async Task SendAsync()
     {
         if (_isSending)
@@ -309,10 +536,17 @@ public partial class ChatWindow : Window
             return;
         }
 
-        var input = string.IsNullOrWhiteSpace(text) ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002" : text;
-        var attachmentList = attachments ?? Array.Empty<ChatAttachment>();
+        var visibleUserText = text.Trim();
+        var modelInput = string.IsNullOrWhiteSpace(visibleUserText)
+            ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002"
+            : visibleUserText;
+        var attachmentList = attachments?.Select(attachment => attachment with { }).ToList()
+            ?? new List<ChatAttachment>();
 
         _isSending = true;
+        _sendCancellationTokenSource?.Dispose();
+        _sendCancellationTokenSource = new CancellationTokenSource();
+        SetUiState(ChatUiState.Streaming);
         RaiseActivityChanged(ChatActivityKind.Sending);
         UpdateProviderQuickSwitchEnabled();
         TextBlock? pending = null;
@@ -322,21 +556,27 @@ public partial class ChatWindow : Window
             AppLogger.Info("chat", "send start");
             PauseAmbientFlicker();
             EnsureCurrentSession();
-            var visibleUserContent = AttachmentService.BuildVisibleUserContent(input, attachmentList);
 
             // 先取历史（不含当前这一条），再持久化当前消息，避免当前消息在历史里重复出现一次。
             var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
-            AppLogger.Info("chat", $"[诊断] 输入文本: {input.Substring(0, Math.Min(100, input.Length))}... | recent 消息数: {recent.Count}");
+            AppLogger.Info("chat", $"[诊断] 输入文本: {modelInput.Substring(0, Math.Min(100, modelInput.Length))}... | recent 消息数: {recent.Count}");
             if (recent.Count > 0)
             {
                 var lastMsg = recent[recent.Count - 1];
                 AppLogger.Info("chat", $"[诊断] recent 最后一条: Role={lastMsg.Role}, Content={lastMsg.Content.Substring(0, Math.Min(80, lastMsg.Content.Length))}...");
             }
 
-            var userMessage = new ChatMessageRecord { Role = "user", Content = visibleUserContent, Timestamp = DateTimeOffset.UtcNow };
+            var userMessage = new ChatMessageRecord
+            {
+                Role = "user",
+                Content = visibleUserText,
+                Timestamp = DateTimeOffset.UtcNow,
+                Attachments = attachmentList.Select(attachment => attachment with { }).ToList()
+            };
             _displayMessages.Add(userMessage);
-            AddMessageBubble(_displayMessages.Count - 1, isAssistant: false, visibleUserContent, isPending: false);
-            _sessionStore.AppendMessage(_currentSessionId, userMessage.Role, userMessage.Content);
+            AddMessageBubble(_displayMessages.Count - 1, isAssistant: false, visibleUserText, isPending: false);
+            _sessionStore.AppendMessage(_currentSessionId, userMessage.Role, userMessage.Content, userMessage.Attachments);
+            RefreshSessionSelector(_currentSessionId);
             if (clearInputBox)
             {
                 InputBox.Text = string.Empty;
@@ -349,13 +589,13 @@ public partial class ChatWindow : Window
 
             // 发送前：检索相关长期记忆（Mem0）。与旧的 BuildPromptBlock 不同，
             // 这里是按当前用户消息做向量检索，只注入相关片段。
-            var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, input);
-            var prompt = BuildPromptWithRecentContext(recent, input, attachmentList, memoryBlock);
+            var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, modelInput);
+            var prompt = BuildPromptWithRecentContext(recent, modelInput, attachmentList, memoryBlock);
             AppLogger.Info("chat", $"[诊断] 构建的 Prompt 前 500 字符: {prompt.Substring(0, Math.Min(500, prompt.Length))}...");
 
             _chatService.ClearHistory();
 
-            var reply = await StreamReplyIntoAsync(prompt, pending, attachmentList);
+            var reply = await StreamReplyIntoAsync(prompt, pending, attachmentList, _sendCancellationTokenSource.Token);
             var sanitizedReply = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitizedReply))
             {
@@ -383,9 +623,22 @@ public partial class ChatWindow : Window
             RenderCurrentMessages();
             RefreshSessionSelector(_currentSessionId);
             // 把这一轮对话写入 Mem0（后台执行，不阻塞 UI）。Mem0 内部自动抽取事实，无需手动压缩。
-            _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, input, assistantReply));
+            _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, modelInput, assistantReply));
             RaiseActivityChanged(ChatActivityKind.Completed);
             AppLogger.Info("chat", "send completed");
+        }
+        catch (OperationCanceledException)
+        {
+            var partial = pending?.Text?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(partial) && !_pendingFrames.Contains(partial, StringComparer.Ordinal))
+            {
+                var canceledText = partial + "\n\n（已停止生成）";
+                _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = canceledText, Timestamp = DateTimeOffset.UtcNow });
+                _sessionStore.AppendMessage(_currentSessionId, "assistant", canceledText);
+            }
+            RenderCurrentMessages();
+            RaiseActivityChanged(ChatActivityKind.Canceled);
+            AppLogger.Info("chat", "send canceled");
         }
         catch (Exception ex)
         {
@@ -399,6 +652,7 @@ public partial class ChatWindow : Window
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = errorText, Timestamp = DateTimeOffset.UtcNow });
             _sessionStore.AppendMessage(_currentSessionId, "assistant", errorText);
             RenderCurrentMessages();
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
         finally
@@ -406,9 +660,13 @@ public partial class ChatWindow : Window
             _pendingTimer.Stop();
             _pendingTextBlock = null;
             _isSending = false;
+            _sendCancellationTokenSource?.Dispose();
+            _sendCancellationTokenSource = null;
             ResumeAmbientFlicker();
+            SetUiState(_pendingToolActions.Count > 0 ? ChatUiState.WaitingConfirmation : ChatUiState.Idle);
             UpdateProviderQuickSwitchEnabled();
             ClearPendingAttachments();
+            UpdateEmptyState();
         }
     }
 
@@ -657,11 +915,11 @@ public partial class ChatWindow : Window
         {
             var removeButton = new Button
             {
-                Content = "x",
-                Width = 28,
-                Height = 28,
-                MinWidth = 28,
-                MinHeight = 28,
+                Content = "×",
+                Width = 32,
+                Height = 32,
+                MinWidth = 32,
+                MinHeight = 32,
                 Padding = new Thickness(0),
                 FontSize = 13,
                 VerticalContentAlignment = VerticalAlignment.Center,
@@ -669,6 +927,7 @@ public partial class ChatWindow : Window
             };
             removeButton.Classes.Add("ghost");
             ToolTip.SetTip(removeButton, "\u79fb\u9664\u9644\u4ef6");
+            AutomationProperties.SetName(removeButton, $"\u79fb\u9664\u9644\u4ef6 {attachment.Name}");
             removeButton.Click += (_, _) =>
             {
                 _attachments.Remove(attachment);
@@ -678,7 +937,7 @@ public partial class ChatWindow : Window
             var label = new TextBlock
             {
                 Text = $"{AttachmentService.GetAttachmentKindLabel(attachment.Kind)} {attachment.Name} ({AttachmentService.FormatBytes(attachment.SizeBytes)})",
-                Foreground = new SolidColorBrush(Color.Parse("#4A2A3A")),
+                Foreground = AemiUi.Brush(AemiUi.Ghost),
                 FontSize = 12,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = 260,
@@ -694,8 +953,8 @@ public partial class ChatWindow : Window
 
             AttachmentPanel.Children.Add(new Border
             {
-                Background = new SolidColorBrush(Color.Parse("#FFE1EE")),
-                BorderBrush = new SolidColorBrush(Color.Parse("#F3C2D4")),
+                Background = AemiUi.Brush(AemiUi.HaloSoft),
+                BorderBrush = AemiUi.Brush(AemiUi.Border),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(999),
                 Padding = new Thickness(10, 5, 5, 5),
@@ -738,6 +997,7 @@ public partial class ChatWindow : Window
                 }
 
                 _voiceHolding = true;
+                SetUiState(ChatUiState.VoiceListening);
                 _voiceCaptureStartedAt = DateTimeOffset.UtcNow;
                 e.Pointer.Capture(VoiceRecordButton);
                 VoiceRecordButton.Content = "松开结束";
@@ -759,6 +1019,7 @@ public partial class ChatWindow : Window
         {
             AppLogger.Error("chat", "voice capture start failed", ex);
             await ResetVoiceCaptureStateAsync();
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
     }
@@ -774,6 +1035,7 @@ public partial class ChatWindow : Window
         {
             AppLogger.Error("chat", "voice pointer release failed", ex);
             await ResetVoiceCaptureStateAsync();
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
     }
@@ -788,6 +1050,7 @@ public partial class ChatWindow : Window
         {
             AppLogger.Error("chat", "voice pointer capture lost failed", ex);
             await ResetVoiceCaptureStateAsync();
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
     }
@@ -835,6 +1098,7 @@ public partial class ChatWindow : Window
             if (DateTimeOffset.UtcNow - startedAt < MinimumVoiceCaptureDuration)
             {
                 AppLogger.Info("chat", "voice capture ignored because press was too short");
+                SetUiState(ChatUiState.Idle);
                 RaiseActivityChanged(ChatActivityKind.Idle);
                 return;
             }
@@ -846,12 +1110,14 @@ public partial class ChatWindow : Window
             }
             else
             {
+                SetUiState(ChatUiState.Idle);
                 RaiseActivityChanged(ChatActivityKind.Idle);
             }
         }
         catch (Exception ex)
         {
             AppLogger.Error("chat", "voice capture stop failed", ex);
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
         finally
@@ -880,6 +1146,7 @@ public partial class ChatWindow : Window
 
         speechService?.Dispose();
         RaiseActivityChanged(ChatActivityKind.Idle);
+        SetUiState(ChatUiState.Idle);
     }
 
     private async Task SendVoiceTextAsync(string text)
@@ -1034,20 +1301,15 @@ public partial class ChatWindow : Window
     {
         var root = new StackPanel
         {
-            Spacing = 7,
-            Margin = new Thickness(0, 0, 0, 6)
+            Spacing = 5,
+            Margin = new Thickness(0, 0, 0, 8),
+            Focusable = !isPending
         };
-
         var row = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions(isAssistant ? "Auto,*" : "*,Auto"),
             Margin = new Thickness(0, 2, 0, 2)
         };
-
-        var bubbleMax = ChatScrollViewer.Bounds.Width > 0
-            ? Math.Max(220, ChatScrollViewer.Bounds.Width * 0.68)
-            : 420;
-
         var avatar = new AvaloniaImage
         {
             Width = 38,
@@ -1056,35 +1318,63 @@ public partial class ChatWindow : Window
             Source = isAssistant ? _assistantAvatar : GetUserAvatar(),
             Clip = new EllipseGeometry(new Rect(0, 0, 38, 38))
         };
-
         var avatarShell = new Border
         {
             Width = 44,
             Height = 44,
             CornerRadius = new CornerRadius(22),
             Padding = new Thickness(3),
-            Background = AemiUi.Brush(isAssistant ? "#FFD1E5" : "#FFE1EE"),
+            Background = AemiUi.Brush(isAssistant ? AemiUi.PinkSoft : AemiUi.HaloSoft),
             BorderBrush = AemiUi.Brush(isAssistant ? AemiUi.Star : AemiUi.Halo),
             BorderThickness = new Thickness(1),
             Margin = isAssistant ? new Thickness(0, 4, 10, 0) : new Thickness(10, 4, 0, 0),
             Child = avatar
         };
-
         var bubble = new Border
         {
-            MaxWidth = bubbleMax,
-            CornerRadius = new CornerRadius(isAssistant ? 16 : 14),
-            Padding = new Thickness(14, 12),
-            Background = AemiUi.Brush(isAssistant ? "#FFFFFF" : "#FFF8FB"),
-            BorderBrush = AemiUi.Brush(isAssistant ? "#F3C2D4" : "#FF69B4"),
+            MaxWidth = 720,
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(14, 11),
+            Background = AemiUi.Brush(isAssistant ? AemiUi.Panel : AemiUi.PanelSoft),
+            BorderBrush = AemiUi.Brush(isAssistant ? AemiUi.Border : AemiUi.Pink),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = isAssistant ? HorizontalAlignment.Left : HorizontalAlignment.Right
         };
 
-        var content = new StackPanel { Spacing = 7 };
-        content.Children.Add(AemiUi.Badge(isAssistant ? "小爱 · Digital Ghost" : "漂泊者 · Local Signal", isAssistant ? "halo" : "pink"));
+        var timestamp = messageIndex >= 0 && messageIndex < _displayMessages.Count
+            ? _displayMessages[messageIndex].Timestamp.ToLocalTime()
+            : DateTimeOffset.Now;
+        var speaker = isAssistant ? "小爱 · 飞行雪绒" : "你";
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        header.Children.Add(new TextBlock
+        {
+            Text = speaker,
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = AemiUi.Brush(isAssistant ? AemiUi.Icon : AemiUi.TextSecondary)
+        });
+        var timeText = new TextBlock
+        {
+            Text = timestamp.ToString("HH:mm"),
+            FontSize = 11,
+            Foreground = AemiUi.Brush(AemiUi.TextMuted),
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        Grid.SetColumn(timeText, 1);
+        header.Children.Add(timeText);
 
-        var textBlock = new TextBlock
+        var content = new StackPanel { Spacing = 7 };
+        content.Children.Add(header);
+        if (!isAssistant && !isPending && messageIndex >= 0 && messageIndex < _displayMessages.Count)
+        {
+            var attachmentPanel = BuildMessageAttachmentPanel(_displayMessages[messageIndex].Attachments, _attachmentRenderCts.Token);
+            if (attachmentPanel.Children.Count > 0)
+            {
+                content.Children.Add(attachmentPanel);
+            }
+        }
+
+        var streamText = new TextBlock
         {
             Text = isPending ? _pendingFrames[0] : text,
             Foreground = AemiUi.Brush(AemiUi.Ghost),
@@ -1092,13 +1382,22 @@ public partial class ChatWindow : Window
             LineHeight = 23,
             FontSize = 15
         };
+        if (isPending)
+        {
+            content.Children.Add(streamText);
+        }
+        else if (!string.IsNullOrWhiteSpace(text))
+        {
+            content.Children.Add(new MarkdownPresenter(text));
+        }
 
-        content.Children.Add(textBlock);
-        bubble.Child = content;
         if (!isPending && messageIndex >= 0)
         {
+            content.Children.Add(BuildMessageActions(messageIndex, isAssistant));
             bubble.ContextMenu = BuildMessageContextMenu(messageIndex, isAssistant);
+            AutomationProperties.SetName(root, $"{speaker}的消息，{timeText.Text}");
         }
+        bubble.Child = content;
 
         if (isAssistant)
         {
@@ -1114,34 +1413,136 @@ public partial class ChatWindow : Window
             Grid.SetColumn(bubble, 0);
             Grid.SetColumn(avatarShell, 1);
         }
-
         root.Children.Add(row);
-
-        if (!isPending && messageIndex >= 0)
-        {
-            var actions = BuildMessageActions(messageIndex, isAssistant);
-            root.Children.Add(actions);
-        }
 
         MessagesPanel.Children.Add(root);
         ScrollToBottom();
-        return textBlock;
+        return streamText;
+    }
+    private StackPanel BuildMessageAttachmentPanel(
+        IReadOnlyList<ChatAttachment>? attachments,
+        CancellationToken cancellationToken)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        foreach (var attachment in attachments ?? Array.Empty<ChatAttachment>())
+        {
+            if (attachment.Kind == ChatAttachmentKind.Image)
+            {
+                var host = CreateImageAttachmentHost(attachment);
+                panel.Children.Add(host);
+                _ = LoadImageAttachmentAsync(host, attachment, cancellationToken);
+                continue;
+            }
+
+            var unavailableReason = File.Exists(attachment.Path) ? null : "文件不存在";
+            panel.Children.Add(AttachmentCardFactory.CreateFileCard(attachment, _fileIcon, unavailableReason));
+        }
+        return panel;
     }
 
-    private WrapPanel BuildMessageActions(int messageIndex, bool isAssistant)
+    private static Border CreateImageAttachmentHost(ChatAttachment attachment)
+    {
+        var host = new Border
+        {
+            MaxWidth = 420,
+            MinHeight = 96,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            CornerRadius = new CornerRadius(12),
+            Background = AemiUi.Brush(AemiUi.HaloSoft),
+            BorderBrush = AemiUi.Brush(AemiUi.Border),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = true,
+            Child = new TextBlock
+            {
+                Text = "正在加载图片预览…",
+                Margin = new Thickness(14),
+                Foreground = AemiUi.Brush(AemiUi.TextMuted),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        AutomationProperties.SetName(host, $"图片附件 {attachment.Name}，正在加载");
+        return host;
+    }
+
+    private async Task LoadImageAttachmentAsync(
+        Border host,
+        ChatAttachment attachment,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var bitmap = await _attachmentThumbnailCache.GetAsync(attachment, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (bitmap is null)
+                {
+                    ShowUnavailableImageAttachment(host, attachment);
+                    return;
+                }
+
+                host.MinHeight = 0;
+                host.Background = AemiUi.Brush(AemiUi.PanelSoft);
+                host.Child = new AvaloniaImage
+                {
+                    Source = bitmap,
+                    MaxWidth = 420,
+                    MaxHeight = 260,
+                    Stretch = Stretch.Uniform
+                };
+                AutomationProperties.SetName(host, $"图片附件 {attachment.Name}");
+                ToolTip.SetTip(host, attachment.Path);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // A new session/render pass superseded this preview.
+        }
+        catch
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => ShowUnavailableImageAttachment(host, attachment));
+            }
+        }
+    }
+
+    private void ShowUnavailableImageAttachment(Border host, ChatAttachment attachment)
+    {
+        var reason = File.Exists(attachment.Path) ? "图片无法预览" : "文件不存在";
+        host.MinHeight = 0;
+        host.Background = Brushes.Transparent;
+        host.BorderThickness = new Thickness(0);
+        host.Child = AttachmentCardFactory.CreateFileCard(attachment, _imageIcon, reason);
+        AutomationProperties.SetName(host, $"不可用图片附件 {attachment.Name}：{reason}");
+    }
+
+    internal WrapPanel BuildMessageActions(int messageIndex, bool isAssistant)
     {
         var panel = new WrapPanel
         {
             HorizontalAlignment = isAssistant ? HorizontalAlignment.Left : HorizontalAlignment.Right,
-            Margin = isAssistant ? new Thickness(46, 2, 8, 4) : new Thickness(8, 2, 46, 4)
+            Margin = new Thickness(0, 5, 0, 0)
         };
+        panel.Classes.Add("message-actions");
+        AutomationProperties.SetName(panel, "消息操作");
 
         panel.Children.Add(BuildActionButton(_copyIcon, "复制", async () => await CopyMessageAsync(messageIndex)));
         if (isAssistant)
         {
             panel.Children.Add(BuildActionButton(_retryIcon, "重新回答", async () => await RegenerateAssistantAsync(messageIndex)));
         }
-        panel.Children.Add(BuildActionButton(_deleteIcon, "删除", () => DeleteMessage(messageIndex)));
+        panel.Children.Add(BuildActionButton(_deleteIcon, "删除", () => DeleteMessage(messageIndex), danger: true));
 
         return panel;
     }
@@ -1179,6 +1580,7 @@ public partial class ChatWindow : Window
 
             _pendingToolActions[action.Id] = action;
             UpdateProviderQuickSwitchEnabled();
+            SetUiState(ChatUiState.WaitingConfirmation);
             RaiseActivityChanged(ChatActivityKind.ToolWaiting);
             AddPendingToolActionCard(action);
             ScrollToBottom();
@@ -1208,8 +1610,8 @@ public partial class ChatWindow : Window
             CornerRadius = new CornerRadius(16),
             Padding = new Thickness(16),
             Margin = new Thickness(46, 2, 12, 8),
-            Background = AemiUi.Brush("#FFF8FB"),
-            BorderBrush = AemiUi.Brush("#F3C2D4"),
+            Background = AemiUi.Brush(AemiUi.PanelSoft),
+            BorderBrush = AemiUi.Brush(AemiUi.Border),
             BorderThickness = new Thickness(1),
             MaxWidth = ChatScrollViewer.Bounds.Width > 0
                 ? Math.Max(260, ChatScrollViewer.Bounds.Width * 0.72)
@@ -1217,11 +1619,11 @@ public partial class ChatWindow : Window
         };
 
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(AemiUi.Badge("高风险工具确认 · Manual Gate", "star"));
+        panel.Children.Add(AemiUi.Badge("高风险操作确认", "danger"));
         panel.Children.Add(new TextBlock
         {
             Text = "高风险操作需要确认",
-            Foreground = new SolidColorBrush(Color.Parse("#E84D8E")),
+            Foreground = AemiUi.Brush(AemiUi.Error),
             FontWeight = Avalonia.Media.FontWeight.SemiBold,
             FontSize = 15
         });
@@ -1248,30 +1650,10 @@ public partial class ChatWindow : Window
             Spacing = 8
         };
 
-        var confirmButton = new Button
-        {
-            Content = "确认执行",
-            Background = new SolidColorBrush(Color.Parse("#FF69B4")),
-            Foreground = new SolidColorBrush(Color.Parse("#07101E")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#E84D8E")),
-            CornerRadius = new CornerRadius(8),
-            MinWidth = 92
-        };
-        confirmButton.Content = "确认执行";
-        confirmButton.Classes.Add("primary");
+        var confirmButton = AemiUi.Button("确认执行", "primary", 92);
         confirmButton.Click += (_, _) => ResolvePendingToolAction(action.Id, confirm: true);
 
-        var cancelButton = new Button
-        {
-            Content = "取消",
-            Background = new SolidColorBrush(Color.Parse("#FFE1EE")),
-            Foreground = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.Parse("#F3C2D4")),
-            CornerRadius = new CornerRadius(8),
-            MinWidth = 82
-        };
-        cancelButton.Content = "取消";
-        cancelButton.Classes.Add("ghost");
+        var cancelButton = AemiUi.Button("取消", "ghost", 82);
         cancelButton.Click += (_, _) => ResolvePendingToolAction(action.Id, confirm: false);
 
         buttons.Children.Add(confirmButton);
@@ -1380,6 +1762,9 @@ public partial class ChatWindow : Window
         RenderCurrentMessages();
         ScrollToBottom();
         UpdateProviderQuickSwitchEnabled();
+        SetUiState(_pendingToolActions.Count == 0 && _runningActionPlaceholders.Count == 0
+            ? ChatUiState.Idle
+            : ChatUiState.WaitingConfirmation);
         // 完成后写入 Mem0（后台），并恢复桌宠状态
         _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, text, text));
         RaiseActivityChanged(_pendingToolActions.Count == 0 && _runningActionPlaceholders.Count == 0
@@ -1387,18 +1772,35 @@ public partial class ChatWindow : Window
             : ChatActivityKind.ToolWaiting);
     }
 
-    private Button BuildActionButton(IImage icon, string tooltip, Action onClick)
+    private Button BuildActionButton(IImage icon, string tooltip, Action onClick, bool danger = false)
     {
         var button = AemiUi.IconButton(icon, tooltip);
+        ApplyMessageActionTone(button, danger);
         button.Click += (_, _) => onClick();
         return button;
     }
 
-    private Button BuildActionButton(IImage icon, string tooltip, Func<Task> onClick)
+    private Button BuildActionButton(IImage icon, string tooltip, Func<Task> onClick, bool danger = false)
     {
         var button = AemiUi.IconButton(icon, tooltip);
+        ApplyMessageActionTone(button, danger);
         button.Click += async (_, _) => await onClick();
         return button;
+    }
+
+    private static void ApplyMessageActionTone(Button button, bool danger)
+    {
+        button.Width = 38;
+        button.Height = 34;
+        button.MinWidth = 38;
+        button.MinHeight = 34;
+        if (!danger)
+        {
+            return;
+        }
+
+        button.Classes.Remove("ghost");
+        button.Classes.Add("danger");
     }
 
     private async Task CopyMessageAsync(int index)
@@ -1449,17 +1851,26 @@ public partial class ChatWindow : Window
             RenderCurrentMessages();
         }
 
-        await GenerateAssistantReplyForUserAsync(userMessage.Content);
+        await GenerateAssistantReplyForUserAsync(userMessage);
     }
 
-    private async Task GenerateAssistantReplyForUserAsync(string userContent)
+    private async Task GenerateAssistantReplyForUserAsync(ChatMessageRecord userMessage)
     {
         if (_isSending)
         {
             return;
         }
 
+        var attachments = userMessage.Attachments?.Select(attachment => attachment with { }).ToList()
+            ?? new List<ChatAttachment>();
+        var userContent = string.IsNullOrWhiteSpace(userMessage.Content) && attachments.Count > 0
+            ? "请分析我上传的附件。"
+            : userMessage.Content;
+
         _isSending = true;
+        _sendCancellationTokenSource?.Dispose();
+        _sendCancellationTokenSource = new CancellationTokenSource();
+        SetUiState(ChatUiState.Streaming);
         RaiseActivityChanged(ChatActivityKind.Sending);
         UpdateProviderQuickSwitchEnabled();
         PauseAmbientFlicker();
@@ -1474,8 +1885,8 @@ public partial class ChatWindow : Window
             _chatService.ClearHistory();
             var recent = _displayMessages.TakeLast(40).ToList();
             var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, userContent);
-            var prompt = BuildPromptWithRecentContext(recent, userContent, attachments: null, memoryBlock);
-            var reply = await StreamReplyIntoAsync(prompt, pending);
+            var prompt = BuildPromptWithRecentContext(recent, userContent, attachments, memoryBlock);
+            var reply = await StreamReplyIntoAsync(prompt, pending, attachments, _sendCancellationTokenSource.Token);
             var sanitized = SanitizeAssistantOutput(reply);
             if (ShouldSuppressConfirmationReply(sanitized))
             {
@@ -1491,11 +1902,17 @@ public partial class ChatWindow : Window
             _ = Task.Run(() => _memoryOrchestrator.AddTurnAsync(_currentSessionId, userContent, cleaned));
             RaiseActivityChanged(ChatActivityKind.Completed);
         }
+        catch (OperationCanceledException)
+        {
+            RenderCurrentMessages();
+            RaiseActivityChanged(ChatActivityKind.Canceled);
+        }
         catch (Exception ex)
         {
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = $"执行失败：{ex.Message}", Timestamp = DateTimeOffset.UtcNow });
             PersistCurrentMessages();
             RenderCurrentMessages();
+            SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
         }
         finally
@@ -1503,9 +1920,26 @@ public partial class ChatWindow : Window
             _pendingTimer.Stop();
             _pendingTextBlock = null;
             _isSending = false;
+            _sendCancellationTokenSource?.Dispose();
+            _sendCancellationTokenSource = null;
             ResumeAmbientFlicker();
+            SetUiState(_pendingToolActions.Count > 0 ? ChatUiState.WaitingConfirmation : ChatUiState.Idle);
             UpdateProviderQuickSwitchEnabled();
         }
+    }
+
+    private void OnSettingsChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var requestedBackground = _settingsService.Current.ChatBackgroundImagePath;
+            if (!string.Equals(_appliedChatBackgroundPath, requestedBackground, StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyChatBackgroundImage();
+            }
+
+            UpdateAmbientAnimationState();
+        });
     }
 
     private void OnProvidersChanged()
@@ -1763,24 +2197,53 @@ public partial class ChatWindow : Window
         GlowLayerWhite.Opacity = 0.52;
     }
 
-    private void ResumeAmbientFlicker()
+    private void UpdateAmbientAnimationState()
     {
-        _flickerTimer.Start();
+        var shouldAnimate = IsVisible && WindowState != WindowState.Minimized && !_settingsService.Current.ReduceMotion;
+        if (shouldAnimate)
+        {
+            ResumeAmbientFlicker();
+            if (_settingsService.Current.EnableParticleEffects)
+            {
+                _particleEffect.Start(48);
+            }
+            else
+            {
+                _particleEffect.Stop();
+            }
+        }
+        else
+        {
+            PauseAmbientFlicker();
+            _particleEffect.Stop();
+        }
     }
 
-    private void ScrollToBottom()
+    private void ResumeAmbientFlicker()
     {
-        if (_scrollPending)
+        if (!_settingsService.Current.ReduceMotion && IsVisible && WindowState != WindowState.Minimized)
         {
+            _flickerTimer.Start();
+        }
+    }
+
+    private void ScrollToBottom(bool force = false)
+    {
+        if (!force && !_userNearBottom)
+        {
+            JumpToLatestButton.IsVisible = _displayMessages.Count > 0;
             return;
         }
 
+        if (_scrollPending) return;
         _scrollPending = true;
         Dispatcher.UIThread.Post(() =>
         {
             try
             {
                 ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, double.MaxValue);
+                _userNearBottom = true;
+                JumpToLatestButton.IsVisible = false;
             }
             finally
             {
@@ -1788,7 +2251,6 @@ public partial class ChatWindow : Window
             }
         }, DispatcherPriority.Background);
     }
-
     private IImage GetUserAvatar()
     {
         var type = _settingsService.Current.UserAvatarType;
@@ -1828,6 +2290,7 @@ public partial class ChatWindow : Window
     private void ApplyChatBackgroundImage()
     {
         var path = _settingsService.Current.ChatBackgroundImagePath;
+        _appliedChatBackgroundPath = path;
         if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
         {
             try
@@ -1847,7 +2310,7 @@ public partial class ChatWindow : Window
         }
         catch
         {
-            ChatBackgroundHost.Background = new SolidColorBrush(Color.Parse("#FFFFFFFF"));
+            ChatBackgroundHost.Background = AemiUi.Brush(AemiUi.Panel);
         }
     }
 
@@ -1870,6 +2333,8 @@ public partial class ChatWindow : Window
         _displayMessages.Clear();
         MessagesPanel.Children.Clear();
         RefreshSessionSelector(_currentSessionId);
+        UpdateEmptyState();
+        InputBox.Focus();
     }
 
     private void LoadLatestSessionOrCreateIfEmpty()
@@ -1881,6 +2346,7 @@ public partial class ChatWindow : Window
             _displayMessages.Clear();
             MessagesPanel.Children.Clear();
             RefreshSessionSelector(string.Empty);
+            UpdateEmptyState();
             return;
         }
 
@@ -1897,6 +2363,7 @@ public partial class ChatWindow : Window
             _displayMessages.Clear();
             MessagesPanel.Children.Clear();
             RefreshSessionSelector(string.Empty);
+            UpdateEmptyState();
             return;
         }
 
@@ -1923,30 +2390,84 @@ public partial class ChatWindow : Window
         {
             Role = x.Role,
             Content = x.Content,
-            Timestamp = x.Timestamp
+            Timestamp = x.Timestamp,
+            Attachments = x.Attachments?.Select(attachment => attachment with { }).ToList() ?? new List<ChatAttachment>()
         }));
         RenderCurrentMessages();
+        RefreshSessionSelector(_currentSessionId);
+        ScrollToBottom(force: true);
     }
 
     private void RefreshSessionSelector(string selectedId)
     {
-        var sessions = _sessionStore.ListSessions();
-        SessionSelector.Items.Clear();
-        foreach (var s in sessions)
+        _isUpdatingSessionList = true;
+        try
         {
-            SessionSelector.Items.Add(new ComboBoxItem
-            {
-                Content = s.Title,
-                Tag = s.Id
-            });
-        }
+            var sessions = _sessionStore.ListSessions();
+            var query = SessionSearchBox.Text?.Trim();
+            var visible = string.IsNullOrWhiteSpace(query)
+                ? sessions
+                : sessions.Where(s => s.Title.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        var selected = SessionSelector.Items
-            .OfType<ComboBoxItem>()
-            .FirstOrDefault(x => string.Equals(x.Tag?.ToString(), selectedId, StringComparison.Ordinal));
-        SessionSelector.SelectedItem = selected;
+            SessionCountText.Text = string.IsNullOrWhiteSpace(query)
+                ? $"共 {sessions.Count} 个对话"
+                : $"找到 {visible.Count} / {sessions.Count} 个对话";
+            SessionListBox.Items.Clear();
+
+            foreach (var session in visible)
+            {
+                var title = new TextBlock
+                {
+                    Text = session.Title,
+                    FontWeight = FontWeight.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = AemiUi.Brush(AemiUi.Ghost)
+                };
+                var time = new TextBlock
+                {
+                    Text = FormatSessionTime(session.UpdatedAt),
+                    Classes = { "muted" },
+                    FontSize = 11
+                };
+                var item = new ListBoxItem
+                {
+                    Tag = session.Id,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                    Content = new StackPanel { Spacing = 3, Children = { title, time } }
+                };
+                AutomationProperties.SetName(item, $"{session.Title}，{time.Text}");
+                SessionListBox.Items.Add(item);
+                if (string.Equals(session.Id, selectedId, StringComparison.Ordinal)) SessionListBox.SelectedItem = item;
+            }
+
+            if (visible.Count == 0)
+            {
+                SessionListBox.Items.Add(new ListBoxItem
+                {
+                    IsEnabled = false,
+                    Content = new TextBlock
+                    {
+                        Text = string.IsNullOrWhiteSpace(query) ? "还没有对话。" : "没有匹配的对话。",
+                        Classes = { "muted" },
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                });
+            }
+        }
+        finally
+        {
+            _isUpdatingSessionList = false;
+        }
     }
 
+    private static string FormatSessionTime(DateTimeOffset value)
+    {
+        var local = value.ToLocalTime();
+        var now = DateTimeOffset.Now;
+        if (local.Date == now.Date) return $"今天 {local:HH:mm}";
+        if (local.Date == now.Date.AddDays(-1)) return $"昨天 {local:HH:mm}";
+        return local.ToString("MM-dd HH:mm");
+    }
     private void EnsureCurrentSession()
     {
         if (!string.IsNullOrWhiteSpace(_currentSessionId))
@@ -1962,7 +2483,11 @@ public partial class ChatWindow : Window
 
     private void RenderCurrentMessages()
     {
+        _attachmentRenderCts.Cancel();
+        _attachmentRenderCts.Dispose();
+        _attachmentRenderCts = new CancellationTokenSource();
         MessagesPanel.Children.Clear();
+        _attachmentThumbnailCache.ReleaseRenderedBitmaps();
         for (var i = 0; i < _displayMessages.Count; i++)
         {
             var message = _displayMessages[i];
@@ -1972,6 +2497,7 @@ public partial class ChatWindow : Window
         }
 
         RenderPendingToolActions();
+        UpdateEmptyState();
     }
 
     private void PersistCurrentMessages()
@@ -2038,15 +2564,23 @@ public partial class ChatWindow : Window
         _flickerTimer.Stop();
         _particleEffect.Stop();
         _holdSpeechService?.Dispose();
+        _sendCancellationTokenSource?.Cancel();
+        _sendCancellationTokenSource?.Dispose();
+        _sendCancellationTokenSource = null;
         RaiseActivityChanged(ChatActivityKind.Idle);
         if (_toolConfirmationService is not null)
         {
             _toolConfirmationService.PendingActionCreated -= OnPendingToolActionCreated;
             _toolConfirmationService.PendingActionCompleted -= OnPendingToolActionCompleted;
         }
+        _attachmentRenderCts.Cancel();
+        _attachmentRenderCts.Dispose();
+        _attachmentThumbnailCache.Dispose();
         _assistantAvatar.Dispose();
         _maleAvatar.Dispose();
         _femaleAvatar.Dispose();
+        _customUserAvatar?.Dispose();
+        _chatBackgroundBitmap?.Dispose();
         base.OnClosed(e);
     }
 }
@@ -2056,6 +2590,16 @@ public sealed class ChatActivityChangedEventArgs(ChatActivityKind kind) : EventA
     public ChatActivityKind Kind { get; } = kind;
 }
 
+internal enum ChatUiState
+{
+    Idle,
+    Streaming,
+    VoiceListening,
+    WaitingConfirmation,
+    Failed,
+    Canceled
+}
+
 public enum ChatActivityKind
 {
     Idle,
@@ -2063,9 +2607,9 @@ public enum ChatActivityKind
     VoiceListening,
     ToolWaiting,
     Completed,
-    Failed
+    Failed,
+    Canceled
 }
-
 internal sealed class NoOpChatService : IChatService
 {
     public string CurrentAssistantName => "\u5c0f\u7231";

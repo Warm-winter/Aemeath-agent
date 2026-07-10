@@ -15,24 +15,30 @@ public class SettingsService
     /// <summary>提供商/模型配置变更时触发，订阅者可据此刷新 UI。</summary>
     public event Action? ProvidersChanged;
 
+    /// <summary>Raised after any settings snapshot is written successfully.</summary>
+    public event Action? SettingsChanged;
+
     private void RaiseProvidersChanged()
     {
         ProvidersChanged?.Invoke();
     }
 
     public SettingsService()
-    {
-        var appDataPath = Path.Combine(
+        : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Aemeath"
-        );
-        
-        if (!Directory.Exists(appDataPath))
+            "Aemeath",
+            "settings.json"))
+    {
+    }
+
+    internal SettingsService(string settingsPath)
+    {
+        _settingsPath = Path.GetFullPath(settingsPath);
+        var directory = Path.GetDirectoryName(_settingsPath);
+        if (!string.IsNullOrWhiteSpace(directory))
         {
-            Directory.CreateDirectory(appDataPath);
+            Directory.CreateDirectory(directory);
         }
-        
-        _settingsPath = Path.Combine(appDataPath, "settings.json");
         _settings = LoadOrDefault();
     }
 
@@ -106,6 +112,8 @@ public class SettingsService
             EnablePetEdgeSnap = _settings.EnablePetEdgeSnap,
             SystemPrompt = _settings.SystemPrompt,
             EnableParticleEffects = _settings.EnableParticleEffects,
+            ReduceMotion = _settings.ReduceMotion,
+            IsChatSidebarOpen = _settings.IsChatSidebarOpen,
             EnableVoiceInput = _settings.EnableVoiceInput,
             AzureSpeechKey = TryEncrypt(_settings.AzureSpeechKey ?? string.Empty),
             AzureSpeechRegion = _settings.AzureSpeechRegion,
@@ -147,6 +155,7 @@ public class SettingsService
         
         var json = JsonSerializer.Serialize(snapshot, options);
         File.WriteAllText(_settingsPath, json);
+        SettingsChanged?.Invoke();
     }
 
     public void UpdateApiKey(string provider, string key, string? endpoint = null, string? modelId = null)

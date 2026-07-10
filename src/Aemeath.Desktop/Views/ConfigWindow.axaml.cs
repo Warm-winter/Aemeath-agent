@@ -1,5 +1,8 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Notifications;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -30,6 +33,19 @@ namespace Aemeath.Desktop.Views;
 public partial class ConfigWindow : Window
 {
     private sealed record ProviderPreset(string Name, string Provider, string? Endpoint, string ModelId);
+    private sealed record MemoryEntry(string Id, string Text, string ScopeLabel);
+    private sealed record ProviderFormSnapshot(
+        string EditingProvider,
+        string Provider,
+        string ApiKey,
+        string Endpoint,
+        string DefaultModel,
+        string Models);
+    private sealed record ComputerControlFormSnapshot(
+        string Backend,
+        string VisionProvider,
+        string VisionModel,
+        string UfoPythonPath);
 
     private readonly SettingsService _settingsService;
     private readonly IChatService _chatService;
@@ -39,17 +55,41 @@ public partial class ConfigWindow : Window
     private readonly McpDependencyService _mcpDependencyService = new();
     private readonly MemoryOrchestrator _memoryOrchestrator;
     private readonly Mem0DependencyService _mem0DependencyService;
-    private McpServerStore _mcpServerStore = new();
     private readonly DispatcherTimer _flickerTimer;
+    private readonly DispatcherTimer _simpleSettingsSaveTimer;
+    private readonly WindowNotificationManager _notificationManager;
     private readonly List<ProviderModel> _currentModelCandidates = new();
+    private readonly List<MemoryEntry> _memoryEntries = new();
+    private readonly McpServerStore _mcpServerStore;
+    private IPageTransition? _fullPageTransition;
     private bool _isLoadingProviderUi;
+    private bool _isLoadingSettingsUi;
+    private bool _isInitialized;
+    private bool _isLoadingComputerControlUi;
+    private bool _isProviderBusy;
+    private bool _providerFormDirty;
+    private bool _computerControlDirty;
+    private bool _isApiKeyVisible;
     private bool _isInstallingMcpDependencies;
     private bool _isInstallingMem0;
+    private bool _suppressSettingsPageChange;
+    private bool _allowWindowClose;
+    private bool _isClosingPromptOpen;
+    private SettingsPageId _lastSettingsPageId = SettingsPageId.Provider;
+    private ProviderFormSnapshot? _providerBaseline;
+    private ComputerControlFormSnapshot? _computerControlBaseline;
+    private string? _editingProviderName;
     private string? _selectedMemoryEntryId;
     private string _lastMcpDependencySource = "本次尚未下载";
     private double _flickerPhase;
 
-    public ConfigWindow() : this(new SettingsService(), new NoOpChatService(), null)
+    internal Func<Window, string, string, string, string, Task<UnsavedChangesDecision>> UnsavedChangesHandler { get; set; }
+        = static (owner, title, message, discardText, saveText) =>
+            DialogService.ChooseUnsavedChangesAsync(owner, title, message, discardText, saveText);
+
+    internal SettingsPageId CurrentPageId => _lastSettingsPageId;
+
+    public ConfigWindow() : this(new SettingsService(), new NoOpChatService(), null, null)
     {
     }
 
@@ -57,12 +97,34 @@ public partial class ConfigWindow : Window
         SettingsService settingsService,
         IChatService chatService,
         Func<string?>? currentSessionIdProvider = null)
+        : this(settingsService, chatService, currentSessionIdProvider, null)
+    {
+    }
+
+    internal ConfigWindow(
+        SettingsService settingsService,
+        IChatService chatService,
+        Func<string?>? currentSessionIdProvider,
+        McpServerStore? mcpServerStore)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _chatService = chatService;
         _currentSessionIdProvider = currentSessionIdProvider;
+        _mcpServerStore = mcpServerStore ?? new McpServerStore();
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
+        _notificationManager = new WindowNotificationManager(this)
+        {
+            Position = NotificationPosition.TopRight,
+            MaxItems = 2
+        };
+        _fullPageTransition = SettingsContentHost.PageTransition;
+        _simpleSettingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _simpleSettingsSaveTimer.Tick += (_, _) =>
+        {
+            _simpleSettingsSaveTimer.Stop();
+            SaveSimpleSettings();
+        };
 
         // Mem0 记忆编排器 + 依赖服务。与 ChatWindow 共享同一数据目录，各自维护 Python 子进程。
         if (chatService is AemiChatService aemiChatService)
@@ -94,148 +156,216 @@ public partial class ConfigWindow : Window
             GlowLayerWhite.Opacity = glow;
         };
 
-        NewProviderButton.Click += (_, _) => StartNewProviderForm();
+        NewProviderButton.Click += async (_, _) => await BeginNewProviderAsync();
         SaveProviderButton.Click += async (_, _) => await SaveProviderAsync();
+        CancelProviderButton.Click += (_, _) => CancelProviderChanges();
         TestProviderButton.Click += async (_, _) => await TestProviderAsync();
         FetchModelsButton.Click += async (_, _) => await FetchModelsAsync();
         AddManualModelButton.Click += (_, _) => AddManualModel();
+        ToggleApiKeyButton.Click += (_, _) => ToggleApiKeyVisibility();
         ProviderPresetBox.SelectionChanged += (_, _) => ApplySelectedProviderPreset();
+        ProviderNameBox.TextChanged += (_, _) => MarkProviderDirty();
+        ApiKeyBox.TextChanged += (_, _) => MarkProviderDirty();
+        EndpointBox.TextChanged += (_, _) => MarkProviderDirty();
+        DefaultModelBox.SelectionChanged += (_, _) => MarkProviderDirty();
+        ManualModelBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                e.Handled = true;
+                AddManualModel();
+            }
+        };
 
-        SaveAllButton.Click += async (_, _) => await SaveNonProviderSettingsAsync();
-
-        // MCP 面板：合并自原独立 McpConfigWindow。面板负责服务增删改/测试/导入，
-        // 依赖下载与内置服务配置仍由本窗口处理（通过事件回调）。
         InitMcpPanel();
         InitSkillPanel();
 
         BrowseAvatarButton.Click += async (_, _) => await PickAvatarAsync();
-        AvatarMaleRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
-        AvatarFemaleRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
-        AvatarCustomRadio.Click += (_, _) => RefreshAvatarPreviewFromSelection();
+        AvatarMaleRadio.Click += (_, _) => SaveAvatarSelection();
+        AvatarFemaleRadio.Click += (_, _) => SaveAvatarSelection();
+        AvatarCustomRadio.Click += (_, _) => SaveAvatarSelection();
         BrowseChatBackgroundButton.Click += async (_, _) => await PickChatBackgroundAsync();
-        ClearChatBackgroundButton.Click += async (_, _) =>
-        {
-            _settingsService.Current.ChatBackgroundImagePath = null;
-            SetPreviewImage(ChatBackgroundPreviewImage, null);
-            await SaveNonProviderSettingsAsync();
-        };
+        ClearChatBackgroundButton.Click += (_, _) => ClearChatBackground();
 
         DeleteMemoryButton.Click += async (_, _) => await DeleteSelectedMemoryAsync();
         ClearCurrentSessionMemoryButton.Click += async (_, _) => await ClearCurrentSessionMemoryAsync();
         ClearAllMemoryButton.Click += async (_, _) => await ClearAllMemoryAsync();
+        RefreshMemoryButton.Click += async (_, _) => await RefreshMemoryListAsync();
+        MemorySearchBox.TextChanged += (_, _) => RenderMemoryEntries();
+        MemoryScopeBox.SelectionChanged += (_, _) => RenderMemoryEntries();
+        MemoryListBox.SelectionChanged += (_, _) => OnMemorySelectionChanged();
         Mem0InstallButton.Click += async (_, _) => await InstallMem0Async();
+
+        SaveComputerControlButton.Click += (_, _) => SaveComputerControlSettings();
+        CancelComputerControlButton.Click += (_, _) => LoadComputerControlFromSettings();
+        ComputerControlBackendBox.SelectionChanged += (_, _) => MarkComputerControlDirty();
+        VisionProviderBox.SelectionChanged += (_, _) =>
+        {
+            PopulateVisionModelBox();
+            MarkComputerControlDirty();
+        };
+        VisionModelBox.SelectionChanged += (_, _) => MarkComputerControlDirty();
+        VisionModelBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ComboBox.TextProperty)
+            {
+                MarkComputerControlDirty();
+            }
+        };
+        UfoPythonBox.TextChanged += (_, _) => MarkComputerControlDirty();
         UfoCheckButton.Click += async (_, _) => await CheckUfoAsync();
 
+        AlwaysOnTopBox.Click += (_, _) => SaveSimpleSettings();
+        MinimizeToTrayBox.Click += (_, _) => SaveSimpleSettings();
+        AutoStartBox.Click += (_, _) => SaveSimpleSettings();
+        ParticleEffectsBox.Click += (_, _) => SaveSimpleSettings();
+        ReduceMotionBox.Click += (_, _) => SaveSimpleSettings();
+        EnablePetBubblesBox.Click += (_, _) => SaveSimpleSettings();
+        EnablePetIdleGreetingBox.Click += (_, _) => SaveSimpleSettings();
+        EnablePetEdgeSnapBox.Click += (_, _) => SaveSimpleSettings();
+        PetSizeBox.SelectionChanged += (_, _) => SaveSimpleSettings();
+        PetOpacitySlider.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Slider.ValueProperty)
+            {
+                PetOpacityValueText.Text = $"{PetOpacitySlider.Value:P0}";
+                ScheduleSimpleSettingsSave();
+            }
+        };
+
+        SettingsTabControl.SelectionChanged += async (_, _) => await OnSettingsPageSelectionChangedAsync();
+        SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+            {
+                UpdateAmbientAnimationState();
+            }
+        };
+        Closing += OnWindowClosing;
         Opened += (_, _) =>
         {
-            _flickerTimer.Start();
-            if (_settingsService.Current.EnableParticleEffects)
-            {
-                _particleEffect.Start(90);
-            }
-
+            UpdateResponsiveLayout(Bounds.Width);
+            UpdateAmbientAnimationState();
             _ = RefreshMcpDependencyStatusAsync();
-            // 不再在每次打开设置窗口时自动调用 SetupBuiltinMcpServers。
-            // 内置服务配置只在用户显式点击「一键配置内置服务」时执行。
             _ = RefreshMcpOverallStatusAsync();
         };
 
         PopulateProviderPresets();
         PopulatePetSizeOptions();
         LoadFromSettings();
+        SelectSettingsPage(SettingsPageId.Provider);
+        _lastSettingsPageId = SettingsPageId.Provider;
+        _isInitialized = true;
+        UpdateProviderDirtyFromSnapshot();
+        UpdateComputerControlDirtyFromSnapshot();
         _ = RefreshMemoryListAsync();
         _ = RefreshMem0StatusAsync();
 
-        // 订阅 Provider/Model 变更事件：用户在「提供商配置」Tab 保存新模型列表后，
-        // 自动刷新「电脑控制」Tab 的视觉模型下拉框，并尽量保留当前选择。
         _settingsService.ProvidersChanged += OnProvidersChangedRefreshVision;
         Closed += (_, _) => _settingsService.ProvidersChanged -= OnProvidersChangedRefreshVision;
     }
 
     private void LoadFromSettings()
     {
-        var provider = string.IsNullOrWhiteSpace(_settingsService.Current.CurrentProvider)
-            ? "openai"
-            : _settingsService.Current.CurrentProvider;
-
-        RefreshProviderCards();
-        LoadProviderIntoForm(provider);
-
-        AlwaysOnTopBox.IsChecked = _settingsService.Current.EnableAlwaysOnTop;
-        MinimizeToTrayBox.IsChecked = _settingsService.Current.MinimizeToTray;
+        _isLoadingSettingsUi = true;
         try
         {
-            AutoStartBox.IsChecked = AutoStartService.IsEnabled();
+            var provider = string.IsNullOrWhiteSpace(_settingsService.Current.CurrentProvider)
+                ? "openai"
+                : _settingsService.Current.CurrentProvider;
+
+            RefreshProviderCards();
+            LoadProviderIntoForm(provider);
+
+            AlwaysOnTopBox.IsChecked = _settingsService.Current.EnableAlwaysOnTop;
+            MinimizeToTrayBox.IsChecked = _settingsService.Current.MinimizeToTray;
+            try
+            {
+                AutoStartBox.IsChecked = AutoStartService.IsEnabled();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("config", "failed to read auto start state", ex);
+                AutoStartBox.IsChecked = _settingsService.Current.EnableAutoStart;
+            }
+
+            ParticleEffectsBox.IsChecked = _settingsService.Current.EnableParticleEffects;
+            ReduceMotionBox.IsChecked = _settingsService.Current.ReduceMotion;
+            EnablePetBubblesBox.IsChecked = _settingsService.Current.EnablePetBubbles;
+            EnablePetIdleGreetingBox.IsChecked = _settingsService.Current.EnablePetIdleGreeting;
+            EnablePetEdgeSnapBox.IsChecked = _settingsService.Current.EnablePetEdgeSnap;
+            PetOpacitySlider.Value = Math.Clamp(_settingsService.Current.PetOpacity, 0.65, 1.0);
+            PetOpacityValueText.Text = $"{PetOpacitySlider.Value:P0}";
+            SelectPetSize(_settingsService.Current.PetSizePreset);
+
+            var avatarType = _settingsService.Current.UserAvatarType;
+            AvatarMaleRadio.IsChecked = avatarType == "male";
+            AvatarFemaleRadio.IsChecked = avatarType == "female";
+            AvatarCustomRadio.IsChecked = avatarType == "custom";
+            RefreshAvatarPreviewFromSelection();
+            SetPreviewImage(ChatBackgroundPreviewImage, _settingsService.Current.ChatBackgroundImagePath);
+            LoadComputerControlFromSettings();
         }
-        catch (Exception ex)
+        finally
         {
-            AppLogger.Error("config", "failed to read auto start state", ex);
-            AutoStartBox.IsChecked = _settingsService.Current.EnableAutoStart;
+            _isLoadingSettingsUi = false;
         }
 
-        ParticleEffectsBox.IsChecked = _settingsService.Current.EnableParticleEffects;
-        EnablePetBubblesBox.IsChecked = _settingsService.Current.EnablePetBubbles;
-        // 辅助视觉模型（电脑控制面板）：提供商 + 模型选择，与对话 Provider 打通
-        PopulateVisionProviderBox();
-        UfoPythonBox.Text = _settingsService.Current.UfoPythonPath ?? string.Empty;
-        ComputerControlBackendBox.SelectedIndex = _settingsService.Current.ComputerControlBackend?.ToLowerInvariant() switch
-        {
-            "uia" => 1,
-            "ufo" => 2,
-            _ => 0
-        };
-        EnablePetIdleGreetingBox.IsChecked = _settingsService.Current.EnablePetIdleGreeting;
-        EnablePetEdgeSnapBox.IsChecked = _settingsService.Current.EnablePetEdgeSnap;
-        PetOpacitySlider.Value = Math.Clamp(_settingsService.Current.PetOpacity, 0.65, 1.0);
-        SelectPetSize(_settingsService.Current.PetSizePreset);
-
-        var avatarType = _settingsService.Current.UserAvatarType;
-        AvatarMaleRadio.IsChecked = avatarType == "male";
-        AvatarFemaleRadio.IsChecked = avatarType == "female";
-        AvatarCustomRadio.IsChecked = avatarType == "custom";
-        RefreshAvatarPreviewFromSelection();
-        SetPreviewImage(ChatBackgroundPreviewImage, _settingsService.Current.ChatBackgroundImagePath);
+        ApplyMotionPreference();
+        SimpleSettingsStatusText.Text = "已同步";
         _ = RefreshMcpDependencyStatusAsync();
     }
 
-    private async Task SaveProviderAsync()
+    private async Task<bool> SaveProviderAsync()
     {
-        var provider = string.IsNullOrWhiteSpace(ProviderNameBox.Text) ? "openai" : ProviderNameBox.Text.Trim();
-        var apiKey = ApiKeyBox.Text?.Trim() ?? string.Empty;
-        var endpoint = string.IsNullOrWhiteSpace(EndpointBox.Text) ? null : EndpointBox.Text.Trim();
-        var defaultModel = GetSelectedDefaultModel();
-        if (string.IsNullOrWhiteSpace(defaultModel))
+        if (_isProviderBusy || !TryValidateProviderForm(out var provider, out var apiKey, out var endpoint, out var defaultModel, out var models))
         {
-            ShowError("请先填写或选择一个默认模型。");
-            return;
+            return false;
         }
 
-        var models = CollectModels(defaultModel).ToList();
-        _settingsService.UpdateApiKey(provider, apiKey, endpoint, defaultModel);
-        _settingsService.SaveProviderModels(provider, models, defaultModel);
-        if (!_settingsService.ListProviders().Any(p => string.Equals(p, _settingsService.Current.CurrentProvider, StringComparison.OrdinalIgnoreCase)))
+        SetProviderBusy(true, "正在保存提供商…");
+        try
         {
-            _settingsService.SwitchCurrentProvider(provider);
-        }
+            _settingsService.UpdateApiKey(provider, apiKey, endpoint, defaultModel);
+            _settingsService.SaveProviderModels(provider, models, defaultModel);
+            if (!_settingsService.ListProviders().Any(p => string.Equals(p, _settingsService.Current.CurrentProvider, StringComparison.OrdinalIgnoreCase)))
+            {
+                _settingsService.SwitchCurrentProvider(provider);
+            }
 
-        string? reloadError = null;
-        if (string.Equals(SettingsService.NormalizeProviderName(provider), SettingsService.NormalizeProviderName(_settingsService.Current.CurrentProvider), StringComparison.OrdinalIgnoreCase))
-        {
-            _settingsService.SwitchCurrentModel(provider, defaultModel);
-            TryReloadChatServiceFromSettings(out reloadError);
-        }
+            string? reloadError = null;
+            if (string.Equals(SettingsService.NormalizeProviderName(provider), SettingsService.NormalizeProviderName(_settingsService.Current.CurrentProvider), StringComparison.OrdinalIgnoreCase))
+            {
+                _settingsService.SwitchCurrentModel(provider, defaultModel);
+                TryReloadChatServiceFromSettings(out reloadError);
+            }
 
-        RefreshProviderCards();
-        LoadProviderIntoForm(provider);
-        if (string.IsNullOrWhiteSpace(reloadError))
-        {
-            ShowSuccess("提供商配置已保存。");
+            RefreshProviderCards();
+            LoadProviderIntoForm(provider);
+            if (string.IsNullOrWhiteSpace(reloadError))
+            {
+                ShowSuccess("提供商配置已保存。");
+            }
+            else
+            {
+                ShowError($"提供商配置已保存，但当前服务暂时还没准备好：{reloadError}");
+            }
+
+            await Task.Yield();
+            return true;
         }
-        else
+        catch (Exception ex)
         {
-            ShowError($"提供商配置已保存，但当前服务暂时还没准备好：{reloadError}");
+            AppLogger.Error("config", "save provider failed", ex);
+            ProviderStatusText.Text = "保存失败：" + ex.Message;
+            ShowError("保存提供商失败：" + ex.Message);
+            return false;
         }
-        await Task.CompletedTask;
+        finally
+        {
+            SetProviderBusy(false);
+        }
     }
 
     private async Task TestProviderAsync()
@@ -250,79 +380,589 @@ public partial class ConfigWindow : Window
 
     private async Task ProbeProviderAsync(bool updateModels)
     {
-        var provider = string.IsNullOrWhiteSpace(ProviderNameBox.Text) ? "openai" : ProviderNameBox.Text.Trim();
-        var apiKey = ApiKeyBox.Text?.Trim() ?? string.Empty;
-        var endpoint = string.IsNullOrWhiteSpace(EndpointBox.Text) ? null : EndpointBox.Text.Trim();
-        ProviderStatusText.Text = updateModels ? "正在获取模型..." : "正在测试连接...";
-
-        var result = await _providerProbeService.FetchModelsAsync(provider, apiKey, endpoint);
-        _settingsService.UpdateProviderConnectionStatus(provider, result.Status, result.Message);
-
-        if (result.Success && updateModels)
+        if (_isProviderBusy || !TryValidateProviderConnectionFields(out var provider, out var apiKey, out var endpoint))
         {
-            _currentModelCandidates.Clear();
-            _currentModelCandidates.AddRange(result.Models.Select(CloneModel));
-            RenderModels(GetSelectedDefaultModel());
-        }
-
-        RefreshProviderCards();
-        ProviderStatusText.Text = result.Message;
-        if (result.Success)
-        {
-            ShowSuccess(result.Message);
-        }
-        else
-        {
-            ShowError(result.Message);
-        }
-    }
-
-    private async Task SaveNonProviderSettingsAsync()
-    {
-        _settingsService.Current.EnableAlwaysOnTop = AlwaysOnTopBox.IsChecked == true;
-        _settingsService.Current.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
-        var enableAutoStart = AutoStartBox.IsChecked == true;
-        try
-        {
-            AutoStartService.SetEnabled(enableAutoStart);
-            _settingsService.Current.EnableAutoStart = enableAutoStart;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("config", "failed to save auto start state", ex);
-            ShowError($"开机自启动设置失败：{ex.Message}");
             return;
         }
 
-        _settingsService.Current.EnableParticleEffects = ParticleEffectsBox.IsChecked == true;
-        _settingsService.Current.EnablePetBubbles = EnablePetBubblesBox.IsChecked == true;
-        // 辅助视觉模型
-        SaveVisionProviderSelection();
-        _settingsService.Current.UfoPythonPath = string.IsNullOrWhiteSpace(UfoPythonBox.Text) ? null : UfoPythonBox.Text.Trim();
-        if (ComputerControlBackendBox.SelectedItem is ComboBoxItem { Tag: string backendTag })
+        SetProviderBusy(true, updateModels ? "正在获取模型…" : "正在测试连接…");
+        try
         {
-            _settingsService.Current.ComputerControlBackend = backendTag;
+            var result = await _providerProbeService.FetchModelsAsync(provider, apiKey, endpoint);
+            if (_settingsService.ListProviders().Any(p => string.Equals(p, provider, StringComparison.OrdinalIgnoreCase)))
+            {
+                _settingsService.UpdateProviderConnectionStatus(provider, result.Status, result.Message);
+            }
+
+            if (result.Success && updateModels)
+            {
+                var selectedModel = GetSelectedDefaultModel();
+                _isLoadingProviderUi = true;
+                try
+                {
+                    _currentModelCandidates.Clear();
+                    _currentModelCandidates.AddRange(result.Models.Select(CloneModel));
+                    RenderModels(selectedModel);
+                }
+                finally
+                {
+                    _isLoadingProviderUi = false;
+                }
+
+                MarkProviderDirty();
+            }
+
+            RefreshProviderCards();
+            ProviderStatusText.Text = result.Message;
+            if (result.Success)
+            {
+                ShowSuccess(result.Message);
+            }
+            else
+            {
+                ShowError(result.Message);
+            }
         }
-        _settingsService.Current.EnablePetIdleGreeting = EnablePetIdleGreetingBox.IsChecked == true;
-        _settingsService.Current.EnablePetEdgeSnap = EnablePetEdgeSnapBox.IsChecked == true;
-        _settingsService.Current.PetOpacity = Math.Clamp(PetOpacitySlider.Value, 0.65, 1.0);
-        if (PetSizeBox.SelectedItem is ComboBoxItem { Tag: string petSize })
+        catch (Exception ex)
         {
-            ApplyPetSizePresetToSettings(petSize);
+            AppLogger.Error("config", "provider probe failed", ex);
+            ProviderStatusText.Text = "连接失败：" + ex.Message;
+            ShowError("连接测试失败：" + ex.Message);
         }
-        _settingsService.Current.EnableVoiceInput = true;
-        _settingsService.Current.AzureSpeechKey = null;
-        _settingsService.Current.AzureSpeechRegion = null;
+        finally
+        {
+            SetProviderBusy(false);
+        }
+    }
+
+    private bool TryValidateProviderConnectionFields(out string provider, out string apiKey, out string? endpoint)
+    {
+        ClearProviderValidation();
+        provider = ProviderNameBox.Text?.Trim() ?? string.Empty;
+        apiKey = ApiKeyBox.Text?.Trim() ?? string.Empty;
+        endpoint = string.IsNullOrWhiteSpace(EndpointBox.Text) ? null : EndpointBox.Text.Trim();
+
+        var valid = true;
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            SetFieldError(ProviderNameBox, ProviderNameErrorText, "请输入提供商名称。");
+            valid = false;
+        }
+
+        if (endpoint is not null &&
+            (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
+             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        {
+            SetFieldError(EndpointBox, EndpointErrorText, "请输入以 http:// 或 https:// 开头的完整 URL。");
+            valid = false;
+        }
+
+        if (!valid)
+        {
+            ProviderStatusText.Text = "请修正标出的字段后重试。";
+        }
+
+        return valid;
+    }
+
+    private bool TryValidateProviderForm(
+        out string provider,
+        out string apiKey,
+        out string? endpoint,
+        out string defaultModel,
+        out List<ProviderModel> models)
+    {
+        defaultModel = string.Empty;
+        models = new List<ProviderModel>();
+        if (!TryValidateProviderConnectionFields(out provider, out apiKey, out endpoint))
+        {
+            return false;
+        }
+
+        defaultModel = GetSelectedDefaultModel();
+        var selectedDefaultModel = defaultModel;
+        models = CollectModels(selectedDefaultModel).ToList();
+        if (string.IsNullOrWhiteSpace(selectedDefaultModel) ||
+            models.All(model => !model.IsEnabled || !string.Equals(model.Id, selectedDefaultModel, StringComparison.OrdinalIgnoreCase)))
+        {
+            SetFieldError(DefaultModelBox, DefaultModelErrorText, "请启用并选择一个默认模型。");
+            ProviderStatusText.Text = "默认模型必须来自已启用模型。";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void SetProviderBusy(bool isBusy, string? status = null)
+    {
+        _isProviderBusy = isBusy;
+        ProviderBusyProgress.IsVisible = isBusy;
+        SaveProviderButton.IsEnabled = !isBusy;
+        TestProviderButton.IsEnabled = !isBusy;
+        FetchModelsButton.IsEnabled = !isBusy;
+        NewProviderButton.IsEnabled = !isBusy;
+        CancelProviderButton.IsEnabled = !isBusy && _providerFormDirty;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            ProviderStatusText.Text = status;
+        }
+    }
+
+    private void ToggleApiKeyVisibility()
+    {
+        _isApiKeyVisible = !_isApiKeyVisible;
+        ApiKeyBox.PasswordChar = _isApiKeyVisible ? '\0' : '●';
+        ToggleApiKeyButton.Content = _isApiKeyVisible ? "隐藏密钥" : "显示密钥";
+        AutomationProperties.SetName(ToggleApiKeyButton, _isApiKeyVisible ? "隐藏 API Key" : "显示 API Key");
+    }
+
+    private void SaveSimpleSettings()
+    {
+        if (_isLoadingSettingsUi)
+        {
+            return;
+        }
+
+        _simpleSettingsSaveTimer.Stop();
+        SimpleSettingsStatusText.Text = "正在保存…";
+        try
+        {
+            _settingsService.Current.EnableAlwaysOnTop = AlwaysOnTopBox.IsChecked == true;
+            _settingsService.Current.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
+            var enableAutoStart = AutoStartBox.IsChecked == true;
+            if (enableAutoStart != _settingsService.Current.EnableAutoStart)
+            {
+                AutoStartService.SetEnabled(enableAutoStart);
+            }
+
+            _settingsService.Current.EnableAutoStart = enableAutoStart;
+            _settingsService.Current.EnableParticleEffects = ParticleEffectsBox.IsChecked == true;
+            _settingsService.Current.ReduceMotion = ReduceMotionBox.IsChecked == true;
+            _settingsService.Current.EnablePetBubbles = EnablePetBubblesBox.IsChecked == true;
+            _settingsService.Current.EnablePetIdleGreeting = EnablePetIdleGreetingBox.IsChecked == true;
+            _settingsService.Current.EnablePetEdgeSnap = EnablePetEdgeSnapBox.IsChecked == true;
+            _settingsService.Current.PetOpacity = Math.Clamp(PetOpacitySlider.Value, 0.65, 1.0);
+            if (PetSizeBox.SelectedItem is ComboBoxItem { Tag: string petSize })
+            {
+                ApplyPetSizePresetToSettings(petSize);
+            }
+
+            _settingsService.Save();
+            SimpleSettingsStatusText.Text = "已自动保存";
+            ApplyMotionPreference();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "failed to save simple settings", ex);
+            AutoStartBox.IsChecked = _settingsService.Current.EnableAutoStart;
+            SimpleSettingsStatusText.Text = "保存失败";
+            ShowError($"设置保存失败：{ex.Message}");
+        }
+    }
+
+    private void ScheduleSimpleSettingsSave()
+    {
+        if (_isLoadingSettingsUi)
+        {
+            return;
+        }
+
+        SimpleSettingsStatusText.Text = "等待保存…";
+        _simpleSettingsSaveTimer.Stop();
+        _simpleSettingsSaveTimer.Start();
+    }
+
+    private void SaveAvatarSelection()
+    {
+        if (_isLoadingSettingsUi)
+        {
+            return;
+        }
+
+        RefreshAvatarPreviewFromSelection();
+        if (AvatarCustomRadio.IsChecked == true &&
+            (string.IsNullOrWhiteSpace(_settingsService.Current.CustomUserAvatarPath) || !File.Exists(_settingsService.Current.CustomUserAvatarPath)))
+        {
+            AppearanceStatusText.Text = "请选择自定义头像文件后再切换。";
+            return;
+        }
 
         _settingsService.Current.UserAvatarType = AvatarCustomRadio.IsChecked == true
             ? "custom"
             : AvatarFemaleRadio.IsChecked == true
                 ? "female"
                 : "male";
-
         _settingsService.Save();
-        ShowSuccess("设置已保存。");
-        await Task.CompletedTask;
+        AppearanceStatusText.Text = "头像已自动保存。";
+    }
+
+    private void ClearChatBackground()
+    {
+        _settingsService.Current.ChatBackgroundImagePath = null;
+        SetPreviewImage(ChatBackgroundPreviewImage, null);
+        _settingsService.Save();
+        AppearanceStatusText.Text = "聊天背景已清除。";
+    }
+
+    private void ApplyMotionPreference()
+    {
+        if (_settingsService.Current.ReduceMotion)
+        {
+            if (SettingsContentHost.PageTransition is not null)
+            {
+                _fullPageTransition = SettingsContentHost.PageTransition;
+            }
+
+            SettingsContentHost.PageTransition = null;
+        }
+        else if (SettingsContentHost.PageTransition is null)
+        {
+            SettingsContentHost.PageTransition = _fullPageTransition;
+        }
+
+        UpdateAmbientAnimationState();
+    }
+
+    private void UpdateAmbientAnimationState()
+    {
+        var shouldAnimate = IsVisible && WindowState != WindowState.Minimized && !_settingsService.Current.ReduceMotion;
+        if (shouldAnimate)
+        {
+            _flickerTimer.Start();
+        }
+        else
+        {
+            _flickerTimer.Stop();
+            BackgroundContainer.Opacity = 1;
+            GlowLayerPink.Opacity = 1;
+            GlowLayerBlue.Opacity = 1;
+            GlowLayerWhite.Opacity = 0.48;
+        }
+
+        if (shouldAnimate && _settingsService.Current.EnableParticleEffects)
+        {
+            _particleEffect.Start(32);
+        }
+        else
+        {
+            _particleEffect.Stop();
+        }
+    }
+
+    private static void SetFieldError(Control field, TextBlock errorText, string message)
+    {
+        if (!field.Classes.Contains("invalid"))
+        {
+            field.Classes.Add("invalid");
+        }
+
+        errorText.Text = message;
+        errorText.IsVisible = true;
+        AutomationProperties.SetHelpText(field, message);
+    }
+
+    private static void ClearFieldError(Control field, TextBlock errorText)
+    {
+        field.Classes.Remove("invalid");
+        errorText.Text = string.Empty;
+        errorText.IsVisible = false;
+        AutomationProperties.SetHelpText(field, string.Empty);
+    }
+
+    private void ClearProviderValidation()
+    {
+        ClearFieldError(ProviderNameBox, ProviderNameErrorText);
+        ClearFieldError(EndpointBox, EndpointErrorText);
+        ClearFieldError(DefaultModelBox, DefaultModelErrorText);
+    }
+
+    private async Task OnSettingsPageSelectionChangedAsync()
+    {
+        if (_suppressSettingsPageChange)
+        {
+            return;
+        }
+
+        var requestedPage = GetSettingsPageId(SettingsTabControl.SelectedItem);
+        if (requestedPage is null)
+        {
+            SelectSettingsPage(_lastSettingsPageId);
+            return;
+        }
+
+        await TryChangeSettingsPageAsync(requestedPage.Value);
+    }
+
+    internal async Task<bool> TryChangeSettingsPageAsync(SettingsPageId requestedPage)
+    {
+        if (requestedPage == _lastSettingsPageId)
+        {
+            SelectSettingsPage(requestedPage);
+            return true;
+        }
+
+        var previousPage = _lastSettingsPageId;
+        if (HasUnsavedChanges(previousPage))
+        {
+            SelectSettingsPage(previousPage);
+            var decision = await UnsavedChangesHandler(
+                this,
+                "未保存更改",
+                $"“{GetSettingsPageName(previousPage)}”页面还有未保存的配置。你可以留在当前页面，或在离开前放弃/保存更改。",
+                "放弃并离开",
+                "保存并离开");
+
+            if (decision == UnsavedChangesDecision.Cancel)
+            {
+                return false;
+            }
+
+            if (decision == UnsavedChangesDecision.Discard)
+            {
+                DiscardChanges(previousPage);
+            }
+            else if (!await SaveChangesAsync(previousPage))
+            {
+                SelectSettingsPage(previousPage);
+                return false;
+            }
+        }
+
+        SettingsContentHost.IsTransitionReversed = (int)requestedPage < (int)previousPage;
+        SelectSettingsPage(requestedPage);
+        _lastSettingsPageId = requestedPage;
+        return true;
+    }
+
+    internal bool HasUnsavedChanges(SettingsPageId pageId)
+    {
+        return pageId switch
+        {
+            SettingsPageId.Provider => _providerFormDirty,
+            SettingsPageId.ComputerControl => _computerControlDirty,
+            SettingsPageId.Mcp => McpPanel.HasUnsavedChanges,
+            _ => false
+        };
+    }
+
+    private async Task<bool> SaveChangesAsync(SettingsPageId pageId)
+    {
+        return pageId switch
+        {
+            SettingsPageId.Provider => await SaveProviderAsync(),
+            SettingsPageId.ComputerControl => SaveComputerControlSettings(),
+            SettingsPageId.Mcp => await McpPanel.SaveCurrentServerAsync(),
+            _ => true
+        };
+    }
+
+    private void DiscardChanges(SettingsPageId pageId)
+    {
+        switch (pageId)
+        {
+            case SettingsPageId.Provider:
+                CancelProviderChanges();
+                break;
+            case SettingsPageId.ComputerControl:
+                LoadComputerControlFromSettings();
+                break;
+            case SettingsPageId.Mcp:
+                McpPanel.DiscardUnsavedChanges();
+                break;
+        }
+    }
+
+    private async Task<bool> SaveAllDirtyPagesAsync()
+    {
+        foreach (var pageId in new[] { SettingsPageId.Provider, SettingsPageId.ComputerControl, SettingsPageId.Mcp })
+        {
+            if (HasUnsavedChanges(pageId) && !await SaveChangesAsync(pageId))
+            {
+                SelectSettingsPage(pageId);
+                _lastSettingsPageId = pageId;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void DiscardAllDirtyPages()
+    {
+        foreach (var pageId in new[] { SettingsPageId.Provider, SettingsPageId.ComputerControl, SettingsPageId.Mcp })
+        {
+            if (HasUnsavedChanges(pageId))
+            {
+                DiscardChanges(pageId);
+            }
+        }
+    }
+
+    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_allowWindowClose || !HasAnyUnsavedChanges())
+        {
+            return;
+        }
+
+        if (_isClosingPromptOpen)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        e.Cancel = true;
+        _isClosingPromptOpen = true;
+        try
+        {
+            var decision = await UnsavedChangesHandler(
+                this,
+                "关闭设置中心",
+                "Provider、电脑控制或 MCP 页面还有未保存配置。",
+                "放弃并关闭",
+                "保存并关闭");
+
+            if (decision == UnsavedChangesDecision.Cancel)
+            {
+                return;
+            }
+
+            if (decision == UnsavedChangesDecision.Discard)
+            {
+                DiscardAllDirtyPages();
+            }
+            else if (!await SaveAllDirtyPagesAsync())
+            {
+                return;
+            }
+
+            _allowWindowClose = true;
+            Close();
+        }
+        finally
+        {
+            _isClosingPromptOpen = false;
+        }
+    }
+
+    private bool HasAnyUnsavedChanges()
+        => _providerFormDirty || _computerControlDirty || McpPanel.HasUnsavedChanges;
+
+    private void SelectSettingsPage(SettingsPageId pageId)
+    {
+        _suppressSettingsPageChange = true;
+        try
+        {
+            SettingsTabControl.SelectedItem = GetNavigationItem(pageId);
+        }
+        finally
+        {
+            _suppressSettingsPageChange = false;
+        }
+    }
+
+    private ListBoxItem GetNavigationItem(SettingsPageId pageId)
+    {
+        return pageId switch
+        {
+            SettingsPageId.Provider => ProviderNavigationItem,
+            SettingsPageId.Memory => MemoryNavigationItem,
+            SettingsPageId.ComputerControl => ComputerControlNavigationItem,
+            SettingsPageId.Mcp => McpNavigationItem,
+            SettingsPageId.Skill => SkillNavigationItem,
+            SettingsPageId.Pet => PetNavigationItem,
+            SettingsPageId.Appearance => AppearanceNavigationItem,
+            _ => ProviderNavigationItem
+        };
+    }
+
+    private SettingsPageId? GetSettingsPageId(object? selectedItem)
+    {
+        if (ReferenceEquals(selectedItem, ProviderNavigationItem)) return SettingsPageId.Provider;
+        if (ReferenceEquals(selectedItem, MemoryNavigationItem)) return SettingsPageId.Memory;
+        if (ReferenceEquals(selectedItem, ComputerControlNavigationItem)) return SettingsPageId.ComputerControl;
+        if (ReferenceEquals(selectedItem, McpNavigationItem)) return SettingsPageId.Mcp;
+        if (ReferenceEquals(selectedItem, SkillNavigationItem)) return SettingsPageId.Skill;
+        if (ReferenceEquals(selectedItem, PetNavigationItem)) return SettingsPageId.Pet;
+        if (ReferenceEquals(selectedItem, AppearanceNavigationItem)) return SettingsPageId.Appearance;
+        return null;
+    }
+
+    private static string GetSettingsPageName(SettingsPageId pageId)
+    {
+        return pageId switch
+        {
+            SettingsPageId.Provider => "AI 服务",
+            SettingsPageId.Memory => "记忆",
+            SettingsPageId.ComputerControl => "电脑控制",
+            SettingsPageId.Mcp => "MCP",
+            SettingsPageId.Skill => "Skill",
+            SettingsPageId.Pet => "桌宠与界面",
+            SettingsPageId.Appearance => "头像与背景",
+            _ => pageId.ToString()
+        };
+    }
+
+    private void UpdateResponsiveLayout(double width)
+    {
+        var isNarrow = width < 940;
+        SettingsShellGrid.ColumnDefinitions = new ColumnDefinitions(width < 820 ? "156,*" : "176,*");
+
+        ArrangeTwoPaneGrid(ProviderLayoutGrid, ProviderListPane, ProviderEditorPane, isNarrow, "270,*");
+        ProviderCardsScrollViewer.MaxHeight = isNarrow ? 220 : 500;
+        ArrangeTwoPaneGrid(MemoryLayoutGrid, MemoryListPane, MemoryDetailPane, isNarrow, "360,*");
+        ArrangeTwoPaneGrid(AppearanceLayoutGrid, AvatarPane, ChatBackgroundPane, isNarrow, "*,*");
+
+        if (isNarrow)
+        {
+            ComputerControlLayoutGrid.ColumnDefinitions = new ColumnDefinitions("*");
+            ComputerControlLayoutGrid.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
+            Grid.SetColumn(ComputerControlMainPane, 0);
+            Grid.SetRow(ComputerControlMainPane, 0);
+            Grid.SetColumn(ComputerControlAdvancedPane, 0);
+            Grid.SetRow(ComputerControlAdvancedPane, 1);
+            Grid.SetColumn(ComputerControlActionsPane, 0);
+            Grid.SetRow(ComputerControlActionsPane, 2);
+            Grid.SetColumnSpan(ComputerControlActionsPane, 1);
+            ComputerControlAdvancedPane.Margin = new Thickness(0, 14, 0, 0);
+        }
+        else
+        {
+            ComputerControlLayoutGrid.ColumnDefinitions = new ColumnDefinitions("*,*");
+            ComputerControlLayoutGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
+            Grid.SetColumn(ComputerControlMainPane, 0);
+            Grid.SetRow(ComputerControlMainPane, 0);
+            Grid.SetColumn(ComputerControlAdvancedPane, 1);
+            Grid.SetRow(ComputerControlAdvancedPane, 0);
+            Grid.SetColumn(ComputerControlActionsPane, 0);
+            Grid.SetRow(ComputerControlActionsPane, 1);
+            Grid.SetColumnSpan(ComputerControlActionsPane, 2);
+            ComputerControlAdvancedPane.Margin = new Thickness(14, 0, 0, 0);
+        }
+    }
+
+    private static void ArrangeTwoPaneGrid(Grid grid, Control firstPane, Control secondPane, bool isNarrow, string wideColumns)
+    {
+        if (isNarrow)
+        {
+            grid.ColumnDefinitions = new ColumnDefinitions("*");
+            grid.RowDefinitions = new RowDefinitions("Auto,Auto");
+            Grid.SetColumn(firstPane, 0);
+            Grid.SetRow(firstPane, 0);
+            Grid.SetColumn(secondPane, 0);
+            Grid.SetRow(secondPane, 1);
+            secondPane.Margin = new Thickness(0, 14, 0, 0);
+        }
+        else
+        {
+            grid.ColumnDefinitions = new ColumnDefinitions(wideColumns);
+            grid.RowDefinitions = new RowDefinitions("Auto");
+            Grid.SetColumn(firstPane, 0);
+            Grid.SetRow(firstPane, 0);
+            Grid.SetColumn(secondPane, 1);
+            Grid.SetRow(secondPane, 0);
+            secondPane.Margin = new Thickness(14, 0, 0, 0);
+        }
     }
 
     private void ApplyPetSizePresetToSettings(string preset)
@@ -358,7 +998,7 @@ public partial class ConfigWindow : Window
             });
         }
 
-        ProviderPresetBox.SelectedIndex = 0;
+        ProviderPresetBox.SelectedIndex = -1;
     }
 
     private void PopulatePetSizeOptions()
@@ -400,7 +1040,7 @@ public partial class ConfigWindow : Window
             SettingsService.NormalizeProviderName(provider),
             SettingsService.NormalizeProviderName(_settingsService.Current.CurrentProvider),
             StringComparison.OrdinalIgnoreCase);
-        var modelCount = info?.Models.Count(m => m.IsEnabled) ?? 0;
+        var modelCount = info?.Models.Count(model => model.IsEnabled) ?? 0;
         var status = string.IsNullOrWhiteSpace(info?.LastConnectionMessage)
             ? "尚未测试"
             : info!.LastConnectionMessage;
@@ -408,17 +1048,17 @@ public partial class ConfigWindow : Window
         var border = new Border
         {
             CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(14),
-            Background = AemiUi.Brush(isCurrent ? "#FFE1EE" : "#FFFFFF"),
+            Padding = new Thickness(13),
+            Background = AemiUi.Brush(isCurrent ? AemiUi.PinkSoft : AemiUi.Panel),
             BorderBrush = AemiUi.Brush(isCurrent ? AemiUi.Star : AemiUi.Border),
             BorderThickness = new Thickness(1)
         };
 
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(AemiUi.Badge(isCurrent ? "当前链路" : "Provider Archive", isCurrent ? "star" : "halo"));
+        var panel = new StackPanel { Spacing = 7 };
+        panel.Children.Add(AemiUi.Badge(isCurrent ? "当前连接" : "已保存", isCurrent ? "star" : "halo"));
         panel.Children.Add(new TextBlock
         {
-            Text = isCurrent ? $"{provider}  当前" : provider,
+            Text = provider,
             FontWeight = FontWeight.SemiBold,
             Foreground = AemiUi.Brush(AemiUi.Ghost),
             FontSize = 16
@@ -431,7 +1071,7 @@ public partial class ConfigWindow : Window
         });
         panel.Children.Add(new TextBlock
         {
-            Text = $"模型：{info?.ModelId ?? _settingsService.Current.DefaultModel} / 已启用 {modelCount} 个",
+            Text = $"默认：{info?.ModelId ?? _settingsService.Current.DefaultModel} · 已启用 {modelCount} 个",
             Classes = { "subtle" },
             TextWrapping = TextWrapping.Wrap
         });
@@ -439,22 +1079,23 @@ public partial class ConfigWindow : Window
         {
             Text = status,
             Classes = { "muted" },
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            MaxHeight = 42
         });
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8
+            Spacing = 7
         };
-        var editButton = new Button { Content = "编辑", Classes = { "ghost" }, MinWidth = 64 };
-        editButton.Content = "编辑";
-        editButton.Click += (_, _) => LoadProviderIntoForm(provider);
-        var useButton = new Button { Content = "使用", Classes = { "primary" }, MinWidth = 64, IsEnabled = !isCurrent };
-        useButton.Content = "使用";
-        useButton.Click += (_, _) => UseProvider(provider);
-        var deleteButton = new Button { Content = "删除", Classes = { "danger" }, MinWidth = 64 };
-        deleteButton.Content = "删除";
+        var editButton = new Button { Content = "编辑", Classes = { "ghost" }, MinWidth = 60 };
+        AutomationProperties.SetName(editButton, $"编辑提供商 {provider}");
+        editButton.Click += async (_, _) => await SelectProviderForEditingAsync(provider);
+        var useButton = new Button { Content = "使用", Classes = { "primary" }, MinWidth = 60, IsEnabled = !isCurrent };
+        AutomationProperties.SetName(useButton, $"切换到提供商 {provider}");
+        useButton.Click += async (_, _) => await UseProviderAsync(provider);
+        var deleteButton = new Button { Content = "删除", Classes = { "danger" }, MinWidth = 60 };
+        AutomationProperties.SetName(deleteButton, $"删除提供商 {provider}");
         deleteButton.Click += async (_, _) => await DeleteProviderAsync(provider);
 
         buttons.Children.Add(editButton);
@@ -465,6 +1106,52 @@ public partial class ConfigWindow : Window
         return border;
     }
 
+    private async Task BeginNewProviderAsync()
+    {
+        if (!await ConfirmDiscardProviderChangesAsync())
+        {
+            return;
+        }
+
+        StartNewProviderForm();
+    }
+
+    private async Task SelectProviderForEditingAsync(string provider)
+    {
+        if (string.Equals(_editingProviderName, SettingsService.NormalizeProviderName(provider), StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!await ConfirmDiscardProviderChangesAsync())
+        {
+            return;
+        }
+
+        LoadProviderIntoForm(provider);
+    }
+
+    private async Task<bool> ConfirmDiscardProviderChangesAsync()
+    {
+        if (!_providerFormDirty)
+        {
+            return true;
+        }
+
+        var decision = await UnsavedChangesHandler(
+            this,
+            "提供商更改尚未保存",
+            "当前提供商表单还有未保存内容。",
+            "放弃更改",
+            "保存更改");
+        return decision switch
+        {
+            UnsavedChangesDecision.Discard => true,
+            UnsavedChangesDecision.Save => await SaveProviderAsync(),
+            _ => false
+        };
+    }
+
     private void LoadProviderIntoForm(string provider)
     {
         _isLoadingProviderUi = true;
@@ -473,6 +1160,7 @@ public partial class ConfigWindow : Window
             var normalized = SettingsService.NormalizeProviderName(provider);
             var info = _settingsService.GetApiKeyInfo(normalized);
             var defaultModel = info?.ModelId ?? _settingsService.Current.DefaultModel;
+            _editingProviderName = normalized;
             ProviderNameBox.Text = normalized;
             ApiKeyBox.Text = info?.Key ?? string.Empty;
             EndpointBox.Text = info?.Endpoint ?? string.Empty;
@@ -484,58 +1172,97 @@ public partial class ConfigWindow : Window
             }
 
             if (!string.IsNullOrWhiteSpace(defaultModel) &&
-                _currentModelCandidates.All(m => !string.Equals(m.Id, defaultModel, StringComparison.OrdinalIgnoreCase)))
+                _currentModelCandidates.All(model => !string.Equals(model.Id, defaultModel, StringComparison.OrdinalIgnoreCase)))
             {
                 _currentModelCandidates.Add(new ProviderModel { Id = defaultModel, IsEnabled = true });
             }
 
             RenderModels(defaultModel);
+            ClearProviderValidation();
+            _isApiKeyVisible = false;
+            ApiKeyBox.PasswordChar = '●';
+            ToggleApiKeyButton.Content = "显示密钥";
         }
         finally
         {
             _isLoadingProviderUi = false;
         }
+
+        CaptureProviderBaseline();
     }
 
     private void StartNewProviderForm()
     {
-        ProviderNameBox.Text = string.Empty;
-        ApiKeyBox.Text = string.Empty;
-        EndpointBox.Text = string.Empty;
-        ProviderStatusText.Text = "填写信息后保存，或先测试连接。";
-        _currentModelCandidates.Clear();
-        _currentModelCandidates.Add(new ProviderModel { Id = "gpt-4o", IsEnabled = true });
-        RenderModels("gpt-4o");
+        _isLoadingProviderUi = true;
+        try
+        {
+            _editingProviderName = null;
+            ProviderNameBox.Text = string.Empty;
+            ApiKeyBox.Text = string.Empty;
+            EndpointBox.Text = string.Empty;
+            ProviderStatusText.Text = "填写信息后保存，或先测试连接。";
+            _currentModelCandidates.Clear();
+            _currentModelCandidates.Add(new ProviderModel { Id = "gpt-4o", IsEnabled = true });
+            RenderModels("gpt-4o");
+            ClearProviderValidation();
+        }
+        finally
+        {
+            _isLoadingProviderUi = false;
+        }
+
+        CaptureProviderBaseline();
+        ProviderNameBox.Focus();
+    }
+
+    private void CancelProviderChanges()
+    {
+        if (!string.IsNullOrWhiteSpace(_editingProviderName) &&
+            _settingsService.ListProviders().Any(provider => string.Equals(provider, _editingProviderName, StringComparison.OrdinalIgnoreCase)))
+        {
+            LoadProviderIntoForm(_editingProviderName);
+        }
+        else
+        {
+            LoadProviderIntoForm(_settingsService.Current.CurrentProvider);
+        }
+
+        ProviderStatusText.Text = "未保存的更改已取消。";
     }
 
     private void ApplySelectedProviderPreset()
     {
-        if (_isLoadingProviderUi || ProviderPresetBox.SelectedItem is not ComboBoxItem { Tag: ProviderPreset preset })
+        if (_isLoadingProviderUi || ProviderPresetBox.SelectedItem is not ComboBoxItem { Tag: ProviderPreset preset } || string.IsNullOrWhiteSpace(preset.Provider))
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(preset.Provider))
+        _isLoadingProviderUi = true;
+        try
         {
-            return;
+            var existing = _settingsService.GetApiKeyInfo(preset.Provider);
+            ProviderNameBox.Text = preset.Provider;
+            EndpointBox.Text = preset.Endpoint ?? string.Empty;
+            ApiKeyBox.Text = existing?.Key ?? string.Empty;
+            _currentModelCandidates.Clear();
+            if (existing is not null)
+            {
+                _currentModelCandidates.AddRange(existing.Models.Select(CloneModel));
+            }
+
+            if (_currentModelCandidates.All(model => !string.Equals(model.Id, preset.ModelId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _currentModelCandidates.Add(new ProviderModel { Id = preset.ModelId, IsEnabled = true });
+            }
+
+            RenderModels(existing?.ModelId ?? preset.ModelId);
+        }
+        finally
+        {
+            _isLoadingProviderUi = false;
         }
 
-        var existing = _settingsService.GetApiKeyInfo(preset.Provider);
-        ProviderNameBox.Text = preset.Provider;
-        EndpointBox.Text = preset.Endpoint ?? string.Empty;
-        ApiKeyBox.Text = existing?.Key ?? string.Empty;
-        _currentModelCandidates.Clear();
-        if (existing is not null)
-        {
-            _currentModelCandidates.AddRange(existing.Models.Select(CloneModel));
-        }
-
-        if (_currentModelCandidates.All(m => !string.Equals(m.Id, preset.ModelId, StringComparison.OrdinalIgnoreCase)))
-        {
-            _currentModelCandidates.Add(new ProviderModel { Id = preset.ModelId, IsEnabled = true });
-        }
-
-        RenderModels(existing?.ModelId ?? preset.ModelId);
+        MarkProviderDirty();
     }
 
     private void AddManualModel()
@@ -546,7 +1273,7 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        if (_currentModelCandidates.All(m => !string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase)))
+        if (_currentModelCandidates.All(model => !string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase)))
         {
             _currentModelCandidates.Add(new ProviderModel
             {
@@ -555,123 +1282,215 @@ public partial class ConfigWindow : Window
                 LastSeenAt = DateTimeOffset.UtcNow
             });
         }
+        else
+        {
+            var existing = _currentModelCandidates.First(model => string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase));
+            existing.IsEnabled = true;
+        }
 
         ManualModelBox.Text = string.Empty;
         RenderModels(modelId);
+        MarkProviderDirty();
     }
 
     private void RenderModels(string? selectedModel)
     {
-        ModelsPanel.Children.Clear();
-        DefaultModelBox.SelectedItem = null;
-        DefaultModelBox.SelectedIndex = -1;
-        DefaultModelBox.Items.Clear();
-
-        foreach (var model in _currentModelCandidates.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase))
+        var previousLoadingState = _isLoadingProviderUi;
+        _isLoadingProviderUi = true;
+        try
         {
-            // 启用复选框：控制模型是否在默认模型列表中可用
-            var enableCheckBox = new CheckBox
+            ModelsPanel.Children.Clear();
+            foreach (var model in _currentModelCandidates.OrderBy(model => model.Id, StringComparer.OrdinalIgnoreCase).ToList())
             {
-                Content = string.IsNullOrWhiteSpace(model.OwnedBy) ? model.Id : $"{model.Id}  ({model.OwnedBy})",
-                Tag = model.Id,
-                IsChecked = model.IsEnabled,
-                Foreground = AemiUi.Brush(AemiUi.Ghost),
-                Padding = new Thickness(6, 4),
-                Margin = new Thickness(0, 0, 0, 2)
-            };
+                var enableCheckBox = new CheckBox
+                {
+                    Content = string.IsNullOrWhiteSpace(model.OwnedBy) ? model.Id : $"{model.Id}  ({model.OwnedBy})",
+                    IsChecked = model.IsEnabled,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                AutomationProperties.SetName(enableCheckBox, $"启用模型 {model.Id}");
 
-            // 视觉复选框：手动标记该模型是否支持图片输入（null 默认勾选，多数现代模型支持视觉）
-            var visionCheckBox = new CheckBox
-            {
-                Content = "视觉",
-                Tag = "vision:" + model.Id,
-                IsChecked = model.SupportsImageInput ?? true,
-                Foreground = AemiUi.Brush(AemiUi.Ghost),
-                Padding = new Thickness(6, 4),
-                Margin = new Thickness(12, 0, 0, 2)
-            };
-            ToolTip.SetTip(visionCheckBox, "勾选表示该模型支持图片输入，图片会以 ImageContent 直接发送；取消勾选则触发 vision_analyze 工具调用");
+                var visionCheckBox = new CheckBox
+                {
+                    Content = "视觉",
+                    IsChecked = model.SupportsImageInput ?? true,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0)
+                };
+                AutomationProperties.SetName(visionCheckBox, $"模型 {model.Id} 支持图片输入");
+                ToolTip.SetTip(visionCheckBox, "勾选表示模型支持图片输入；取消后会改用视觉分析工具。");
 
-            var row = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Children = { enableCheckBox, visionCheckBox }
-            };
-            ModelsPanel.Children.Add(row);
+                var removeButton = new Button
+                {
+                    Content = "移除",
+                    Classes = { "danger" },
+                    MinWidth = 68,
+                    Margin = new Thickness(10, 0, 0, 0)
+                };
+                AutomationProperties.SetName(removeButton, $"从配置中移除模型 {model.Id}");
 
-            var item = new ComboBoxItem
+                void UpdateEnabledState()
+                {
+                    model.IsEnabled = enableCheckBox.IsChecked == true;
+                    RefreshDefaultModelOptions(GetSelectedDefaultModel());
+                    MarkProviderDirty();
+                }
+
+                enableCheckBox.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == ToggleButton.IsCheckedProperty)
+                    {
+                        UpdateEnabledState();
+                    }
+                };
+                visionCheckBox.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == ToggleButton.IsCheckedProperty)
+                    {
+                        model.SupportsImageInput = visionCheckBox.IsChecked == true;
+                        MarkProviderDirty();
+                    }
+                };
+                removeButton.Click += (_, _) =>
+                {
+                    _currentModelCandidates.Remove(model);
+                    RenderModels(null);
+                    MarkProviderDirty();
+                };
+
+                var row = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+                    MinHeight = 40
+                };
+                Grid.SetColumn(enableCheckBox, 0);
+                Grid.SetColumn(visionCheckBox, 1);
+                Grid.SetColumn(removeButton, 2);
+                row.Children.Add(enableCheckBox);
+                row.Children.Add(visionCheckBox);
+                row.Children.Add(removeButton);
+                ModelsPanel.Children.Add(row);
+            }
+
+            RefreshDefaultModelOptions(selectedModel);
+        }
+        finally
+        {
+            _isLoadingProviderUi = previousLoadingState;
+        }
+    }
+
+    private void RefreshDefaultModelOptions(string? selectedModel)
+    {
+        var previousLoadingState = _isLoadingProviderUi;
+        _isLoadingProviderUi = true;
+        try
+        {
+            var fallback = _currentModelCandidates.FirstOrDefault(model => model.IsEnabled)?.Id;
+            DefaultModelBox.Items.Clear();
+            foreach (var model in _currentModelCandidates.Where(model => model.IsEnabled).OrderBy(model => model.Id, StringComparer.OrdinalIgnoreCase))
             {
-                Content = model.Id,
-                Tag = model.Id
-            };
-            DefaultModelBox.Items.Add(item);
-            if (string.Equals(model.Id, selectedModel, StringComparison.OrdinalIgnoreCase))
+                var item = new ComboBoxItem { Content = model.Id, Tag = model.Id };
+                DefaultModelBox.Items.Add(item);
+                if (string.Equals(model.Id, selectedModel, StringComparison.OrdinalIgnoreCase))
+                {
+                    DefaultModelBox.SelectedItem = item;
+                }
+            }
+
+            if (DefaultModelBox.SelectedItem is null && !string.IsNullOrWhiteSpace(fallback))
             {
-                DefaultModelBox.SelectedItem = item;
+                DefaultModelBox.SelectedItem = DefaultModelBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => string.Equals(item.Tag as string, fallback, StringComparison.OrdinalIgnoreCase));
             }
         }
-
-        if (DefaultModelBox.SelectedItem is null && DefaultModelBox.Items.Count > 0)
+        finally
         {
-            DefaultModelBox.SelectedIndex = 0;
+            _isLoadingProviderUi = previousLoadingState;
+        }
+
+        if (DefaultModelBox.SelectedItem is not null)
+        {
+            ClearFieldError(DefaultModelBox, DefaultModelErrorText);
         }
     }
 
     private string GetSelectedDefaultModel()
     {
-        if (DefaultModelBox.SelectedItem is ComboBoxItem { Tag: string model })
+        return DefaultModelBox.SelectedItem is ComboBoxItem { Tag: string model }
+            ? model
+            : _currentModelCandidates.FirstOrDefault(candidate => candidate.IsEnabled)?.Id ?? string.Empty;
+    }
+
+    private IEnumerable<ProviderModel> CollectModels(string _)
+    {
+        return _currentModelCandidates
+            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+            .Select(CloneModel)
+            .GroupBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last());
+    }
+
+    private void MarkProviderDirty()
+    {
+        if (_isLoadingProviderUi || !_isInitialized || _providerBaseline is null)
         {
-            return model;
+            return;
         }
 
-        return _currentModelCandidates.FirstOrDefault(m => m.IsEnabled)?.Id ?? string.Empty;
+        UpdateProviderDirtyFromSnapshot();
     }
 
-    private IEnumerable<ProviderModel> CollectModels(string defaultModel)
+    private void CaptureProviderBaseline()
     {
-        // 每个模型行是横向 StackPanel，内含启用复选框（Tag = model.Id）与视觉复选框（Tag = "vision:" + model.Id）
-        var rowCheckBoxes = ModelsPanel.Children
-            .OfType<StackPanel>()
-            .SelectMany(sp => sp.Children.OfType<CheckBox>())
-            .ToList();
-
-        var enabledIds = rowCheckBoxes
-            .Where(c => c.IsChecked == true && c.Tag is string id && !id.StartsWith("vision:", StringComparison.OrdinalIgnoreCase))
-            .Select(c => (string)c.Tag!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        // 收集视觉复选框状态：Tag 形如 "vision:{modelId}"，勾选 = true（支持视觉），未勾选 = false
-        var visionStates = rowCheckBoxes
-            .Where(c => c.Tag is string id && id.StartsWith("vision:", StringComparison.OrdinalIgnoreCase))
-            .Select(c => new { Id = ((string)c.Tag!).Substring("vision:".Length), Checked = c.IsChecked ?? true })
-            .ToDictionary(x => x.Id, x => x.Checked, StringComparer.OrdinalIgnoreCase);
-
-        // 注意：不再强制将 defaultModel 加入 enabledIds。
-        // 默认模型的启用/禁用状态完全由用户在 UI 中的勾选决定。
-
-        return _currentModelCandidates
-            .Where(m => !string.IsNullOrWhiteSpace(m.Id))
-            .Select(m =>
-            {
-                var clone = CloneModel(m);
-                clone.IsEnabled = enabledIds.Contains(clone.Id);
-                // 根据视觉复选框状态设置 SupportsImageInput；未在 UI 中出现的模型保持 null（下游默认 true）
-                if (visionStates.TryGetValue(clone.Id, out var supportsVision))
-                {
-                    clone.SupportsImageInput = supportsVision;
-                }
-                return clone;
-            })
-            .Concat(enabledIds
-                .Where(id => _currentModelCandidates.All(m => !string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase)))
-                .Select(id => new ProviderModel { Id = id, IsEnabled = true, LastSeenAt = DateTimeOffset.UtcNow }))
-            .GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.Last());
+        _providerBaseline = CreateProviderSnapshot();
+        SetProviderDirty(false);
     }
 
-    private void UseProvider(string provider)
+    private void UpdateProviderDirtyFromSnapshot()
     {
+        SetProviderDirty(_providerBaseline is not null && _providerBaseline != CreateProviderSnapshot());
+    }
+
+    private ProviderFormSnapshot CreateProviderSnapshot()
+    {
+        var models = string.Join("\n", _currentModelCandidates
+            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+            .OrderBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(model => string.Join("\u001F",
+                model.Id.Trim().ToLowerInvariant(),
+                model.OwnedBy?.Trim() ?? string.Empty,
+                model.IsEnabled,
+                model.LastSeenAt?.ToUniversalTime().ToString("O") ?? string.Empty,
+                model.ContextLength?.ToString() ?? string.Empty,
+                model.SupportsImageInput?.ToString() ?? string.Empty,
+                model.SupportsVideoInput?.ToString() ?? string.Empty,
+                model.SupportsReasoning?.ToString() ?? string.Empty)));
+
+        return new ProviderFormSnapshot(
+            SettingsService.NormalizeProviderName(_editingProviderName ?? string.Empty),
+            SettingsService.NormalizeProviderName(ProviderNameBox.Text ?? string.Empty),
+            ApiKeyBox.Text?.Trim() ?? string.Empty,
+            EndpointBox.Text?.Trim() ?? string.Empty,
+            GetSelectedDefaultModel().Trim(),
+            models);
+    }
+
+    private void SetProviderDirty(bool isDirty)
+    {
+        _providerFormDirty = isDirty;
+        ProviderDirtyText.IsVisible = isDirty;
+        CancelProviderButton.IsEnabled = isDirty && !_isProviderBusy;
+    }
+
+    private async Task UseProviderAsync(string provider)
+    {
+        if (!await ConfirmDiscardProviderChangesAsync())
+        {
+            return;
+        }
+
         if (!_settingsService.SwitchCurrentProvider(provider))
         {
             ShowError("切换失败：未找到该提供商。");
@@ -693,7 +1512,7 @@ public partial class ConfigWindow : Window
 
     private async Task DeleteProviderAsync(string provider)
     {
-        if (!await ConfirmAsync("删除提供商", $"确定删除 {provider} 吗？"))
+        if (!await DialogService.ConfirmAsync(this, "删除提供商", $"确定删除 {provider} 吗？此操作会同时移除保存的模型与连接信息。", "删除提供商"))
         {
             return;
         }
@@ -706,7 +1525,11 @@ public partial class ConfigWindow : Window
 
         var ready = TryReloadChatServiceFromSettings(out var error);
         RefreshProviderCards();
-        LoadProviderIntoForm(_settingsService.Current.CurrentProvider);
+        if (string.Equals(_editingProviderName, SettingsService.NormalizeProviderName(provider), StringComparison.OrdinalIgnoreCase))
+        {
+            LoadProviderIntoForm(_settingsService.Current.CurrentProvider);
+        }
+
         if (ready)
         {
             ShowSuccess($"已删除 {provider}。");
@@ -719,70 +1542,122 @@ public partial class ConfigWindow : Window
 
     private async Task RefreshMemoryListAsync()
     {
-        MemoryListBox.Items.Clear();
+        _memoryEntries.Clear();
         _selectedMemoryEntryId = null;
+        DeleteMemoryButton.IsEnabled = false;
+        MemoryDetailScopeText.Text = "尚未选择";
+        MemoryDetailText.Text = "从左侧选择一条记忆。";
         MemoryStatusText.Text = "正在从 Mem0 读取记忆……";
 
         try
         {
-            // 列出全局用户记忆 + 当前会话记忆
             var sessionId = _currentSessionIdProvider?.Invoke();
             var client = await GetMem0ClientAsync();
             if (client is null)
             {
-                MemoryStatusText.Text = "Mem0 未启用（请在下方安装依赖并配置 Provider）。";
+                RenderMemoryEntries();
+                MemoryStatusText.Text = "Mem0 未启用。请先安装依赖并配置可用的 Provider。";
                 return;
             }
 
             var globalTask = client.GetAllAsync(Mem0Scope.GlobalUser, topK: 100);
-            Task<System.Text.Json.JsonElement> sessionTask;
-            if (sessionId is null)
-            {
-                sessionTask = Task.FromResult<System.Text.Json.JsonElement>(default);
-            }
-            else
-            {
-                sessionTask = client.GetAllAsync(Mem0Scope.ForSession(sessionId), topK: 100);
-            }
+            Task<System.Text.Json.JsonElement> sessionTask = string.IsNullOrWhiteSpace(sessionId)
+                ? Task.FromResult(default(System.Text.Json.JsonElement))
+                : client.GetAllAsync(Mem0Scope.ForSession(sessionId), topK: 100);
 
             await Task.WhenAll(globalTask, sessionTask);
-
-            AddMem0ItemsToBox(globalTask.Result, "全局");
-            if (sessionId is not null)
+            AddMem0Entries(globalTask.Result, "全局");
+            if (!string.IsNullOrWhiteSpace(sessionId))
             {
-                AddMem0ItemsToBox(sessionTask.Result, "会话");
+                AddMem0Entries(sessionTask.Result, "会话");
             }
 
-            MemoryStatusText.Text = MemoryListBox.Items.Count == 0
-                ? "暂无长期记忆。"
-                : $"共 {MemoryListBox.Items.Count} 条长期记忆（Mem0）。";
+            RenderMemoryEntries();
         }
         catch (Exception ex)
         {
             AppLogger.Error("memory", "ConfigWindow 读取记忆失败", ex);
+            RenderMemoryEntries();
             MemoryStatusText.Text = "读取记忆失败：" + ex.Message;
         }
     }
 
-    private void AddMem0ItemsToBox(System.Text.Json.JsonElement resp, string scopeLabel)
+    private void AddMem0Entries(System.Text.Json.JsonElement response, string scopeLabel)
     {
-        if (resp.ValueKind != System.Text.Json.JsonValueKind.Object) return;
-        if (!resp.TryGetProperty("results", out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array) return;
-
-        foreach (var item in arr.EnumerateArray())
+        if (response.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !response.TryGetProperty("results", out var results) ||
+            results.ValueKind != System.Text.Json.JsonValueKind.Array)
         {
-            if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
-            var id = item.TryGetProperty("id", out var idEl) && idEl.ValueKind == System.Text.Json.JsonValueKind.String ? idEl.GetString() : null;
-            var text = item.TryGetProperty("memory", out var memEl) && memEl.ValueKind == System.Text.Json.JsonValueKind.String ? memEl.GetString() : null;
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(text)) continue;
-
-            var preview = text!.Length <= 42 ? text : text[..42] + "...";
-            MemoryListBox.Items.Add(new ListBoxItem
-            {
-                Content = $"{scopeLabel}：{preview}",
-                Tag = $"{id}||{text}"
-            });
+            return;
         }
+
+        foreach (var item in results.EnumerateArray())
+        {
+            if (item.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = item.TryGetProperty("id", out var idElement) && idElement.ValueKind == System.Text.Json.JsonValueKind.String
+                ? idElement.GetString()
+                : null;
+            var text = item.TryGetProperty("memory", out var memoryElement) && memoryElement.ValueKind == System.Text.Json.JsonValueKind.String
+                ? memoryElement.GetString()
+                : null;
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(text))
+            {
+                _memoryEntries.Add(new MemoryEntry(id, text, scopeLabel));
+            }
+        }
+    }
+
+    private void RenderMemoryEntries()
+    {
+        var query = MemorySearchBox.Text?.Trim() ?? string.Empty;
+        var scope = (MemoryScopeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "all";
+        var filtered = _memoryEntries
+            .Where(entry => scope == "all" || string.Equals(entry.ScopeLabel, scope, StringComparison.OrdinalIgnoreCase))
+            .Where(entry => string.IsNullOrWhiteSpace(query) || entry.Text.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        MemoryListBox.Items.Clear();
+        foreach (var entry in filtered)
+        {
+            var preview = entry.Text.Length <= 72 ? entry.Text : entry.Text[..72] + "…";
+            var content = new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = entry.ScopeLabel,
+                        Classes = { "muted" },
+                        FontSize = 11,
+                        FontWeight = FontWeight.SemiBold
+                    },
+                    new TextBlock
+                    {
+                        Text = preview,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = AemiUi.Brush(AemiUi.Ghost)
+                    }
+                }
+            };
+            var item = new ListBoxItem { Content = content, Tag = entry };
+            AutomationProperties.SetName(item, $"{entry.ScopeLabel}记忆：{preview}");
+            MemoryListBox.Items.Add(item);
+        }
+
+        MemoryStatusText.Text = _memoryEntries.Count == 0
+            ? "暂无长期记忆。"
+            : filtered.Count == _memoryEntries.Count
+                ? $"共 {_memoryEntries.Count} 条长期记忆。"
+                : $"显示 {filtered.Count} / {_memoryEntries.Count} 条长期记忆。";
+        _selectedMemoryEntryId = null;
+        DeleteMemoryButton.IsEnabled = false;
+        MemoryDetailScopeText.Text = "尚未选择";
+        MemoryDetailText.Text = filtered.Count == 0 ? "没有符合当前筛选条件的记忆。" : "从左侧选择一条记忆。";
     }
 
     private async Task<Mem0Client?> GetMem0ClientAsync()
@@ -804,12 +1679,19 @@ public partial class ConfigWindow : Window
 
     private void OnMemorySelectionChanged()
     {
-        // 选中一条记忆时记录其 id，供删除使用（编辑功能已按需求移除）
-        if (MemoryListBox.SelectedItem is ListBoxItem { Tag: string tag })
+        if (MemoryListBox.SelectedItem is ListBoxItem { Tag: MemoryEntry entry })
         {
-            var parts = tag.Split("||", 2);
-            _selectedMemoryEntryId = parts.Length == 2 ? parts[0] : null;
+            _selectedMemoryEntryId = entry.Id;
+            MemoryDetailScopeText.Text = $"{entry.ScopeLabel}记忆 · ID {entry.Id}";
+            MemoryDetailText.Text = entry.Text;
+            DeleteMemoryButton.IsEnabled = true;
+            return;
         }
+
+        _selectedMemoryEntryId = null;
+        DeleteMemoryButton.IsEnabled = false;
+        MemoryDetailScopeText.Text = "尚未选择";
+        MemoryDetailText.Text = "从左侧选择一条记忆。";
     }
 
     private async Task DeleteSelectedMemoryAsync()
@@ -821,7 +1703,7 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        if (!await ConfirmAsync("删除记忆", "确定删除选中的长期记忆吗？"))
+        if (!await DialogService.ConfirmAsync(this, "删除记忆", "确定删除选中的长期记忆吗？", "删除记忆"))
         {
             return;
         }
@@ -854,7 +1736,7 @@ public partial class ConfigWindow : Window
             return;
         }
 
-        if (!await ConfirmAsync("清空当前会话记忆", "确定清空当前会话的长期记忆吗？"))
+        if (!await DialogService.ConfirmAsync(this, "清空当前会话记忆", "确定清空当前会话的长期记忆吗？", "清空记忆"))
         {
             return;
         }
@@ -880,7 +1762,7 @@ public partial class ConfigWindow : Window
 
     private async Task ClearAllMemoryAsync()
     {
-        if (!await ConfirmAsync("清空全部记忆", "确定清空全部长期记忆吗？这个操作不能恢复。"))
+        if (!await DialogService.ConfirmAsync(this, "清空全部记忆", "确定清空全部长期记忆吗？这个操作不能恢复。", "清空全部"))
         {
             return;
         }
@@ -907,42 +1789,30 @@ public partial class ConfigWindow : Window
     // ===== 视觉模型提供商选择（与对话 Provider 打通） =====
 
     /// <summary>填充视觉模型提供商下拉：含「复用当前对话提供商」+ 所有已配置 Provider。</summary>
-    private void PopulateVisionProviderBox()
+    private void PopulateVisionProviderBox(string? preferredProvider = null)
     {
+        var providerToSelect = preferredProvider ?? (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
         VisionProviderBox.Items.Clear();
-        // 第一项：复用当前对话提供商
         var reuseItem = new ComboBoxItem { Content = "复用当前对话提供商", Tag = null as string };
         VisionProviderBox.Items.Add(reuseItem);
 
-        var providers = _settingsService.ListProviders();
-        ComboBoxItem? selected = reuseItem;
-        foreach (var p in providers)
+        ComboBoxItem selected = reuseItem;
+        foreach (var provider in _settingsService.ListProviders())
         {
-            var item = new ComboBoxItem { Content = p, Tag = p };
+            var item = new ComboBoxItem { Content = provider, Tag = provider };
             VisionProviderBox.Items.Add(item);
-            if (string.Equals(p, _settingsService.Current.VisionProvider, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(provider, providerToSelect, StringComparison.OrdinalIgnoreCase))
             {
                 selected = item;
             }
         }
+
         VisionProviderBox.SelectedItem = selected;
-
-        PopulateVisionModelBox();
-        VisionProviderBox.SelectionChanged += (_, _) => PopulateVisionModelBox();
-
-        // 若已有保存的视觉模型，回填
-        var savedModel = _settingsService.Current.VisionModel;
-        if (!string.IsNullOrWhiteSpace(savedModel))
-        {
-            VisionModelBox.Text = savedModel;
-        }
-
-        // 视觉 Key 不回填明文（安全），留空表示复用提供商 Key
     }
 
-    /// <summary>根据当前选中的视觉提供商，填充其已获取的模型列表（便于选择支持图片的模型）。</summary>
-    private void PopulateVisionModelBox()
+    private void PopulateVisionModelBox(string? preferredModel = null)
     {
+        var modelToSelect = preferredModel ?? VisionModelBox.Text?.Trim();
         VisionModelBox.Items.Clear();
         var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
         if (string.IsNullOrWhiteSpace(provider))
@@ -950,74 +1820,171 @@ public partial class ConfigWindow : Window
             provider = _settingsService.Current.CurrentProvider;
         }
 
-        foreach (var m in _settingsService.GetProviderModels(provider, enabledOnly: true))
+        var enabledModels = _settingsService.GetProviderModels(provider, enabledOnly: true);
+        foreach (var model in enabledModels)
         {
-            VisionModelBox.Items.Add(new ComboBoxItem { Content = m.Id, Tag = m.Id });
+            VisionModelBox.Items.Add(new ComboBoxItem { Content = model.Id, Tag = model.Id });
+        }
+
+        if (!string.IsNullOrWhiteSpace(modelToSelect))
+        {
+            VisionModelBox.Text = modelToSelect;
+            VisionModelBox.SelectedItem = VisionModelBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag as string, modelToSelect, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            var defaultModel = _settingsService.GetApiKeyInfo(provider)?.ModelId ?? enabledModels.FirstOrDefault()?.Id;
+            VisionModelBox.Text = defaultModel ?? string.Empty;
+            VisionModelBox.SelectedItem = VisionModelBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag as string, defaultModel, StringComparison.OrdinalIgnoreCase));
         }
     }
 
-    /// <summary>
-    /// 当 Provider/Model 配置变更时，刷新视觉模型下拉框，并尽量保留用户当前选择。
-    /// 通过 Dispatcher.UIThread.Post 切到 UI 线程执行，避免后台线程操作控件。
-    /// </summary>
-    private void OnProvidersChangedRefreshVision()
+    private void LoadComputerControlFromSettings()
     {
-        Dispatcher.UIThread.Post(() =>
+        _isLoadingComputerControlUi = true;
+        try
         {
-            // 记录当前选择
-            var prevProviderTag = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
-            var prevModel = VisionModelBox.Text?.Trim();
-
-            // 重新填充
-            PopulateVisionProviderBox();
-
-            // 尝试恢复 Provider 选择
-            if (prevProviderTag is not null)
+            ComputerControlBackendBox.SelectedIndex = _settingsService.Current.ComputerControlBackend?.ToLowerInvariant() switch
             {
-                for (int i = 0; i < VisionProviderBox.Items.Count; i++)
-                {
-                    if (VisionProviderBox.Items[i] is ComboBoxItem item &&
-                        string.Equals(item.Tag as string, prevProviderTag, StringComparison.OrdinalIgnoreCase))
-                    {
-                        VisionProviderBox.SelectedIndex = i;
-                        break;
-                    }
-                }
-            }
+                "uia" => 1,
+                "ufo" => 2,
+                _ => 0
+            };
+            UfoPythonBox.Text = _settingsService.Current.UfoPythonPath ?? string.Empty;
+            PopulateVisionProviderBox(_settingsService.Current.VisionProvider);
+            PopulateVisionModelBox(_settingsService.Current.VisionModel);
+            ClearFieldError(VisionModelBox, VisionModelErrorText);
+            ComputerControlStatusText.Text = "保存后新的电脑控制任务会使用此配置。";
+        }
+        finally
+        {
+            _isLoadingComputerControlUi = false;
+        }
 
-            // PopulateVisionProviderBox 内部会调用 PopulateVisionModelBox，模型列表已刷新
-            // 尝试恢复 Model 选择（若新列表中仍存在）
-            if (!string.IsNullOrWhiteSpace(prevModel))
-            {
-                foreach (var item in VisionModelBox.Items)
-                {
-                    if (item is ComboBoxItem cbItem &&
-                        string.Equals(cbItem.Tag as string, prevModel, StringComparison.OrdinalIgnoreCase))
-                    {
-                        VisionModelBox.Text = prevModel;
-                        break;
-                    }
-                }
-            }
-        });
+        CaptureComputerControlBaseline();
+    }
+
+    private bool SaveComputerControlSettings()
+    {
+        var model = VisionModelBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            SetFieldError(VisionModelBox, VisionModelErrorText, "视觉模型不能为空。请先选择已启用模型。");
+            ComputerControlStatusText.Text = "请补全必填字段。";
+            VisionModelBox.Focus();
+            return false;
+        }
+
+        var backend = (ComputerControlBackendBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
+        var ufoPython = UfoPythonBox.Text?.Trim();
+        if (backend == "ufo" && string.IsNullOrWhiteSpace(ufoPython))
+        {
+            ComputerControlStatusText.Text = "选择 UFO 后端时必须填写 Python 解释器路径。";
+            UfoPythonBox.Focus();
+            return false;
+        }
+
+        try
+        {
+            _settingsService.Current.ComputerControlBackend = backend;
+            _settingsService.Current.UfoPythonPath = string.IsNullOrWhiteSpace(ufoPython) ? null : ufoPython;
+            SaveVisionProviderSelection();
+            _settingsService.Save();
+            ClearFieldError(VisionModelBox, VisionModelErrorText);
+            SetComputerControlDirty(false);
+            ComputerControlStatusText.Text = "电脑控制配置已保存。";
+            CaptureComputerControlBaseline();
+            ShowSuccess("电脑控制配置已保存。");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("config", "save computer control settings failed", ex);
+            ComputerControlStatusText.Text = "保存失败：" + ex.Message;
+            ShowError("电脑控制配置保存失败：" + ex.Message);
+            return false;
+        }
     }
 
     private void SaveVisionProviderSelection()
     {
         var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
         _settingsService.Current.VisionProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
-
         var model = VisionModelBox.Text?.Trim();
         _settingsService.Current.VisionModel = string.IsNullOrWhiteSpace(model) ? null : model;
-
-        // VisionApiKey 复用所选提供商已保存的 Key，无需独立输入
-        // 选择新提供商时，旧的独立端点/Key 若为空则自动用该提供商
-        if (string.IsNullOrWhiteSpace(_settingsService.Current.VisionEndpoint))
-        {
-            _settingsService.Current.VisionEndpoint = null;
-        }
+        _settingsService.Current.VisionEndpoint = string.IsNullOrWhiteSpace(_settingsService.Current.VisionEndpoint)
+            ? null
+            : _settingsService.Current.VisionEndpoint;
     }
 
+    private void MarkComputerControlDirty()
+    {
+        if (_isLoadingComputerControlUi || _isLoadingSettingsUi || !_isInitialized || _computerControlBaseline is null)
+        {
+            return;
+        }
+
+        ClearFieldError(VisionModelBox, VisionModelErrorText);
+        UpdateComputerControlDirtyFromSnapshot();
+    }
+
+    private void CaptureComputerControlBaseline()
+    {
+        _computerControlBaseline = CreateComputerControlSnapshot();
+        SetComputerControlDirty(false);
+    }
+
+    private void UpdateComputerControlDirtyFromSnapshot()
+    {
+        SetComputerControlDirty(_computerControlBaseline is not null && _computerControlBaseline != CreateComputerControlSnapshot());
+    }
+
+    private ComputerControlFormSnapshot CreateComputerControlSnapshot()
+    {
+        var backend = (ComputerControlBackendBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
+        var provider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        return new ComputerControlFormSnapshot(
+            backend.Trim().ToLowerInvariant(),
+            SettingsService.NormalizeProviderName(provider ?? string.Empty),
+            VisionModelBox.Text?.Trim() ?? string.Empty,
+            UfoPythonBox.Text?.Trim() ?? string.Empty);
+    }
+
+    private void SetComputerControlDirty(bool isDirty)
+    {
+        _computerControlDirty = isDirty;
+        ComputerControlDirtyText.IsVisible = isDirty;
+        CancelComputerControlButton.IsEnabled = isDirty;
+    }
+
+    private void OnProvidersChangedRefreshVision()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var previousProvider = (VisionProviderBox.SelectedItem as ComboBoxItem)?.Tag as string;
+            var previousModel = VisionModelBox.Text?.Trim();
+            _isLoadingComputerControlUi = true;
+            try
+            {
+                PopulateVisionProviderBox(previousProvider);
+                PopulateVisionModelBox(previousModel);
+            }
+            finally
+            {
+                _isLoadingComputerControlUi = false;
+            }
+
+            UpdateComputerControlDirtyFromSnapshot();
+            if (_computerControlDirty)
+            {
+                ComputerControlStatusText.Text = "AI 服务列表已更新；当前未保存选择已保留。";
+            }
+        });
+    }
 
     private async Task RefreshMem0StatusAsync()
     {
@@ -1122,91 +2089,38 @@ public partial class ConfigWindow : Window
 
     private async Task CheckUfoAsync()
     {
+        UfoCheckButton.IsEnabled = false;
+        UfoCheckButton.Content = "正在检测…";
         try
         {
             UfoStatusText.Text = "正在检测 UFO…";
             var python = UfoPythonBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(python))
             {
-                python = _settingsService.Current.UfoPythonPath;
-            }
-
-            if (string.IsNullOrWhiteSpace(python))
-            {
-                UfoStatusText.Text = "UFO 状态：未填写 UFO Python 路径。请先克隆 UFO 并 pip install -r requirements.txt，再把其 venv 的 python.exe 路径填入上方。";
+                UfoStatusText.Text = "UFO 状态：请先填写 UFO Python 路径。";
+                UfoPythonBox.Focus();
                 return;
             }
 
             var installer = new UfoInstaller();
             var status = await installer.CheckAsync(python);
             UfoStatusText.Text = status.Installed
-                ? $"UFO 状态：可用。\nPython：{status.PythonPath}\n桥接脚本：{status.RunnerScript}\n（源码目录：{status.UfoSourceDir}）"
+                ? $"UFO 状态：可用。\nPython：{status.PythonPath}\n桥接脚本：{status.RunnerScript}\n源码目录：{status.UfoSourceDir}\n检测结果尚未保存。"
                 : $"UFO 状态：不可用。{status.Error}";
-
-            // 检测通过则记住 python 路径
-            if (status.Installed && !string.IsNullOrWhiteSpace(python))
+            if (status.Installed)
             {
-                _settingsService.Current.UfoPythonPath = python;
-                _settingsService.Save();
+                MarkComputerControlDirty();
             }
         }
         catch (Exception ex)
         {
             UfoStatusText.Text = "UFO 检测失败：" + ex.Message;
         }
-    }
-
-    private async Task<bool> ConfirmAsync(string title, string message)
-    {
-        var dialog = new Window
+        finally
         {
-            Title = title,
-            Width = 380,            Height = 230,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-            Background = AemiUi.Brush(AemiUi.Void)
-        };
-
-        var result = false;
-        var okButton = new Button { Content = "确认", Classes = { "danger" }, MinWidth = 86 };
-        var cancelButton = new Button { Content = "取消", Classes = { "ghost" }, MinWidth = 86 };
-        okButton.Content = "确认";
-        cancelButton.Content = "取消";
-        okButton.Click += (_, _) =>
-        {
-            result = true;
-            dialog.Close();
-        };
-        cancelButton.Click += (_, _) => dialog.Close();
-
-        dialog.Content = new Border
-        {
-            Padding = new Thickness(18),
-            CornerRadius = new CornerRadius(18),
-            Background = AemiUi.Brush(AemiUi.Glass),
-            BorderBrush = AemiUi.Brush(AemiUi.Star),
-            BorderThickness = new Thickness(1),
-            Child = new StackPanel
-            {
-                Spacing = 16,
-                Children =
-                {
-                    AemiUi.Badge("危险档案确认 · Manual Gate", "star"),
-                    new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, Foreground = AemiUi.Brush(AemiUi.Ghost) },
-                    new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Classes = { "subtle" } },
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Spacing = 10,
-                        Children = { cancelButton, okButton }
-                    }
-                }
-            }
-        };
-
-        await dialog.ShowDialog(this);
-        return result;
+            UfoCheckButton.IsEnabled = true;
+            UfoCheckButton.Content = "检测 UFO 是否可用";
+        }
     }
 
     private bool TryReloadChatServiceFromSettings(out string? error)
@@ -1277,7 +2191,6 @@ public partial class ConfigWindow : Window
     private void InitMcpPanel()
     {
         // 注入真实 store 与 reload 回调（面板 XAML 声明时用的是空默认 store）
-        _mcpServerStore = new McpServerStore();
         McpPanel.Configure(_mcpServerStore, TriggerMcpBackgroundReload);
 
         McpPanel.DownloadDependenciesRequested += async (_, _) => await DownloadMcpDependenciesAsync();
@@ -1307,15 +2220,20 @@ public partial class ConfigWindow : Window
     /// <summary>切换到 MCP 配置 Tab（供聊天栏快速跳转调用）。</summary>
     public void SelectMcpTab()
     {
-        if (SettingsTabControl.Items.Count > 3)
+        _ = SelectMcpPageAsync();
+    }
+
+    private async Task SelectMcpPageAsync()
+    {
+        if (!await TryChangeSettingsPageAsync(SettingsPageId.Mcp))
         {
-            // Tab 顺序：0=提供商配置, 1=记忆管理, 2=电脑控制, 3=MCP配置
-            SettingsTabControl.SelectedIndex = 3;
+            return;
         }
 
-        _ = RefreshMcpOverallStatusAsync();
+        await RefreshMcpOverallStatusAsync();
         McpPanel.RefreshServerList();
     }
+
     private async Task RefreshMcpDependencyStatusAsync()
     {
         try
@@ -1446,7 +2364,8 @@ public partial class ConfigWindow : Window
         AvatarCustomRadio.IsChecked = true;
         _settingsService.Current.CustomUserAvatarPath = output;
         SetPreviewImage(AvatarPreviewImage, output);
-        await SaveNonProviderSettingsAsync();
+        SaveAvatarSelection();
+        AppearanceStatusText.Text = "自定义头像已保存。";
     }
 
     private async Task PickChatBackgroundAsync()
@@ -1468,7 +2387,8 @@ public partial class ConfigWindow : Window
         var output = CropToChatBackground(files[0].TryGetLocalPath() ?? files[0].Name);
         _settingsService.Current.ChatBackgroundImagePath = output;
         SetPreviewImage(ChatBackgroundPreviewImage, output);
-        await SaveNonProviderSettingsAsync();
+        _settingsService.Save();
+        AppearanceStatusText.Text = "聊天背景已保存。";
     }
 
     private static void SetPreviewImage(Avalonia.Controls.Image target, string? path)
@@ -1582,7 +2502,7 @@ public partial class ConfigWindow : Window
             crop = new Rectangle(0, y, image.Width, targetHeight);
         }
 
-        image.Mutate(ctx => ctx.Crop(crop).Resize(1400, 1050));
+        image.Mutate(ctx => ctx.Crop(crop).Resize(1280, 960));
         image.SaveAsPng(output);
         return output;
     }
@@ -1623,24 +2543,17 @@ public partial class ConfigWindow : Window
 
     private void ShowSuccess(string message)
     {
-        new WindowNotificationManager(this)
-        {
-            Position = NotificationPosition.TopRight,
-            MaxItems = 1
-        }.Show(new Notification("成功", message, NotificationType.Success));
+        _notificationManager.Show(new Notification("成功", message, NotificationType.Success));
     }
 
     private void ShowError(string message)
     {
-        new WindowNotificationManager(this)
-        {
-            Position = NotificationPosition.TopRight,
-            MaxItems = 1
-        }.Show(new Notification("失败", message, NotificationType.Error));
+        _notificationManager.Show(new Notification("失败", message, NotificationType.Error));
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _simpleSettingsSaveTimer.Stop();
         _flickerTimer.Stop();
         _particleEffect.Stop();
         base.OnClosed(e);

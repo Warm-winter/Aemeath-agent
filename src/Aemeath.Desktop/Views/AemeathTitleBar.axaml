@@ -1,0 +1,128 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aemeath.Desktop.Views.AemeathTitleBar"
+             x:Name="Root"
+             x:CompileBindings="False"
+             Height="46"
+             HorizontalAlignment="Stretch">
+  <UserControl.Styles>
+    <Style Selector="Button.titlebar">
+      <Setter Property="Width" Value="46"/>
+      <Setter Property="Height" Value="45"/>
+      <Setter Property="MinWidth" Value="46"/>
+      <Setter Property="MinHeight" Value="45"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="BorderThickness" Value="0,0,1,0"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderSoftBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource AemiIconBrush}"/>
+    </Style>
+    <Style Selector="Button.titlebar:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AemiPinkSoftBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+    </Style>
+    <Style Selector="Button.titlebar:pressed">
+      <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+    </Style>
+    <Style Selector="Button.titlebar:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AemiFocusBrush}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+    </Style>
+    <Style Selector="Button.titlebar.close">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource AemiErrorBrush}"/>
+    </Style>
+    <Style Selector="Button.titlebar.close:pointerover">
+      <Setter Property="Background" Value="{DynamicResource AemiErrorSurfaceBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AemiErrorBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border Background="{DynamicResource AemiPanelSoftBrush}"
+          BorderBrush="{DynamicResource AemiBorderBrush}"
+          BorderThickness="0,0,0,1">
+    <Grid ColumnDefinitions="*,Auto">
+      <Grid x:Name="DragRegion"
+            Grid.Column="0"
+            Background="Transparent"
+            Cursor="Arrow"
+            PointerPressed="DragRegion_OnPointerPressed">
+        <StackPanel Orientation="Horizontal"
+                    VerticalAlignment="Center"
+                    Margin="14,0,10,0"
+                    Spacing="10">
+          <Border Width="28"
+                  Height="28"
+                  CornerRadius="9"
+                  Background="{DynamicResource AemiPinkSoftBrush}"
+                  BorderBrush="{DynamicResource AemiBorderStrongBrush}"
+                  BorderThickness="1"
+                  IsHitTestVisible="False">
+            <Viewbox Width="17" Height="17" Stretch="Uniform">
+              <Canvas Width="24" Height="24">
+                <Path Fill="{DynamicResource AemiPinkDeepBrush}"
+                      Data="M12,1.8 L14.4,8.8 L21.4,11.2 L14.4,13.6 L12,20.6 L9.6,13.6 L2.6,11.2 L9.6,8.8 Z"/>
+                <Ellipse Width="4.2" Height="4.2" Canvas.Left="9.9" Canvas.Top="9.1"
+                         Fill="{DynamicResource AemiPanelBrush}"/>
+              </Canvas>
+            </Viewbox>
+          </Border>
+          <TextBlock Text="{Binding Title, ElementName=Root}"
+                     VerticalAlignment="Center"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource AemiTextPrimaryBrush}"
+                     TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+      </Grid>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button x:Name="MinimizeButton"
+                Classes="titlebar"
+                IsVisible="{Binding ShowMinimizeButton, ElementName=Root}"
+                Click="MinimizeButton_OnClick"
+                AutomationProperties.Name="&#x6700;&#x5C0F;&#x5316;&#x7A97;&#x53E3;"
+                ToolTip.Tip="&#x6700;&#x5C0F;&#x5316;">
+          <Path Width="14" Height="14"
+                Stretch="Uniform"
+                Stroke="{DynamicResource AemiIconBrush}"
+                StrokeThickness="1.7"
+                Data="M2,8 L14,8"/>
+        </Button>
+        <Button x:Name="MaximizeButton"
+                Classes="titlebar"
+                IsVisible="{Binding ShowMaximizeButton, ElementName=Root}"
+                Click="MaximizeButton_OnClick"
+                AutomationProperties.Name="&#x6700;&#x5927;&#x5316;&#x7A97;&#x53E3;"
+                ToolTip.Tip="&#x6700;&#x5927;&#x5316;&#x6216;&#x8FD8;&#x539F;">
+          <Grid Width="16" Height="16">
+            <Path x:Name="MaximizeGlyph"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource AemiIconBrush}"
+                  StrokeThickness="1.5"
+                  Data="M2.5,2.5 L13.5,2.5 L13.5,13.5 L2.5,13.5 Z"/>
+            <Path x:Name="RestoreGlyph"
+                  IsVisible="False"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource AemiIconBrush}"
+                  StrokeThickness="1.5"
+                  Data="M5,2.5 L13.5,2.5 L13.5,11 M2.5,5 L11,5 L11,13.5 L2.5,13.5 Z"/>
+          </Grid>
+        </Button>
+        <Button x:Name="CloseButton"
+                Classes="titlebar close"
+                IsVisible="{Binding ShowCloseButton, ElementName=Root}"
+                Click="CloseButton_OnClick"
+                AutomationProperties.Name="&#x5173;&#x95ED;&#x7A97;&#x53E3;"
+                ToolTip.Tip="&#x5173;&#x95ED;">
+          <Path Width="14" Height="14"
+                Stretch="Uniform"
+                Stroke="{DynamicResource AemiErrorBrush}"
+                StrokeThickness="1.7"
+                Data="M3,3 L13,13 M13,3 L3,13"/>
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

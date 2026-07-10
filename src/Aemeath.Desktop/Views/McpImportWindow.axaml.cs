@@ -1,21 +1,25 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
-using System;
 
 namespace Aemeath.Desktop.Views;
 
-/// <summary>
-/// MCP JSON 导入弹窗：粘贴标准 mcpServers 配置后确认导入。
-/// 导入实际逻辑由父面板通过 ImportRequested 事件处理。
-/// </summary>
 public partial class McpImportWindow : Window
 {
-    /// <summary>用户点「导入」时触发，参数为粘贴的 JSON 文本。</summary>
     public event EventHandler<string>? ImportRequested;
 
     public McpImportWindow()
     {
         InitializeComponent();
+        Opened += (_, _) => JsonBox.Focus();
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                Close();
+            }
+        };
     }
 
     private void CancelButton_Click(object? sender, RoutedEventArgs e) => Close();
@@ -26,12 +30,14 @@ public partial class McpImportWindow : Window
         if (string.IsNullOrWhiteSpace(json))
         {
             SetError("请粘贴 JSON 配置。");
+            JsonBox.Focus();
             return;
         }
+
+        ErrorText.Text = string.Empty;
         ImportRequested?.Invoke(this, json);
     }
 
-    /// <summary>由父面板在导入失败时调用，显示错误并保持窗口打开。</summary>
     public void SetError(string message)
     {
         ErrorText.Text = message;

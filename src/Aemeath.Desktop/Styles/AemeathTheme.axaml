@@ -1,7 +1,7 @@
-﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Ameath reference UI: soft pink desktop-pet panels with light cards and subtle pixel accents. -->
+    <!-- Aemeath reference UI: soft pink desktop-pet panels with light cards and subtle pixel accents. -->
     <FontFamily x:Key="AemiPixelFontFamily">avares://Aemeath-agent/Assets/fonts/zpix.ttf#Zpix</FontFamily>
     <FontFamily x:Key="AemiBodyFontFamily">Microsoft YaHei UI, Segoe UI, Inter</FontFamily>
 
@@ -31,12 +31,29 @@
 
     <Color x:Key="AemiTextPrimaryColor">#4A2A3A</Color>
     <Color x:Key="AemiTextSecondaryColor">#7A5564</Color>
-    <Color x:Key="AemiTextMutedColor">#9A7482</Color>
-    <Color x:Key="AemiTextFaintColor">#B58B9C</Color>
-    <Color x:Key="AemiSuccessColor">#3CA66B</Color>
-    <Color x:Key="AemiWarningColor">#C47A12</Color>
-    <Color x:Key="AemiErrorColor">#D94A62</Color>
+    <Color x:Key="AemiTextMutedColor">#80606E</Color>
+    <Color x:Key="AemiTextFaintColor">#80606E</Color>
+    <Color x:Key="AemiPrimaryForegroundColor">#07101E</Color>
+    <Color x:Key="AemiIconColor">#7A3156</Color>
+    <Color x:Key="AemiSuccessColor">#1F7A4D</Color>
+    <Color x:Key="AemiWarningColor">#8A5300</Color>
+    <Color x:Key="AemiErrorColor">#B52E49</Color>
     <Color x:Key="AemiDisabledColor">#C9A7B5</Color>
+    <Color x:Key="AemiSuccessSurfaceColor">#E9FFF2</Color>
+    <Color x:Key="AemiSuccessBorderColor">#9BD4B2</Color>
+    <Color x:Key="AemiWarningSurfaceColor">#FFF3E0</Color>
+    <Color x:Key="AemiWarningBorderColor">#E5C08D</Color>
+    <Color x:Key="AemiErrorSurfaceColor">#FFEAF0</Color>
+    <Color x:Key="AemiErrorBorderColor">#E8A8B6</Color>
+    <Color x:Key="AemiInfoSurfaceColor">#EEF3FF</Color>
+    <Color x:Key="AemiInfoForegroundColor">#3A5A8C</Color>
+    <Color x:Key="AemiCodeSurfaceColor">#FFF4F8</Color>
+    <Color x:Key="AemiAmbientPinkStartColor">#55FFD1E5</Color>
+    <Color x:Key="AemiAmbientPinkEndColor">#00FFD1E5</Color>
+    <Color x:Key="AemiAmbientHaloStartColor">#55FFE1EE</Color>
+    <Color x:Key="AemiAmbientHaloEndColor">#00FFE1EE</Color>
+    <Color x:Key="AemiAmbientWhiteStartColor">#33FFFFFF</Color>
+    <Color x:Key="AemiAmbientWhiteEndColor">#00FFFFFF</Color>
 
     <Color x:Key="AemiInkColor">#4A2A3A</Color>
     <Color x:Key="AemiBorderStrongColor">#FF69B4</Color>
@@ -84,7 +101,18 @@
     <SolidColorBrush x:Key="AemiWarningBrush" Color="{StaticResource AemiWarningColor}"/>
     <SolidColorBrush x:Key="AemiErrorBrush" Color="{StaticResource AemiErrorColor}"/>
     <SolidColorBrush x:Key="AemiDisabledBrush" Color="{StaticResource AemiDisabledColor}"/>
+    <SolidColorBrush x:Key="AemiSuccessSurfaceBrush" Color="{StaticResource AemiSuccessSurfaceColor}"/>
+    <SolidColorBrush x:Key="AemiSuccessBorderBrush" Color="{StaticResource AemiSuccessBorderColor}"/>
+    <SolidColorBrush x:Key="AemiWarningSurfaceBrush" Color="{StaticResource AemiWarningSurfaceColor}"/>
+    <SolidColorBrush x:Key="AemiWarningBorderBrush" Color="{StaticResource AemiWarningBorderColor}"/>
+    <SolidColorBrush x:Key="AemiErrorSurfaceBrush" Color="{StaticResource AemiErrorSurfaceColor}"/>
+    <SolidColorBrush x:Key="AemiErrorBorderBrush" Color="{StaticResource AemiErrorBorderColor}"/>
+    <SolidColorBrush x:Key="AemiInfoSurfaceBrush" Color="{StaticResource AemiInfoSurfaceColor}"/>
+    <SolidColorBrush x:Key="AemiInfoForegroundBrush" Color="{StaticResource AemiInfoForegroundColor}"/>
+    <SolidColorBrush x:Key="AemiCodeSurfaceBrush" Color="{StaticResource AemiCodeSurfaceColor}"/>
 
+    <SolidColorBrush x:Key="AemiPrimaryForegroundBrush" Color="{StaticResource AemiPrimaryForegroundColor}"/>
+    <SolidColorBrush x:Key="AemiIconBrush" Color="{StaticResource AemiIconColor}"/>
     <SolidColorBrush x:Key="AemiInkBrush" Color="{StaticResource AemiInkColor}"/>
     <SolidColorBrush x:Key="AemiBlueBrush" Color="{StaticResource AemiBlueColor}"/>
     <SolidColorBrush x:Key="AemiBlueLightBrush" Color="{StaticResource AemiBlueLightColor}"/>
@@ -95,25 +123,43 @@
     <SolidColorBrush x:Key="AemiBackgroundDarkBrush" Color="{StaticResource AemiBackgroundDarkColor}"/>
     <SolidColorBrush x:Key="AemiSurfaceBrush" Color="{StaticResource AemiSurfaceColor}"/>
 
+    <RadialGradientBrush x:Key="AemiWindowBackgroundBrush" Center="51%,36%" GradientOrigin="51%,36%" RadiusX="1.04" RadiusY="1.04">
+        <GradientStop Color="{StaticResource AemiVoidColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiPanelSoftColor}" Offset="0.59"/>
+        <GradientStop Color="{StaticResource AemiVoidDeepColor}" Offset="1.0"/>
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="AemiGlowPinkBrush" Center="12%,20%" RadiusX="58%" RadiusY="58%">
+        <GradientStop Color="{StaticResource AemiAmbientPinkStartColor}" Offset="0"/>
+        <GradientStop Color="{StaticResource AemiAmbientPinkEndColor}" Offset="1"/>
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="AemiGlowHaloBrush" Center="89%,70%" RadiusX="62%" RadiusY="62%">
+        <GradientStop Color="{StaticResource AemiAmbientHaloStartColor}" Offset="0"/>
+        <GradientStop Color="{StaticResource AemiAmbientHaloEndColor}" Offset="1"/>
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="AemiGlowWhiteBrush" Center="51%,5%" RadiusX="74%" RadiusY="42%">
+        <GradientStop Color="{StaticResource AemiAmbientWhiteStartColor}" Offset="0"/>
+        <GradientStop Color="{StaticResource AemiAmbientWhiteEndColor}" Offset="1"/>
+    </RadialGradientBrush>
+
     <LinearGradientBrush x:Key="AemiPrimaryGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
         <GradientStop Color="{StaticResource AemiPinkColor}" Offset="0.0"/>
         <GradientStop Color="{StaticResource AemiPinkDeepColor}" Offset="1.0"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="AemiArchiveGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
-        <GradientStop Color="#FFFFFF" Offset="0.0"/>
-        <GradientStop Color="#FFF8FB" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiPanelColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiPanelSoftColor}" Offset="1.0"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="AemiGhostGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
-        <GradientStop Color="#FFFFF8FB" Offset="0.0"/>
-        <GradientStop Color="#FFFFE1EE" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiPanelSoftColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiHaloSoftColor}" Offset="1.0"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="AemiPinkGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
         <GradientStop Color="{StaticResource AemiPinkColor}" Offset="0.0"/>
         <GradientStop Color="{StaticResource AemiPinkDeepColor}" Offset="1.0"/>
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="AemiBlueGradientBrush" StartPoint="0%,0%" EndPoint="100%,0%">
-        <GradientStop Color="#FFE1EE" Offset="0.0"/>
-        <GradientStop Color="#FFD1E5" Offset="1.0"/>
+        <GradientStop Color="{StaticResource AemiHaloSoftColor}" Offset="0.0"/>
+        <GradientStop Color="{StaticResource AemiPinkSoftColor}" Offset="1.0"/>
     </LinearGradientBrush>
 
     <x:Double x:Key="AemiSpace1">4</x:Double>

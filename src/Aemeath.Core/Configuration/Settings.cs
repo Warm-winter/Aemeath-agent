@@ -18,6 +18,8 @@ public class Settings
     public bool EnablePetEdgeSnap { get; set; } = true;
     public string SystemPrompt { get; set; } = "Default";
     public bool EnableParticleEffects { get; set; } = true;
+    public bool ReduceMotion { get; set; } = false;
+    public bool IsChatSidebarOpen { get; set; } = true;
     public bool EnableVoiceInput { get; set; } = false;
     public string? AzureSpeechKey { get; set; }
     public string? AzureSpeechRegion { get; set; }

@@ -1,4 +1,5 @@
-﻿using Avalonia;
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -22,13 +23,26 @@ internal static class AemiUi
     public const string HaloSoft = "#FFE1EE";
     public const string Pink = "#FF69B4";
     public const string PinkSoft = "#FFD1E5";
+    public const string PinkDeep = "#E84D8E";
+    public const string Icon = "#7A3156";
     public const string Star = "#FF69B4";
     public const string Ghost = "#4A2A3A";
+    public const string PrimaryForeground = "#07101E";
     public const string TextSecondary = "#7A5564";
-    public const string TextMuted = "#9A7482";
-    public const string TextFaint = "#B58B9C";
-    public const string Success = "#3CA66B";
-    public const string Error = "#D94A62";
+    public const string TextMuted = "#80606E";
+    public const string TextFaint = "#80606E";
+    public const string Success = "#1F7A4D";
+    public const string Warning = "#8A5300";
+    public const string Error = "#B52E49";
+    public const string SuccessSurface = "#E9FFF2";
+    public const string SuccessBorder = "#9BD4B2";
+    public const string WarningSurface = "#FFF3E0";
+    public const string WarningBorder = "#E5C08D";
+    public const string ErrorSurface = "#FFEAF0";
+    public const string ErrorBorder = "#E8A8B6";
+    public const string InfoSurface = "#EEF3FF";
+    public const string InfoForeground = "#3A5A8C";
+    public const string CodeSurface = "#FFF4F8";
 
     public static SolidColorBrush Brush(string color) => new(Color.Parse(color));
 
@@ -69,11 +83,11 @@ internal static class AemiUi
     {
         var (foreground, background, border) = tone switch
         {
-            "star" => (Pink, "#FFE1EE", "#F3C2D4"),
-            "pink" => (Pink, "#FFD1E5", "#F3C2D4"),
-            "danger" => (Error, "#FFEAF0", "#F0A9B8"),
-            "success" => (Success, "#E9FFF2", "#A7E5BE"),
-            _ => (TextSecondary, "#FFE1EE", "#F3C2D4")
+            "star" => (Icon, HaloSoft, Border),
+            "pink" => (Icon, PinkSoft, Border),
+            "danger" => (Error, ErrorSurface, ErrorBorder),
+            "success" => (Success, SuccessSurface, SuccessBorder),
+            _ => (TextSecondary, HaloSoft, Border)
         };
 
         return new Border
@@ -111,17 +125,20 @@ internal static class AemiUi
         var button = new Button
         {
             Content = new Image { Source = icon, Width = 16, Height = 16, Stretch = Stretch.Uniform },
-            Width = 38,
-            Height = 34,
-            MinWidth = 38,
-            MinHeight = 34,
+            Width = 42,
+            Height = 42,
+            MinWidth = 42,
+            MinHeight = 42,
             Padding = new Thickness(6, 4),
-            Background = Brush("#FFE1EE"),
+            Background = Brush(HaloSoft),
             Foreground = Brush(Ghost),
-            BorderBrush = Brush("#F3C2D4"),
+            BorderBrush = Brush(Border),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(9)
         };
+        button.Classes.Add("ghost");
+        button.Classes.Add("icon");
+        AutomationProperties.SetName(button, tooltip);
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -138,7 +155,7 @@ internal static class AemiUi
         return (status ?? string.Empty).ToLowerInvariant() switch
         {
             "ok" or "connected" or "success" => Success,       // 绿
-            "connecting" or "running" or "loading" => "#E8B84D", // 黄
+            "connecting" or "running" or "loading" => Warning, // 黄
             "error" or "failed" or "fail" => Error,            // 红
             _ => TextFaint                                        // 灰（disabled/未加载）
         };
@@ -168,13 +185,13 @@ internal static class AemiUi
     }
 
     /// <summary>用路径数据构造一个白色矢量图标（坐标已按视图盒缩放）。</summary>
-    public static DrawingImage CreateVectorIcon(string pathData, double width, double height)
+    public static DrawingImage CreateVectorIcon(string pathData, double width, double height, string color = Icon)
     {
         var geometry = StreamGeometry.Parse(pathData);
         var drawing = new GeometryDrawing
         {
             Geometry = geometry,
-            Brush = new SolidColorBrush(Colors.White)
+            Brush = Brush(color)
         };
         var group = new DrawingGroup();
         group.Children.Add(drawing);
@@ -188,7 +205,7 @@ internal static class AemiUi
         var drawing = new GeometryDrawing
         {
             Geometry = geometry,
-            Brush = new SolidColorBrush(Colors.White)
+            Brush = Brush(Icon)
         };
         var transform = new TransformGroup();
         transform.Children.Add(new ScaleTransform(width / 8000d, -height / 8000d));

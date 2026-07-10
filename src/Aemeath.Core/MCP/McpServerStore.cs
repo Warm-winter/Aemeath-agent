@@ -12,8 +12,13 @@ public sealed class McpServerStore
     private readonly SemaphoreSlim _fileLock = new(1, 1);
 
     public McpServerStore()
+        : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath"))
     {
-        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aemeath");
+    }
+
+    internal McpServerStore(string appDataDirectory)
+    {
+        var appData = Path.GetFullPath(appDataDirectory);
         _serversDirectory = Path.Combine(appData, "mcp", "servers");
         _legacyConfigPath = Path.Combine(appData, "mcp_servers.json");
         _migrationMarkerPath = Path.Combine(appData, "mcp", ".migrated");

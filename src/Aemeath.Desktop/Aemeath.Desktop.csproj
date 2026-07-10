@@ -19,6 +19,7 @@
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="Markdig" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,6 +30,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Styles\AemeathTheme.axaml" />
+    <AvaloniaResource Include="Styles\AemeathControls.axaml" />
     <AvaloniaResource Include="..\..\assets\static\app.ico">
       <Link>Assets\static\app.ico</Link>
     </AvaloniaResource>
@@ -48,9 +50,6 @@
       <Link>Assets\static\chat-background-default.png</Link>
     </AvaloniaResource>
     <AvaloniaResource Include="..\..\assets\static\icons\*.svg">
-      <Link>Assets\static\icons\%(Filename)%(Extension)</Link>
-    </AvaloniaResource>
-    <AvaloniaResource Include="..\..\assets\static\icons\*.png">
       <Link>Assets\static\icons\%(Filename)%(Extension)</Link>
     </AvaloniaResource>
   </ItemGroup>

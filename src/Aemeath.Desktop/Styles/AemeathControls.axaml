@@ -1,0 +1,219 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:behaviors="clr-namespace:Aemeath.Desktop.Behaviors"
+        xmlns:effects="clr-namespace:Aemeath.Pet.Effects;assembly=Aemeath.Pet">
+
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
+    <Setter Property="Background" Value="{DynamicResource AemiBackgroundBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+  </Style>
+
+  <Style Selector="effects|ParticleField">
+    <Setter Property="ParticleBrush1" Value="{DynamicResource AemiHaloBrush}"/>
+    <Setter Property="ParticleBrush2" Value="{DynamicResource AemiPinkSoftBrush}"/>
+    <Setter Property="ParticleBrush3" Value="{DynamicResource AemiPinkDeepBrush}"/>
+    <Setter Property="ParticleBrush4" Value="{DynamicResource AemiPinkBrush}"/>
+    <Setter Property="ParticleBrush5" Value="{DynamicResource AemiPanelBrush}"/>
+    <Setter Property="ConnectionBrush" Value="{DynamicResource AemiPinkSoftBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.pixel">
+    <Setter Property="FontFamily" Value="{DynamicResource AemiPixelFontFamily}"/>
+  </Style>
+  <Style Selector="TextBlock.subtle">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextSecondaryBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextMutedBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.faint">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextFaintBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.heading">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="FontSize" Value="20"/>
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
+    <Setter Property="Background" Value="{DynamicResource AemiPinkBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiPrimaryForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="13,8"/>
+    <Setter Property="MinHeight" Value="38"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="RenderTransform" Value="scale(1)"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.12"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.10"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AemiPinkDeepBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="RenderTransform" Value="scale(0.98)"/>
+  </Style>
+  <Style Selector="Button:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiFocusBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+  </Style>
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.52"/>
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource AemiPrimaryGradientBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiPrimaryForegroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkDeepBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiIconBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+  </Style>
+  <Style Selector="Button.ghost:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AemiPinkSoftBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiPinkBrush}"/>
+  </Style>
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{DynamicResource AemiErrorSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiErrorBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiErrorBorderBrush}"/>
+  </Style>
+  <Style Selector="Button.danger:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AemiPinkSoftBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiErrorBrush}"/>
+  </Style>
+  <Style Selector="Button.icon">
+    <Setter Property="MinWidth" Value="42"/>
+    <Setter Property="MinHeight" Value="42"/>
+    <Setter Property="Padding" Value="8"/>
+  </Style>
+
+  <Style Selector="TextBox, ComboBox, ListBox">
+    <Setter Property="Background" Value="{DynamicResource AemiPanelBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="TextBox, ComboBox">
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="MinHeight" Value="38"/>
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="CaretBrush" Value="{DynamicResource AemiFocusBrush}"/>
+    <Setter Property="behaviors:ImeFixBehavior.EnableImeCursorFix" Value="True"/>
+  </Style>
+  <Style Selector="TextBox:focus, ComboBox:focus">
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiFocusBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+  </Style>
+  <Style Selector="TextBox.invalid, ComboBox.invalid">
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiErrorBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="10,8"/>
+    <Setter Property="Margin" Value="0,0,0,6"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AemiPanelSoftBrush}"/>
+  </Style>
+  <Style Selector="ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource AemiPinkSoftBrush}"/>
+  </Style>
+  <Style Selector="ListBoxItem:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiFocusBrush}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+  </Style>
+
+  <Style Selector="CheckBox, RadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
+  </Style>
+  <Style Selector="CheckBox:focus-visible, RadioButton:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiFocusBrush}"/>
+  </Style>
+
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource AemiPanelBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="Padding" Value="14"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16"/>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.16"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.status">
+    <Setter Property="CornerRadius" Value="999"/>
+    <Setter Property="Padding" Value="10,5"/>
+    <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="Border.status.success">
+    <Setter Property="Background" Value="{DynamicResource AemiSuccessSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiSuccessBorderBrush}"/>
+  </Style>
+  <Style Selector="Border.status.warning">
+    <Setter Property="Background" Value="{DynamicResource AemiWarningSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiWarningBorderBrush}"/>
+  </Style>
+  <Style Selector="Border.status.error">
+    <Setter Property="Background" Value="{DynamicResource AemiErrorSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiErrorBorderBrush}"/>
+  </Style>
+
+  <Style Selector="ContextMenu">
+    <Setter Property="Background" Value="{DynamicResource AemiPanelBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AemiBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="FontFamily" Value="{DynamicResource AemiBodyFontFamily}"/>
+  </Style>
+  <Style Selector="MenuItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AemiHaloSoftBrush}"/>
+  </Style>
+  <Style Selector="HyperlinkButton">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiIconBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="CornerRadius" Value="0"/>
+  </Style>
+  <Style Selector="HyperlinkButton:pointerover">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource AemiTextPrimaryBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AemiPanelBrush}"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="Padding" Value="8,5"/>
+  </Style>
+</Styles>

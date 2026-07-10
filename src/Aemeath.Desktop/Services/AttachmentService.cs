@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text;
 using Aemeath.Core.AI;
 using Avalonia.Platform.Storage;
 
@@ -61,25 +60,9 @@ public sealed class AttachmentService
 
     public List<ChatAttachment> Snapshot() => _pending.ToList();
 
-    /// <summary>把用户输入与附件列表拼成一条可见消息文本。</summary>
+    /// <summary>Visible chat text remains the user's original input; attachments render separately.</summary>
     public static string BuildVisibleUserContent(string userInput, IReadOnlyList<ChatAttachment> attachments)
-    {
-        if (attachments.Count == 0)
-        {
-            return userInput;
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine(userInput);
-        sb.AppendLine();
-        sb.AppendLine("附件：");
-        foreach (var attachment in attachments)
-        {
-            sb.AppendLine($"- {attachment.Name} ({GetAttachmentKindLabel(attachment.Kind)}, {FormatBytes(attachment.SizeBytes)})");
-        }
-
-        return sb.ToString().TrimEnd();
-    }
+        => userInput;
 
     /// <summary>文件选择对话框的类型过滤器。</summary>
     public static IReadOnlyList<FilePickerFileType> BuildFileTypes(bool imagesOnly)

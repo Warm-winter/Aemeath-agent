@@ -1,4 +1,4 @@
-﻿# 第三方资源致谢
+# 第三方资源致谢
 
 ## aemeath-mini-codex-pet
 
@@ -43,6 +43,13 @@
 - 授权：MIT
 - 用途：为本项目的 `VisionPlugin`（让纯文本模型具备图片识别能力）提供实现思路与提示词工程参考。Aemeath 以 C# 重新实现了其 `vision_analyze` 工具的核心逻辑（调用 OpenAI 兼容视觉模型、`image_url` + base64 协议），未直接引入其源码。
 - 本仓库保留的声明文件：`assets/notices/hermes-agent-LICENSE.txt`
+
+## Markdig（Markdown 解析器）
+
+- 来源：https://github.com/xoofx/markdig
+- 授权：BSD 2-Clause
+- 用途：在聊天消息中解析 CommonMark/GFM Markdown；已禁用原始 HTML 执行和远程图片自动加载。
+- 本仓库保留的声明文件：`assets/notices/Markdig-LICENSE.txt`
 
 ## UFO（电脑控制能力参考）
 

@@ -4,15 +4,18 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using System.Collections.Concurrent;
 using AvaloniaImage = Avalonia.Controls.Image;
 
 namespace Aemeath.Pet.Services;
 
-public class GifAnimationService
+public sealed class GifAnimationService : IDisposable
 {
+    private const int MaxDecodedFrameSize = 256;
+
     private readonly AvaloniaImage _petImage;
-    private readonly ConcurrentDictionary<PetState, List<GifFrame>> _stateFrames;
+    private readonly ConcurrentDictionary<PetState, List<GifFrame>> _stateFrames = new();
     private DispatcherTimer? _animationTimer;
     private PetState _currentState = PetState.Idle;
     private int _currentFrameIndex;
@@ -23,63 +26,49 @@ public class GifAnimationService
     public GifAnimationService(AvaloniaImage petImage)
     {
         _petImage = petImage;
-        _stateFrames = new ConcurrentDictionary<PetState, List<GifFrame>>();
     }
 
-    public Task LoadGifAsync(string gifPath, PetState state)
+    public async Task LoadGifAsync(string gifPath, PetState state)
     {
-        // GIF 解码（ImageSharp）很吃 CPU，放后台线程；Avalonia Bitmap 必须在 UI 线程创建，
-        // 所以后台只解到 PNG 字节，再切回 UI 线程构造 Bitmap。避免启动时卡 UI 数秒。
-        return Task.Run(() =>
+        var decoded = await Task.Run(() => DecodeGif(gifPath));
+        if (decoded is null || decoded.Count == 0)
         {
-            List<(byte[] png, TimeSpan delay)> decoded;
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var frames = new List<GifFrame>(decoded.Count);
             try
             {
-                using Stream stream = gifPath.StartsWith("avares://", StringComparison.OrdinalIgnoreCase)
-                    ? AssetLoader.Open(new Uri(gifPath))
-                    : File.OpenRead(gifPath);
-
-                using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(stream);
-                decoded = new List<(byte[], TimeSpan)>(image.Frames.Count);
-                for (int i = 0; i < image.Frames.Count; i++)
+                foreach (var (png, delay) in decoded)
                 {
-                    using var frameImage = image.Frames.CloneFrame(i);
-                    using var ms = new MemoryStream();
-                    frameImage.SaveAsPng(ms);
-                    var delayCentiseconds = image.Frames[i].Metadata.GetGifMetadata().FrameDelay;
-                    var delay = TimeSpan.FromMilliseconds(Math.Max(20, delayCentiseconds <= 0 ? 100 : delayCentiseconds * 10));
-                    decoded.Add((ms.ToArray(), delay));
+                    using var stream = new MemoryStream(png);
+                    frames.Add(new GifFrame(new Bitmap(stream), delay));
+                }
+
+                if (frames.Count > 0)
+                {
+                    _stateFrames[state] = frames;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"加载 GIF 失败 {gifPath}: {ex.Message}");
-                return;
+                foreach (var frame in frames)
+                {
+                    frame.Bitmap.Dispose();
+                }
+                System.Diagnostics.Debug.WriteLine($"构造 GIF 帧失败 {gifPath}: {ex.Message}");
             }
-
-            // 切回 UI 线程构造 Bitmap（Avalonia 要求）
-            Dispatcher.UIThread.Post(() =>
-            {
-                try
-                {
-                    var frames = new List<GifFrame>(decoded.Count);
-                    foreach (var (png, delay) in decoded)
-                    {
-                        using var ms = new MemoryStream(png);
-                        frames.Add(new GifFrame(new Bitmap(ms), delay));
-                    }
-
-                    if (frames.Count > 0)
-                    {
-                        _stateFrames[state] = frames;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"构造 GIF 帧失败 {gifPath}: {ex.Message}");
-                }
-            });
         });
+    }
+
+    public void AliasState(PetState source, PetState target)
+    {
+        if (_stateFrames.TryGetValue(source, out var frames) && frames.Count > 0)
+        {
+            _stateFrames[target] = frames;
+        }
     }
 
     public void SetState(PetState state, bool restart = false)
@@ -89,18 +78,17 @@ public class GifAnimationService
             return;
         }
 
-        var isStateChanged = _currentState != state;
-        if (!restart && !isStateChanged && _petImage.Source is not null)
+        var stateChanged = _currentState != state;
+        if (!restart && !stateChanged && _petImage.Source is not null)
         {
             return;
         }
 
         _currentState = state;
-        if (restart || isStateChanged || _currentFrameIndex >= frames.Count)
+        if (restart || stateChanged || _currentFrameIndex >= frames.Count)
         {
             _currentFrameIndex = 0;
         }
-
         RenderCurrentFrame(frames);
     }
 
@@ -112,13 +100,7 @@ public class GifAnimationService
         }
 
         _isPlaying = true;
-        // DispatcherTimer 周期性触发——即使首帧尚未加载，tick 也会空转，
-        // 帧加载完成后自然开始动画。不会像 one-shot Timer 那样因首帧缺失而永久死亡。
-        _animationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(100)
-        };
-
+        _animationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _animationTimer.Tick += (_, _) => AdvanceFrame();
         _animationTimer.Start();
     }
@@ -133,15 +115,56 @@ public class GifAnimationService
     public void Dispose()
     {
         Stop();
+        var disposed = new HashSet<Bitmap>();
         foreach (var frames in _stateFrames.Values)
         {
             foreach (var frame in frames)
             {
-                frame.Bitmap.Dispose();
+                if (disposed.Add(frame.Bitmap))
+                {
+                    frame.Bitmap.Dispose();
+                }
             }
         }
-
         _stateFrames.Clear();
+        _petImage.Source = null;
+    }
+
+    private static List<(byte[] Png, TimeSpan Delay)>? DecodeGif(string gifPath)
+    {
+        try
+        {
+            using Stream stream = gifPath.StartsWith("avares://", StringComparison.OrdinalIgnoreCase)
+                ? AssetLoader.Open(new Uri(gifPath))
+                : File.OpenRead(gifPath);
+            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(stream);
+            var decoded = new List<(byte[], TimeSpan)>(image.Frames.Count);
+            for (var index = 0; index < image.Frames.Count; index++)
+            {
+                using var frameImage = image.Frames.CloneFrame(index);
+                if (frameImage.Width > MaxDecodedFrameSize || frameImage.Height > MaxDecodedFrameSize)
+                {
+                    var scale = Math.Min(
+                        MaxDecodedFrameSize / (double)frameImage.Width,
+                        MaxDecodedFrameSize / (double)frameImage.Height);
+                    frameImage.Mutate(context => context.Resize(
+                        Math.Max(1, (int)Math.Round(frameImage.Width * scale)),
+                        Math.Max(1, (int)Math.Round(frameImage.Height * scale))));
+                }
+
+                using var output = new MemoryStream();
+                frameImage.SaveAsPng(output);
+                var delayCentiseconds = image.Frames[index].Metadata.GetGifMetadata().FrameDelay;
+                var delay = TimeSpan.FromMilliseconds(Math.Max(20, delayCentiseconds <= 0 ? 100 : delayCentiseconds * 10));
+                decoded.Add((output.ToArray(), delay));
+            }
+            return decoded;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"加载 GIF 失败 {gifPath}: {ex.Message}");
+            return null;
+        }
     }
 
     private void AdvanceFrame()
@@ -157,11 +180,6 @@ public class GifAnimationService
 
     private void RenderCurrentFrame(List<GifFrame> frames)
     {
-        if (frames.Count == 0)
-        {
-            return;
-        }
-
         var frame = frames[Math.Clamp(_currentFrameIndex, 0, frames.Count - 1)];
         _petImage.Source = frame.Bitmap;
         if (_animationTimer is not null)

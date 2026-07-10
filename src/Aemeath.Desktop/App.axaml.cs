@@ -210,6 +210,10 @@ public partial class App : Application
                     _petWindow.SetActivityState(null);
                     _ = _petWindow.PlayTemporaryStateAsync(PetState.Failed, TimeSpan.FromSeconds(1.6), "信号异常，小爱需要再试一次。");
                     break;
+                case ChatActivityKind.Canceled:
+                    _petWindow.SetActivityState(null);
+                    _ = _petWindow.PlayTemporaryStateAsync(PetState.Waiting, TimeSpan.FromSeconds(1), "已经停下来了。");
+                    break;
                 default:
                     _petWindow.SetActivityState(null);
                     break;
@@ -243,6 +247,11 @@ public partial class App : Application
     }
 
     /// <summary>供聊天栏「打开 MCP 配置」跳转：打开/激活设置窗口并切到 MCP 配置 Tab。</summary>
+    public void OpenConfigFromUi()
+    {
+        OpenConfigWindow();
+    }
+
     public void OpenConfigAtMcpTab()
     {
         OpenConfigWindow();
@@ -265,6 +274,30 @@ public partial class App : Application
         {
             e.Cancel = true;
             window.Hide();
+        }
+    }
+
+    private void OnTrayOpenChatClick(object? sender, EventArgs e)
+    {
+        try
+        {
+            OpenChatWindow();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("tray", "failed to open chat from tray", ex);
+        }
+    }
+
+    private void OnTrayOpenConfigClick(object? sender, EventArgs e)
+    {
+        try
+        {
+            OpenConfigWindow();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("tray", "failed to open config from tray", ex);
         }
     }
 

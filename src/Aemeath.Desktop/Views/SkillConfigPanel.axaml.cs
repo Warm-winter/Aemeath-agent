@@ -1,31 +1,21 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using Aemeath.Core.Skills;
 using Aemeath.Desktop.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Aemeath.Desktop.Views;
 
-/// <summary>
-/// Skill 管理面板（左右分栏，复刻 MCP 面板设计）。
-/// 左侧 skill 列表（状态点 + 名称 + 来源徽章 + 启停），右侧选中 skill 详情。
-/// 内置 skill（aemeath）锁定：永远启用、不可删除/禁用（开关与删除按钮隐藏）。
-/// 用户 skill 可启用/禁用、删除、从文件夹导入。
-/// </summary>
 public partial class SkillConfigPanel : UserControl
 {
     private SkillService _skillService;
     private Action? _reloadChatService;
     private string? _selectedName;
+    private bool _isBusy;
+    private bool _suppressSelectionChange;
 
     public SkillConfigPanel() : this(new SkillService())
     {
@@ -35,12 +25,11 @@ public partial class SkillConfigPanel : UserControl
     {
         InitializeComponent();
         _skillService = skillService;
-        WireButtons();
+        WireEvents();
         RefreshSkillList();
         ShowEmptyHint();
     }
 
-    /// <summary>宿主窗口注入真实 SkillService 与 reload 回调。</summary>
     public void Configure(SkillService skillService, Action? reloadChatService)
     {
         _skillService = skillService;
@@ -48,151 +37,131 @@ public partial class SkillConfigPanel : UserControl
         RefreshSkillList();
     }
 
-    private void WireButtons()
+    private void WireEvents()
     {
-        ReloadButton.Click += (_, _) =>
-        {
-            _skillService.Reload();
-            _reloadChatService?.Invoke();
-            RefreshSkillList(_selectedName);
-            StatusText.Text = "Skill 已重新加载。";
-        };
+        ReloadButton.Click += (_, _) => ReloadSkills();
         AddButton.Click += async (_, _) => await ImportSkillAsync();
         ToggleEnabledButton.Click += (_, _) => ToggleSelected();
-        DeleteButton.Click += (_, _) => DeleteSelected();
+        DeleteButton.Click += async (_, _) => await DeleteSelectedAsync();
+        SkillListBox.SelectionChanged += (_, _) => OnSkillSelectionChanged();
+        SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
     }
 
-    /// <summary>刷新左侧 skill 列表与计数。</summary>
     public void RefreshSkillList(string? selectName = null)
     {
-        SkillCardsPanel.Children.Clear();
-        var skills = _skillService.Skills.OrderBy(s => s.Manifest.Name).ToList();
-
-        var enabledCount = skills.Count(s => s.Manifest.Enabled);
-        CountText.Text = $"已启用 {enabledCount} / 共 {skills.Count}";
-
-        foreach (var skill in skills)
+        var skills = _skillService.Skills.OrderBy(skill => skill.Manifest.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        _suppressSelectionChange = true;
+        try
         {
-            SkillCardsPanel.Children.Add(BuildSkillRow(skill, skill.Manifest.Name == selectName));
-        }
-
-        if (SkillCardsPanel.Children.Count == 0)
-        {
-            SkillCardsPanel.Children.Add(new TextBlock
+            SkillListBox.Items.Clear();
+            foreach (var skill in skills)
             {
-                Text = "还没有 skill。点右上「+ 导入」从文件夹导入一个 skill。",
-                Classes = { "muted" },
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(4, 8, 4, 0)
-            });
+                SkillListBox.Items.Add(BuildSkillItem(skill));
+            }
+
+            var enabledCount = skills.Count(skill => skill.Manifest.Enabled);
+            CountText.Text = $"已启用 {enabledCount} / 共 {skills.Count}";
+            if (skills.Count == 0)
+            {
+                SkillListBox.Items.Add(new ListBoxItem
+                {
+                    Content = new TextBlock
+                    {
+                        Text = "还没有用户 Skill。使用“导入”选择包含 SKILL.md 的文件夹。",
+                        Classes = { "muted" },
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    IsEnabled = false
+                });
+            }
+
+            var target = selectName ?? _selectedName;
+            SkillListBox.SelectedItem = string.IsNullOrWhiteSpace(target)
+                ? null
+                : SkillListBox.Items.OfType<ListBoxItem>()
+                    .FirstOrDefault(item => string.Equals(item.Tag as string, target, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _suppressSelectionChange = false;
         }
 
         if (!string.IsNullOrWhiteSpace(selectName))
         {
             LoadSkillIntoDetail(selectName);
         }
+        else if (_selectedName is not null && skills.All(skill => !string.Equals(skill.Manifest.Name, _selectedName, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedName = null;
+            ShowEmptyHint();
+        }
     }
 
-    /// <summary>构建 skill 行卡片。</summary>
-    private Border BuildSkillRow(SkillPackage skill, bool select)
+    private ListBoxItem BuildSkillItem(SkillPackage skill)
     {
-        var name = skill.Manifest.Name;
-        // 状态点颜色：已启用=绿，已停用=灰
         var statusColor = skill.Manifest.Enabled ? AemiUi.Success : AemiUi.TextFaint;
-
-        var dot = new Ellipse
+        var dot = new Border
         {
-            Width = 8,
-            Height = 8,
-            Fill = new SolidColorBrush(Avalonia.Media.Color.Parse(statusColor))
+            Width = 9,
+            Height = 9,
+            CornerRadius = new CornerRadius(5),
+            Background = AemiUi.Brush(statusColor),
+            VerticalAlignment = VerticalAlignment.Center
         };
-
-        var nameBlock = new TextBlock
-        {
-            Text = name,
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse("#4A2A3A")),
-            TextTrimming = TextTrimming.CharacterEllipsis
-        };
-
-        var sourceBadge = MakeBadge(skill.Manifest.IsBuiltin ? "内置" : "用户",
-            skill.Manifest.IsBuiltin ? "#FFE1EE" : "#E9F0FF",
-            skill.Manifest.IsBuiltin ? "#7A5564" : "#3A5A8C");
-
-        var enabledBadge = MakeBadge(skill.Manifest.Enabled ? "启用" : "停用",
-            skill.Manifest.Enabled ? "#E9FFF2" : "#FFE1EE",
-            skill.Manifest.Enabled ? "#3CA66B" : "#9A7482");
 
         var badges = new WrapPanel();
+        var sourceBadge = MakeBadge(
+            skill.Manifest.IsBuiltin ? "内置" : "用户",
+            skill.Manifest.IsBuiltin ? AemiUi.HaloSoft : AemiUi.InfoSurface,
+            skill.Manifest.IsBuiltin ? AemiUi.TextSecondary : AemiUi.InfoForeground);
         sourceBadge.Margin = new Thickness(0, 0, 6, 0);
         badges.Children.Add(sourceBadge);
-        badges.Children.Add(enabledBadge);
+        badges.Children.Add(MakeBadge(
+            skill.Manifest.Enabled ? "启用" : "停用",
+            skill.Manifest.Enabled ? AemiUi.SuccessSurface : AemiUi.HaloSoft,
+            skill.Manifest.Enabled ? AemiUi.Success : AemiUi.TextMuted));
 
-        var left = new StackPanel { Spacing = 4 };
-        left.Children.Add(nameBlock);
-        left.Children.Add(badges);
-
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*") };
-        var dotRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        dotRow.Children.Add(dot);
-        dotRow.Children.Add(left);
-        grid.Children.Add(dotRow);
-
-        var card = new Border
+        var text = new StackPanel
         {
-            CornerRadius = new CornerRadius(10),
-            BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse(select ? "#FF69B4" : "#F3C2D4")),
-            BorderThickness = new Thickness(select ? 2 : 1),
-            Background = new SolidColorBrush(Avalonia.Media.Color.Parse(select ? "#FFF0F6" : "#FFFFFF")),
-            Padding = new Thickness(10, 8),
-            Cursor = new Cursor(StandardCursorType.Hand),
-            Tag = name
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = skill.Manifest.Name,
+                    FontSize = 14,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = AemiUi.Brush(AemiUi.Ghost),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                },
+                badges
+            }
         };
-        card.Child = grid;
-        card.PointerPressed += (_, _) => LoadSkillIntoDetail(name);
-        return card;
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { dot, text }
+        };
+        var item = new ListBoxItem { Content = row, Tag = skill.Manifest.Name };
+        AutomationProperties.SetName(item, $"Skill {skill.Manifest.Name}，{(skill.Manifest.IsBuiltin ? "内置" : "用户")}，{(skill.Manifest.Enabled ? "已启用" : "已停用")}");
+        return item;
     }
 
-    private static Border MakeBadge(string text, string bg, string fg)
+    private void OnSkillSelectionChanged()
     {
-        var border = new Border
+        if (_suppressSelectionChange || SkillListBox.SelectedItem is not ListBoxItem { Tag: string name })
         {
-            CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(8, 2),
-            Background = new SolidColorBrush(Avalonia.Media.Color.Parse(bg)),
-            BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse("#F3C2D4")),
-            BorderThickness = new Thickness(1)
-        };
-        var tb = new TextBlock
-        {
-            Text = text,
-            FontSize = 11,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse(fg))
-        };
-        border.Child = tb;
-        return border;
-    }
-
-    /// <summary>更新已有徽章的文本与配色（徽章内含一个 TextBlock）。</summary>
-    private static void ApplyBadge(Border badge, TextBlock textBlock, string text, string bg, string fg)
-    {
-        textBlock.Text = text;
-        badge.Background = new SolidColorBrush(Avalonia.Media.Color.Parse(bg));
-        textBlock.Foreground = new SolidColorBrush(Avalonia.Media.Color.Parse(fg));
-    }
-
-    private void ShowEmptyHint()
-    {
-        EmptyHintPanel.IsVisible = true;
-        DetailPanel.IsVisible = false;
+            return;
+        }
+        LoadSkillIntoDetail(name);
     }
 
     private void LoadSkillIntoDetail(string name)
     {
-        var skill = _skillService.Skills.FirstOrDefault(s =>
-            string.Equals(s.Manifest.Name, name, StringComparison.OrdinalIgnoreCase));
+        var skill = _skillService.Skills.FirstOrDefault(candidate =>
+            string.Equals(candidate.Manifest.Name, name, StringComparison.OrdinalIgnoreCase));
         if (skill is null)
         {
             ShowEmptyHint();
@@ -201,137 +170,200 @@ public partial class SkillConfigPanel : UserControl
 
         _selectedName = skill.Manifest.Name;
         NameText.Text = skill.Manifest.Name;
-
-        // 来源徽章：重建内容与配色
-        ApplyBadge(SourceBadge, SourceText,
+        ApplyBadge(
+            SourceBadge,
+            SourceText,
             skill.Manifest.IsBuiltin ? "内置（随程序分发）" : "用户",
-            skill.Manifest.IsBuiltin ? "#FFE1EE" : "#E9F0FF",
-            skill.Manifest.IsBuiltin ? "#7A5564" : "#3A5A8C");
-
-        // 启用状态徽章
-        ApplyBadge(EnabledBadge, EnabledText,
+            skill.Manifest.IsBuiltin ? AemiUi.HaloSoft : AemiUi.InfoSurface,
+            skill.Manifest.IsBuiltin ? AemiUi.TextSecondary : AemiUi.InfoForeground);
+        ApplyBadge(
+            EnabledBadge,
+            EnabledText,
             skill.Manifest.Enabled ? "已启用" : "已停用",
-            skill.Manifest.Enabled ? "#E9FFF2" : "#FFE1EE",
-            skill.Manifest.Enabled ? "#3CA66B" : "#9A7482");
+            skill.Manifest.Enabled ? AemiUi.SuccessSurface : AemiUi.HaloSoft,
+            skill.Manifest.Enabled ? AemiUi.Success : AemiUi.TextMuted);
 
-        // 触发词
         TriggersText.Text = skill.Manifest.TriggerWords.Count > 0
             ? string.Join("、", skill.Manifest.TriggerWords)
             : "（未定义）";
-
-        // 简介
         DescText.Text = string.IsNullOrWhiteSpace(skill.Manifest.Description)
             ? "（未提供简介）"
             : skill.Manifest.Description;
 
-        // 能力
-        var caps = new List<string>();
-        if (!string.IsNullOrWhiteSpace(skill.PersonaPrompt)) caps.Add("人格定义（已注入系统提示词）");
-        if (skill.KnowledgeEntries.Count > 0) caps.Add($"知识库（{skill.KnowledgeEntries.Count} 条背景资料）");
-        CapabilitiesText.Text = caps.Count > 0 ? string.Join("；", caps) : "（无）";
+        var capabilities = new List<string>();
+        if (!string.IsNullOrWhiteSpace(skill.PersonaPrompt))
+        {
+            capabilities.Add("人格定义（已注入系统提示词）");
+        }
+        if (skill.KnowledgeEntries.Count > 0)
+        {
+            capabilities.Add($"知识库（{skill.KnowledgeEntries.Count} 条背景资料）");
+        }
+        CapabilitiesText.Text = capabilities.Count > 0 ? string.Join("；", capabilities) : "（无）";
 
-        // 目录
-        if (string.IsNullOrWhiteSpace(skill.Manifest.Directory))
-        {
-            DirectoryPanel.IsVisible = false;
-        }
-        else
-        {
-            DirectoryPanel.IsVisible = true;
-            DirectoryText.Text = skill.Manifest.Directory;
-        }
-
-        // 操作按钮：内置 skill 隐藏删除/停用
-        if (skill.Manifest.IsBuiltin)
-        {
-            ToggleEnabledButton.IsVisible = false;
-            DeleteButton.IsVisible = false;
-            NoteText.Text = "这是内置 skill，随程序分发，永远启用，不可删除或停用。";
-        }
-        else
-        {
-            ToggleEnabledButton.IsVisible = true;
-            DeleteButton.IsVisible = true;
-            ToggleEnabledButton.Content = skill.Manifest.Enabled ? "停用" : "启用";
-            NoteText.Text = "停用后该 skill 的人格与知识库将从 AI 移除；删除会同时移除磁盘文件。";
-        }
+        DirectoryPanel.IsVisible = !string.IsNullOrWhiteSpace(skill.Manifest.Directory);
+        DirectoryText.Text = skill.Manifest.Directory ?? string.Empty;
+        BuiltinLockPanel.IsVisible = skill.Manifest.IsBuiltin;
+        ToggleEnabledButton.IsVisible = !skill.Manifest.IsBuiltin;
+        DeleteButton.IsVisible = !skill.Manifest.IsBuiltin;
+        ToggleEnabledButton.Content = skill.Manifest.Enabled ? "停用" : "启用";
+        NoteText.Text = skill.Manifest.IsBuiltin
+            ? "这是爱弥斯的内置角色 Skill，更新程序时会随版本同步。"
+            : "停用会从 AI 上下文移除人格与知识；删除还会移除磁盘文件。";
 
         StatusText.Text = string.Empty;
         EmptyHintPanel.IsVisible = false;
         DetailPanel.IsVisible = true;
-        RefreshListHighlight(name);
     }
 
-    private void RefreshListHighlight(string? name)
+    private void ReloadSkills()
     {
-        foreach (var child in SkillCardsPanel.Children)
+        if (_isBusy)
         {
-            if (child is not Border b || b.Tag is not string cardName) continue;
-            var selected = name is not null && string.Equals(cardName, name, StringComparison.OrdinalIgnoreCase);
-            b.BorderBrush = new SolidColorBrush(Avalonia.Media.Color.Parse(selected ? "#FF69B4" : "#F3C2D4"));
-            b.BorderThickness = new Thickness(selected ? 2 : 1);
-            b.Background = new SolidColorBrush(Avalonia.Media.Color.Parse(selected ? "#FFF0F6" : "#FFFFFF"));
+            return;
+        }
+
+        SetBusy(true, "正在重新加载 Skill…");
+        try
+        {
+            _skillService.Reload();
+            _reloadChatService?.Invoke();
+            RefreshSkillList(_selectedName);
+            SetStatus("Skill 已重新加载，AI 人格已刷新。", false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("重新加载失败：" + ex.Message, true);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
     private void ToggleSelected()
     {
-        if (string.IsNullOrWhiteSpace(_selectedName)) return;
-        var skill = _skillService.Skills.FirstOrDefault(s =>
-            string.Equals(s.Manifest.Name, _selectedName, StringComparison.OrdinalIgnoreCase));
-        if (skill is null || skill.Manifest.IsBuiltin) return;
-
-        _skillService.SetEnabled(_selectedName, !skill.Manifest.Enabled);
-        _reloadChatService?.Invoke();
-        RefreshSkillList(_selectedName);
-        StatusText.Text = skill.Manifest.Enabled ? "skill 已启用，AI 已重新加载。" : "skill 已停用，AI 已重新加载。";
-    }
-
-    private void DeleteSelected()
-    {
-        if (string.IsNullOrWhiteSpace(_selectedName)) return;
-        var skill = _skillService.Skills.FirstOrDefault(s =>
-            string.Equals(s.Manifest.Name, _selectedName, StringComparison.OrdinalIgnoreCase));
-        if (skill is null || skill.Manifest.IsBuiltin) return;
-
-        if (!Confirm($"确定删除 skill「{_selectedName}」？这会移除它的磁盘文件，AI 的人格和知识库将相应改变。"))
+        if (_isBusy || string.IsNullOrWhiteSpace(_selectedName))
         {
             return;
         }
 
-        if (_skillService.DeleteSkill(_selectedName))
+        var skill = _skillService.Skills.FirstOrDefault(candidate =>
+            string.Equals(candidate.Manifest.Name, _selectedName, StringComparison.OrdinalIgnoreCase));
+        if (skill is null || skill.Manifest.IsBuiltin)
         {
+            return;
+        }
+
+        var enable = !skill.Manifest.Enabled;
+        SetBusy(true, enable ? "正在启用 Skill…" : "正在停用 Skill…");
+        try
+        {
+            _skillService.SetEnabled(_selectedName, enable);
+            _reloadChatService?.Invoke();
+            RefreshSkillList(_selectedName);
+            SetStatus(enable ? "Skill 已启用，AI 已重新加载。" : "Skill 已停用，AI 已重新加载。", false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("更新 Skill 状态失败：" + ex.Message, true);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (_isBusy || string.IsNullOrWhiteSpace(_selectedName) || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var skill = _skillService.Skills.FirstOrDefault(candidate =>
+            string.Equals(candidate.Manifest.Name, _selectedName, StringComparison.OrdinalIgnoreCase));
+        if (skill is null || skill.Manifest.IsBuiltin)
+        {
+            return;
+        }
+
+        if (!await ConfirmUserSkillDeletionAsync(owner, _selectedName))
+        {
+            return;
+        }
+
+        SetBusy(true, "正在删除 Skill…");
+        try
+        {
+            if (!_skillService.DeleteSkill(_selectedName))
+            {
+                SetStatus("删除失败，请查看日志。", true);
+                return;
+            }
+
             _reloadChatService?.Invoke();
             _selectedName = null;
             RefreshSkillList();
             ShowEmptyHint();
-            StatusText.Text = "skill 已删除。";
+            SetStatus("Skill 已删除。", false);
         }
-        else
+        catch (Exception ex)
         {
-            StatusText.Text = "删除失败，请查看日志。";
+            SetStatus("删除失败：" + ex.Message, true);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
-    /// <summary>从文件夹导入 skill：选目录 → 复制到 AppData/skills → 重新加载。</summary>
+    internal static async Task<bool> ConfirmUserSkillDeletionAsync(
+        Window owner,
+        string skillName,
+        Func<Window, string, string, string, Task<bool>>? confirmationHandler = null)
+    {
+        confirmationHandler ??= static (window, title, message, confirmText) =>
+            DialogService.ConfirmAsync(window, title, message, confirmText);
+
+        if (!await confirmationHandler(
+                owner,
+                "删除用户 Skill",
+                $"删除“{skillName}”会同时移除它的磁盘文件、人格定义和知识库。是否继续？",
+                "继续"))
+        {
+            return false;
+        }
+
+        return await confirmationHandler(
+            owner,
+            "最后确认",
+            $"这是最后一次确认：确定永久删除 Skill“{skillName}”吗？",
+            "永久删除");
+    }
+
     private async Task ImportSkillAsync()
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         try
         {
             var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
             if (storage is null)
             {
-                StatusText.Text = "无法访问文件系统。";
+                SetStatus("无法访问文件系统。", true);
                 return;
             }
 
-            var options = new FolderPickerOpenOptions
+            var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
             {
-                Title = "选择包含 SKILL.md 的 skill 文件夹",
+                Title = "选择包含 SKILL.md 的 Skill 文件夹",
                 AllowMultiple = false
-            };
-            var folders = await storage.OpenFolderPickerAsync(options);
-            var folder = folders?.FirstOrDefault();
+            });
+            var folder = folders.FirstOrDefault();
             if (folder is null)
             {
                 return;
@@ -340,24 +372,112 @@ public partial class SkillConfigPanel : UserControl
             var path = folder.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(path))
             {
-                StatusText.Text = "无法获取所选文件夹路径。";
+                SetStatus("无法获取所选文件夹路径。", true);
                 return;
             }
 
+            SetBusy(true, "正在导入 Skill…");
             var name = _skillService.ImportSkillFromFolder(path);
             _reloadChatService?.Invoke();
             RefreshSkillList(name);
-            StatusText.Text = $"已导入 skill「{name}」，AI 已重新加载。";
+            SetStatus($"已导入 Skill“{name}”，AI 已重新加载。", false);
         }
         catch (Exception ex)
         {
-            StatusText.Text = "导入失败：" + ex.Message;
+            SetStatus("导入失败：" + ex.Message, true);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
-    private bool Confirm(string message)
+    private void SetBusy(bool isBusy, string? message = null)
     {
-        // 简单确认：直接执行（Avalonia 原生确认对话框较重，这里直接删；如需确认可加 ContentDialog）
-        return true;
+        _isBusy = isBusy;
+        BusyProgress.IsVisible = isBusy;
+        ReloadButton.IsEnabled = !isBusy;
+        AddButton.IsEnabled = !isBusy;
+        ToggleEnabledButton.IsEnabled = !isBusy;
+        DeleteButton.IsEnabled = !isBusy;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            SetStatus(message, false);
+        }
+    }
+
+    private void SetStatus(string message, bool isError)
+    {
+        var brush = AemiUi.Brush(isError ? AemiUi.Error : AemiUi.TextSecondary);
+        ActionStatusText.Text = message;
+        ActionStatusText.Foreground = brush;
+        StatusText.Text = message;
+        StatusText.Foreground = brush;
+    }
+
+    private void ShowEmptyHint()
+    {
+        EmptyHintPanel.IsVisible = true;
+        DetailPanel.IsVisible = false;
+    }
+
+    internal void UpdateResponsiveLayout(double width)
+    {
+        var narrow = width < 720;
+        if (narrow)
+        {
+            SkillLayoutGrid.ColumnDefinitions = new ColumnDefinitions("*");
+            SkillLayoutGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
+            SkillListPane.Height = 252;
+            SkillListPane.VerticalAlignment = VerticalAlignment.Top;
+            Grid.SetColumn(SkillListPane, 0);
+            Grid.SetRow(SkillListPane, 0);
+            Grid.SetColumn(SkillDetailPane, 0);
+            Grid.SetRow(SkillDetailPane, 1);
+            SkillDetailPane.Margin = new Thickness(0, 12, 0, 0);
+            SkillListBox.MaxHeight = double.PositiveInfinity;
+        }
+        else
+        {
+            SkillLayoutGrid.ColumnDefinitions = new ColumnDefinitions("288,*");
+            SkillLayoutGrid.RowDefinitions = new RowDefinitions("*");
+            SkillListPane.Height = double.NaN;
+            SkillListPane.VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetColumn(SkillListPane, 0);
+            Grid.SetRow(SkillListPane, 0);
+            Grid.SetColumn(SkillDetailPane, 1);
+            Grid.SetRow(SkillDetailPane, 0);
+            SkillDetailPane.Margin = new Thickness(12, 0, 0, 0);
+            SkillListBox.MaxHeight = double.PositiveInfinity;
+        }
+    }
+
+    private static Border MakeBadge(string text, string background, string foreground)
+    {
+        var badge = new Border
+        {
+            CornerRadius = new CornerRadius(999),
+            Padding = new Thickness(8, 2),
+            Background = AemiUi.Brush(background),
+            BorderBrush = AemiUi.Brush(AemiUi.Border),
+            BorderThickness = new Thickness(1)
+        };
+        badge.Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = AemiUi.Brush(foreground)
+        };
+        return badge;
+    }
+
+    private static void ApplyBadge(Border badge, TextBlock textBlock, string text, string background, string foreground)
+    {
+        textBlock.Text = text;
+        badge.Background = AemiUi.Brush(background);
+        badge.BorderBrush = AemiUi.Brush(AemiUi.Border);
+        badge.BorderThickness = new Thickness(1);
+        textBlock.Foreground = AemiUi.Brush(foreground);
     }
 }

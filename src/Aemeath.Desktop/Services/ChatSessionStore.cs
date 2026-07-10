@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aemeath.Core.AI;
 
 namespace Aemeath.Desktop.Services;
 
@@ -8,12 +9,21 @@ public sealed class ChatSessionStore
     private readonly object _sync = new();
 
     public ChatSessionStore()
-    {
-        var appDataPath = Path.Combine(
+        : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Aemeath");
-        Directory.CreateDirectory(appDataPath);
-        _filePath = Path.Combine(appDataPath, "chat_sessions.json");
+            "Aemeath",
+            "chat_sessions.json"))
+    {
+    }
+
+    internal ChatSessionStore(string filePath)
+    {
+        _filePath = Path.GetFullPath(filePath);
+        var directory = Path.GetDirectoryName(_filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
     }
 
     public ChatSessionRecord CreateSession(string? title = null)
@@ -73,9 +83,37 @@ public sealed class ChatSessionStore
         }
     }
 
-    public void AppendMessage(string sessionId, string role, string content)
+    public bool RenameSession(string sessionId, string title)
     {
-        if (string.IsNullOrWhiteSpace(content))
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            var db = Load();
+            var session = db.Sessions.FirstOrDefault(s => string.Equals(s.Id, sessionId, StringComparison.Ordinal));
+            if (session is null)
+            {
+                return false;
+            }
+
+            session.Title = title.Trim();
+            session.UpdatedAt = DateTimeOffset.UtcNow;
+            Save(db);
+            return true;
+        }
+    }
+
+    public void AppendMessage(
+        string sessionId,
+        string role,
+        string content,
+        IReadOnlyList<ChatAttachment>? attachments = null)
+    {
+        var attachmentList = attachments ?? Array.Empty<ChatAttachment>();
+        if (string.IsNullOrWhiteSpace(content) && attachmentList.Count == 0)
         {
             return;
         }
@@ -89,11 +127,20 @@ public sealed class ChatSessionStore
                 return;
             }
 
+            if (string.Equals(role, "user", StringComparison.OrdinalIgnoreCase) &&
+                session.Messages.Count == 0 && IsGeneratedTitle(session.Title))
+            {
+                var titleSource = string.IsNullOrWhiteSpace(content)
+                    ? attachmentList.FirstOrDefault()?.Name ?? string.Empty
+                    : content;
+                session.Title = BuildTitle(titleSource);
+            }
             session.Messages.Add(new ChatMessageRecord
             {
                 Role = role,
                 Content = content,
-                Timestamp = DateTimeOffset.UtcNow
+                Timestamp = DateTimeOffset.UtcNow,
+                Attachments = CloneAttachments(attachmentList)
             });
             session.UpdatedAt = DateTimeOffset.UtcNow;
             Save(db);
@@ -132,7 +179,8 @@ public sealed class ChatSessionStore
             {
                 Role = m.Role,
                 Content = m.Content,
-                Timestamp = m.Timestamp
+                Timestamp = m.Timestamp,
+                Attachments = CloneAttachments(m.Attachments)
             }).ToList();
             session.UpdatedAt = DateTimeOffset.UtcNow;
             Save(db);
@@ -149,7 +197,19 @@ public sealed class ChatSessionStore
         try
         {
             var json = File.ReadAllText(_filePath);
-            return JsonSerializer.Deserialize<ChatSessionDatabase>(json) ?? new ChatSessionDatabase();
+            var database = JsonSerializer.Deserialize<ChatSessionDatabase>(json) ?? new ChatSessionDatabase();
+            database.Sessions ??= new List<ChatSessionRecord>();
+            foreach (var session in database.Sessions)
+            {
+                session.Messages ??= new List<ChatMessageRecord>();
+                foreach (var message in session.Messages)
+                {
+                    message.Role ??= string.Empty;
+                    message.Content ??= string.Empty;
+                    message.Attachments ??= new List<ChatAttachment>();
+                }
+            }
+            return database;
         }
         catch
         {
@@ -157,6 +217,28 @@ public sealed class ChatSessionStore
         }
     }
 
+
+    private static List<ChatAttachment> CloneAttachments(IEnumerable<ChatAttachment>? attachments)
+        => attachments?.Select(attachment => attachment with { }).ToList() ?? new List<ChatAttachment>();
+
+    private static bool IsGeneratedTitle(string title)
+        => title.StartsWith("\u65b0\u5bf9\u8bdd ", StringComparison.Ordinal);
+
+    private static string BuildTitle(string content)
+    {
+        var normalized = string.Join(
+            " ",
+            content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "\u65b0\u5bf9\u8bdd";
+        }
+
+        const int maxLength = 30;
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength].TrimEnd() + "\u2026";
+    }
     private void Save(ChatSessionDatabase db)
     {
         var options = new JsonSerializerOptions { WriteIndented = true };
@@ -184,4 +266,5 @@ public sealed class ChatMessageRecord
     public string Role { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public DateTimeOffset Timestamp { get; set; }
+    public List<ChatAttachment> Attachments { get; set; } = new();
 }

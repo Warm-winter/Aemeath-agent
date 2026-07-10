@@ -218,7 +218,7 @@ public sealed class MemoryOrchestrator
         // 去重 + 按相关度排序
         var sb = new StringBuilder();
         sb.AppendLine("【长期记忆（Mem0）】");
-        sb.AppendLine("以下是与本次对话相关的、漂泊者与小爱的过往记忆片段。仅用于保持连续性和个性化，不要主动提及「记忆」二字或内部字段。");
+        sb.AppendLine("以下是与本次对话相关的、用户与爱弥斯的过往记忆片段。仅用于保持连续性和个性化，不要主动提及「记忆」二字或内部字段。");
         foreach (var (text, score) in memories.DistinctBy(m => m.text, StringComparer.OrdinalIgnoreCase).Take(8))
         {
             sb.Append("- ").AppendLine(text);
