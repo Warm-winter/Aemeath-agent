@@ -84,11 +84,12 @@
                 Click="MinimizeButton_OnClick"
                 AutomationProperties.Name="&#x6700;&#x5C0F;&#x5316;&#x7A97;&#x53E3;"
                 ToolTip.Tip="&#x6700;&#x5C0F;&#x5316;">
-          <Path Width="14" Height="14"
-                Stretch="Uniform"
-                Stroke="{DynamicResource AemiIconBrush}"
-                StrokeThickness="1.7"
-                Data="M2,8 L14,8"/>
+          <Border x:Name="MinimizeGlyph"
+                  Width="12"
+                  Height="2"
+                  CornerRadius="1"
+                  Background="{DynamicResource AemiIconBrush}"
+                  VerticalAlignment="Center"/>
         </Button>
         <Button x:Name="MaximizeButton"
                 Classes="titlebar"

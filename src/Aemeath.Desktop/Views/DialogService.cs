@@ -105,7 +105,7 @@ internal static class DialogService
                 CreateButtonRow(cancelButton, discardButton, saveButton)
             }
         };
-        SetDialogContent(dialog, AemiUi.Surface(content, radius: 18, padding: 20));
+        SetDialogContent(dialog, AemiUi.Surface(content, radius: 18, padding: 20), showCloseButton: false);
 
         dialog.KeyDown += (_, e) =>
         {
@@ -237,7 +237,7 @@ internal static class DialogService
         };
     }
 
-    private static void SetDialogContent(Window dialog, Control content)
+    private static void SetDialogContent(Window dialog, Control content, bool showCloseButton = true)
     {
         var body = new Border
         {
@@ -251,14 +251,20 @@ internal static class DialogService
             RowDefinitions = new RowDefinitions("Auto,*"),
             Children =
             {
-                new AemeathTitleBar
-                {
-                    Title = dialog.Title ?? string.Empty,
-                    ShowMinimizeButton = false,
-                    ShowMaximizeButton = false
-                },
+                BuildDialogTitleBar(dialog.Title ?? string.Empty, showCloseButton),
                 body
             }
+        };
+    }
+
+    internal static AemeathTitleBar BuildDialogTitleBar(string title, bool showCloseButton = true)
+    {
+        return new AemeathTitleBar
+        {
+            Title = title,
+            ShowMinimizeButton = false,
+            ShowMaximizeButton = false,
+            ShowCloseButton = showCloseButton
         };
     }
 

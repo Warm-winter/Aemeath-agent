@@ -21,13 +21,14 @@
     <views:AemeathTitleBar Grid.Row="0" Title="&#x7231;&#x5F25;&#x65AF;&#x52A9;&#x624B; &#x00B7; &#x5BF9;&#x8BDD;"/>
 
     <SplitView Grid.Row="1" x:Name="ChatSplitView"
+               Margin="16"
                DisplayMode="Inline"
                PanePlacement="Left"
-               OpenPaneLength="248"
+               OpenPaneLength="252"
                CompactPaneLength="0"
                IsPaneOpen="True">
       <SplitView.Pane>
-        <Border Margin="16,16,0,16" Classes="card" Padding="12">
+        <Border x:Name="SessionSidebarCard" Margin="0,0,12,0" Classes="card" Padding="12">
           <Grid RowDefinitions="Auto,Auto,*,Auto">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="2">
@@ -65,7 +66,7 @@
       </SplitView.Pane>
 
       <SplitView.Content>
-        <Grid Margin="16" RowDefinitions="Auto,*,Auto">
+        <Grid x:Name="ChatMainLayout" RowDefinitions="Auto,*,Auto">
           <Border Grid.Row="0" Classes="card" Padding="12">
             <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto,Auto">
               <Border Width="54" Height="54" CornerRadius="27" BorderBrush="{StaticResource AemiPinkBrush}" BorderThickness="1.5" Background="White">

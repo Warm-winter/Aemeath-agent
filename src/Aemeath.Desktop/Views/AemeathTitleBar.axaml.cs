@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Aemeath.Desktop.Services;
 
 namespace Aemeath.Desktop.Views;
 
@@ -74,21 +75,38 @@ internal partial class AemeathTitleBar : UserControl
         if (_hostWindow is not null)
         {
             _hostWindow.PropertyChanged -= HostWindow_OnPropertyChanged;
+            _hostWindow.Opened -= HostWindow_OnOpened;
+            WindowsWindowFrame.Detach(_hostWindow);
         }
 
         _hostWindow = window;
         if (_hostWindow is not null)
         {
             _hostWindow.PropertyChanged += HostWindow_OnPropertyChanged;
+            _hostWindow.Opened += HostWindow_OnOpened;
+            WindowsWindowFrame.Attach(_hostWindow);
         }
 
         UpdateWindowStateVisuals();
+    }
+
+    private void HostWindow_OnOpened(object? sender, EventArgs e)
+    {
+        if (_hostWindow is not null)
+        {
+            WindowsWindowFrame.Attach(_hostWindow);
+            WindowsWindowFrame.Refresh(_hostWindow);
+        }
     }
 
     private void HostWindow_OnPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property == Window.WindowStateProperty)
         {
+            if (_hostWindow is not null)
+            {
+                WindowsWindowFrame.Refresh(_hostWindow);
+            }
             UpdateWindowStateVisuals();
         }
     }

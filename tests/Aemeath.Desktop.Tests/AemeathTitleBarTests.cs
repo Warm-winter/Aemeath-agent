@@ -25,7 +25,10 @@ public sealed class AemeathTitleBarTests
             var minimize = Assert.IsType<Button>(titleBar.FindControl<Button>("MinimizeButton"));
             var maximize = Assert.IsType<Button>(titleBar.FindControl<Button>("MaximizeButton"));
             var close = Assert.IsType<Button>(titleBar.FindControl<Button>("CloseButton"));
+            var minimizeGlyph = Assert.IsType<Border>(titleBar.FindControl<Border>("MinimizeGlyph"));
 
+            Assert.True(minimizeGlyph.Width > 0);
+            Assert.True(minimizeGlyph.Height > 0);
             Assert.Equal("\u6700\u5c0f\u5316\u7a97\u53e3", AutomationProperties.GetName(minimize));
             Assert.Equal("\u6700\u5927\u5316\u7a97\u53e3", AutomationProperties.GetName(maximize));
             Assert.Equal("\u5173\u95ed\u7a97\u53e3", AutomationProperties.GetName(close));
@@ -59,6 +62,18 @@ public sealed class AemeathTitleBarTests
         titleBar.FindControl<Button>("CloseButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.True(closed);
+    }
+
+    [AvaloniaFact]
+    public void UnsavedDialogTitleBar_HidesRedundantCloseButtonOnlyForThatFlow()
+    {
+        var unsavedTitleBar = DialogService.BuildDialogTitleBar("\u672a\u4fdd\u5b58\u66f4\u6539", showCloseButton: false);
+        var standardTitleBar = DialogService.BuildDialogTitleBar("\u786e\u8ba4\u64cd\u4f5c");
+
+        Assert.False(unsavedTitleBar.ShowMinimizeButton);
+        Assert.False(unsavedTitleBar.ShowMaximizeButton);
+        Assert.False(unsavedTitleBar.ShowCloseButton);
+        Assert.True(standardTitleBar.ShowCloseButton);
     }
 
     [AvaloniaFact]

@@ -86,7 +86,7 @@
               <ListBoxItem x:Name="ConnectionGroupItem" Classes="group-heading" IsEnabled="False" Focusable="False" IsHitTestVisible="False" AutomationProperties.Name="连接分组">
                 <TextBlock Text="连接" FontSize="11" FontWeight="SemiBold"/>
               </ListBoxItem>
-              <ListBoxItem x:Name="ProviderNavigationItem" IsSelected="True">
+              <ListBoxItem x:Name="ProviderNavigationItem">
                 <ListBoxItem.Content><TextBlock Text="AI 服务" FontWeight="SemiBold"/></ListBoxItem.Content>
                 <ListBoxItem.Tag>
                   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -390,8 +390,7 @@
             </ListBox>
           </Border>
 
-          <TransitioningContentControl Grid.Column="1" x:Name="SettingsContentHost" Margin="10,0,0,0" ClipToBounds="True"
-                                       Content="{Binding SelectedItem.Tag, ElementName=SettingsTabControl}">
+          <TransitioningContentControl Grid.Column="1" x:Name="SettingsContentHost" Margin="10,0,0,0" ClipToBounds="True">
             <TransitioningContentControl.PageTransition>
               <CompositePageTransition>
                 <PageSlide Duration="0:0:0.22" Orientation="Horizontal"/>
@@ -402,5 +401,12 @@
         </Grid>
       </Border>
     </Grid>
+
+    <views:AemeathToastHost x:Name="SettingsToastHost"
+                            Grid.RowSpan="2"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,58,18,0"
+                            ZIndex="100"/>
   </Grid>
 </Window>

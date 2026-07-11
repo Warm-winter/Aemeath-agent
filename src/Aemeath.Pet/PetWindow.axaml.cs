@@ -444,7 +444,6 @@ public partial class PetWindow : Window
             _settingsService.Save();
         });
         windowMenu.Items.Add(dockItem);
-        windowMenu.Items.Add(followItem);
         windowMenu.Items.Add(topmostItem);
         windowMenu.Items.Add(edgeSnapItem);
 
@@ -502,6 +501,7 @@ public partial class PetWindow : Window
         menu.Items.Add(interactItem);
         menu.Items.Add(greetingItem);
         menu.Items.Add(configItem);
+        menu.Items.Add(followItem);
         menu.Items.Add(windowMenu);
         menu.Items.Add(appearanceMenu);
         menu.Items.Add(new Separator());

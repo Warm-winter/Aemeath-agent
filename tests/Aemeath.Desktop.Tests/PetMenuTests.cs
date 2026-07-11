@@ -22,6 +22,7 @@ public sealed class PetMenuTests
                 item => AssertHeader(item, "\u6478\u6478\u5c0f\u7231"),
                 item => AssertHeader(item, "\u968f\u673a\u95ee\u5019"),
                 item => AssertHeader(item, "\u6253\u5f00\u8bbe\u7f6e"),
+                item => AssertHeader(item, "\u8ddf\u968f\u9f20\u6807"),
                 item => AssertHeader(item, "\u7a97\u53e3\u884c\u4e3a"),
                 item => AssertHeader(item, "\u5916\u89c2"),
                 item => Assert.IsType<Separator>(item),
@@ -34,7 +35,10 @@ public sealed class PetMenuTests
             var windowBehavior = items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "\u7a97\u53e3\u884c\u4e3a");
             Assert.DoesNotContain(
                 windowBehavior.Items.OfType<MenuItem>(),
-                item => item.Header?.ToString() == "\u6536\u7eb3\u5230\u7cfb\u7edf\u6258\u76d8");
+                item => item.Header?.ToString() is "\u6536\u7eb3\u5230\u7cfb\u7edf\u6258\u76d8" or "\u8ddf\u968f\u9f20\u6807");
+
+            var followItem = items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "\u8ddf\u968f\u9f20\u6807");
+            Assert.Equal(MenuItemToggleType.CheckBox, followItem.ToggleType);
         }
         finally
         {

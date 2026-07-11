@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Aemeath.Desktop.Views.AemeathToastHost"
+             x:Name="Root"
+             x:CompileBindings="False"
+             IsVisible="False"
+             IsHitTestVisible="False"
+             MaxWidth="360">
+  <UserControl.Styles>
+    <Style Selector="Border#ToastCard">
+      <Setter Property="MinWidth" Value="280"/>
+      <Setter Property="MaxWidth" Value="360"/>
+      <Setter Property="Padding" Value="14"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Background" Value="{DynamicResource AemiPanelBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="RenderTransform" Value="translate(0px, 0px)"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.16"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border#ToastCard.success">
+      <Setter Property="BorderBrush" Value="{DynamicResource AemiSuccessBorderBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource AemiPanelBrush}"/>
+    </Style>
+    <Style Selector="Border#ToastCard.error">
+      <Setter Property="BorderBrush" Value="{DynamicResource AemiErrorBorderBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource AemiErrorSurfaceBrush}"/>
+    </Style>
+    <Style Selector="Border#ToastIconSurface.success">
+      <Setter Property="Background" Value="{DynamicResource AemiSuccessSurfaceBrush}"/>
+    </Style>
+    <Style Selector="Border#ToastIconSurface.error">
+      <Setter Property="Background" Value="{DynamicResource AemiErrorSurfaceBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="ToastCard" Classes="success" Opacity="1">
+    <Grid ColumnDefinitions="Auto,*">
+      <Border x:Name="ToastIconSurface"
+              Classes="success"
+              Width="34"
+              Height="34"
+              CornerRadius="17"
+              VerticalAlignment="Top">
+        <Grid>
+          <Path x:Name="SuccessGlyph"
+                Width="17"
+                Height="17"
+                Stretch="Uniform"
+                Stroke="{DynamicResource AemiSuccessBrush}"
+                StrokeThickness="2"
+                Data="M2,9 L7,14 L15,3"/>
+          <Path x:Name="ErrorGlyph"
+                Width="17"
+                Height="17"
+                IsVisible="False"
+                Stretch="Uniform"
+                Stroke="{DynamicResource AemiErrorBrush}"
+                StrokeThickness="2"
+                Data="M3,3 L14,14 M14,3 L3,14"/>
+        </Grid>
+      </Border>
+
+      <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="3">
+        <TextBlock x:Name="ToastTitle"
+                   Text="&#x64CD;&#x4F5C;&#x5B8C;&#x6210;"
+                   FontSize="14"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource AemiTextPrimaryBrush}"/>
+        <TextBlock x:Name="ToastMessage"
+                   Text=""
+                   FontSize="12"
+                   LineHeight="18"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource AemiTextSecondaryBrush}"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

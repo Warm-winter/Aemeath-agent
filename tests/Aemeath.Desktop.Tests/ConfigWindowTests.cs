@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Aemeath.Core.Configuration;
 using Aemeath.Core.MCP;
 using Aemeath.Desktop.Views;
@@ -9,6 +10,37 @@ namespace Aemeath.Desktop.Tests;
 
 public sealed class ConfigWindowTests
 {
+    [AvaloniaFact]
+    public void FirstShowAndFirstSelection_KeepNavigationAndContentSynchronized()
+    {
+        using var temp = new TemporaryDirectory();
+        var (window, _) = CreateWindow(temp.Path);
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            var navigation = window.FindControl<ListBox>("SettingsTabControl")!;
+            var contentHost = window.FindControl<TransitioningContentControl>("SettingsContentHost")!;
+            var provider = window.FindControl<ListBoxItem>("ProviderNavigationItem")!;
+            var memory = window.FindControl<ListBoxItem>("MemoryNavigationItem")!;
+
+            Assert.Same(provider, navigation.SelectedItem);
+            Assert.Same(provider.Tag, contentHost.Content);
+            Assert.Equal(SettingsPageId.Provider, window.CurrentPageId);
+
+            navigation.SelectedItem = memory;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(memory, navigation.SelectedItem);
+            Assert.Same(memory.Tag, contentHost.Content);
+            Assert.Equal(SettingsPageId.Memory, window.CurrentPageId);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public async Task InitializationAndUnmodifiedNavigation_DoNotRequestUnsavedDecision()
     {

@@ -3,7 +3,6 @@ using Avalonia.Animation;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Notifications;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -57,7 +56,6 @@ public partial class ConfigWindow : Window
     private readonly Mem0DependencyService _mem0DependencyService;
     private readonly DispatcherTimer _flickerTimer;
     private readonly DispatcherTimer _simpleSettingsSaveTimer;
-    private readonly WindowNotificationManager _notificationManager;
     private readonly List<ProviderModel> _currentModelCandidates = new();
     private readonly List<MemoryEntry> _memoryEntries = new();
     private readonly McpServerStore _mcpServerStore;
@@ -113,11 +111,6 @@ public partial class ConfigWindow : Window
         _currentSessionIdProvider = currentSessionIdProvider;
         _mcpServerStore = mcpServerStore ?? new McpServerStore();
         _particleEffect = new ParticleEffect(BackgroundParticleCanvas);
-        _notificationManager = new WindowNotificationManager(this)
-        {
-            Position = NotificationPosition.TopRight,
-            MaxItems = 2
-        };
         _fullPageTransition = SettingsContentHost.PageTransition;
         _simpleSettingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _simpleSettingsSaveTimer.Tick += (_, _) =>
@@ -233,7 +226,6 @@ public partial class ConfigWindow : Window
             }
         };
 
-        SettingsTabControl.SelectionChanged += async (_, _) => await OnSettingsPageSelectionChangedAsync();
         SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
         PropertyChanged += (_, e) =>
         {
@@ -254,8 +246,8 @@ public partial class ConfigWindow : Window
         PopulateProviderPresets();
         PopulatePetSizeOptions();
         LoadFromSettings();
-        SelectSettingsPage(SettingsPageId.Provider);
-        _lastSettingsPageId = SettingsPageId.Provider;
+        InitializeSettingsNavigation();
+        SettingsTabControl.SelectionChanged += async (_, _) => await OnSettingsPageSelectionChangedAsync();
         _isInitialized = true;
         UpdateProviderDirtyFromSnapshot();
         UpdateComputerControlDirtyFromSnapshot();
@@ -730,7 +722,6 @@ public partial class ConfigWindow : Window
 
         SettingsContentHost.IsTransitionReversed = (int)requestedPage < (int)previousPage;
         SelectSettingsPage(requestedPage);
-        _lastSettingsPageId = requestedPage;
         return true;
     }
 
@@ -779,7 +770,6 @@ public partial class ConfigWindow : Window
             if (HasUnsavedChanges(pageId) && !await SaveChangesAsync(pageId))
             {
                 SelectSettingsPage(pageId);
-                _lastSettingsPageId = pageId;
                 return false;
             }
         }
@@ -848,12 +838,23 @@ public partial class ConfigWindow : Window
     private bool HasAnyUnsavedChanges()
         => _providerFormDirty || _computerControlDirty || McpPanel.HasUnsavedChanges;
 
+    private void InitializeSettingsNavigation()
+    {
+        var transition = SettingsContentHost.PageTransition;
+        SettingsContentHost.PageTransition = null;
+        SelectSettingsPage(SettingsPageId.Provider);
+        SettingsContentHost.PageTransition = transition;
+    }
+
     private void SelectSettingsPage(SettingsPageId pageId)
     {
+        var navigationItem = GetNavigationItem(pageId);
         _suppressSettingsPageChange = true;
         try
         {
-            SettingsTabControl.SelectedItem = GetNavigationItem(pageId);
+            SettingsTabControl.SelectedItem = navigationItem;
+            SettingsContentHost.Content = navigationItem.Tag;
+            _lastSettingsPageId = pageId;
         }
         finally
         {
@@ -2543,12 +2544,18 @@ public partial class ConfigWindow : Window
 
     private void ShowSuccess(string message)
     {
-        _notificationManager.Show(new Notification("成功", message, NotificationType.Success));
+        SettingsToastHost.ShowToast(
+            AemeathToastKind.Success,
+            message,
+            _settingsService.Current.ReduceMotion);
     }
 
     private void ShowError(string message)
     {
-        _notificationManager.Show(new Notification("失败", message, NotificationType.Error));
+        SettingsToastHost.ShowToast(
+            AemeathToastKind.Error,
+            message,
+            _settingsService.Current.ReduceMotion);
     }
 
     protected override void OnClosed(EventArgs e)
