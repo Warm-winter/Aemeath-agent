@@ -237,7 +237,7 @@ internal static class DialogService
         };
     }
 
-    private static void SetDialogContent(Window dialog, Control content, bool showCloseButton = true)
+    private static void SetDialogContent(Window dialog, Control content, bool showCloseButton = false)
     {
         var body = new Border
         {
@@ -257,7 +257,7 @@ internal static class DialogService
         };
     }
 
-    internal static AemeathTitleBar BuildDialogTitleBar(string title, bool showCloseButton = true)
+    internal static AemeathTitleBar BuildDialogTitleBar(string title, bool showCloseButton = false)
     {
         return new AemeathTitleBar
         {

@@ -166,7 +166,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
                 return false;
             }
 
-            if (!NormalizeChatCompletionObject(root))
+            if (!NormalizeChatCompletionObject(root, isStreaming: false))
             {
                 return false;
             }
@@ -180,7 +180,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
         }
     }
 
-    private static bool NormalizeChatCompletionObject(JsonObject root)
+    private static bool NormalizeChatCompletionObject(JsonObject root, bool isStreaming)
     {
         var changed = false;
         if (root["choices"] is not JsonArray choices)
@@ -195,19 +195,23 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
                 continue;
             }
 
-            changed |= NormalizeChoiceObject(choice);
+            changed |= NormalizeChoiceObject(choice, isStreaming);
         }
 
         return changed;
     }
 
-    private static bool NormalizeChoiceObject(JsonObject choice)
+    private static bool NormalizeChoiceObject(JsonObject choice, bool isStreaming)
     {
         var changed = false;
 
-        // 规范化 finish_reason：null / 缺失 / 空字符串 → "stop"
-        // 部分 OpenAI 兼容端点返回空字符串会导致 SK 抛 Unknown ChatFinishReason value
-        if (ShouldTreatAsEmptyFinishReason(choice["finish_reason"]))
+        // Non-stream responses require a terminal reason. In SSE, null or missing means
+        // the stream is still active and must not be rewritten to stop.
+        var finishReason = choice["finish_reason"];
+        var shouldNormalizeFinishReason = isStreaming
+            ? IsExplicitEmptyFinishReason(finishReason) && !HasStreamingPayload(choice)
+            : ShouldTreatAsEmptyFinishReason(finishReason);
+        if (shouldNormalizeFinishReason)
         {
             choice["finish_reason"] = "stop";
             changed = true;
@@ -224,6 +228,20 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
         }
 
         return changed;
+    }
+
+    private static bool IsExplicitEmptyFinishReason(JsonNode? node)
+    {
+        return node is JsonValue value &&
+               value.TryGetValue<JsonElement>(out var element) &&
+               element.ValueKind == JsonValueKind.String &&
+               string.IsNullOrWhiteSpace(element.GetString());
+    }
+
+    private static bool HasStreamingPayload(JsonObject choice)
+    {
+        return choice["delta"] is JsonObject { Count: > 0 } ||
+               choice["message"] is JsonObject { Count: > 0 };
     }
 
     private static bool ShouldTreatAsEmptyFinishReason(JsonNode? node)
@@ -444,7 +462,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
                 return false;
             }
 
-            if (!NormalizeChatCompletionObject(root))
+            if (!NormalizeChatCompletionObject(root, isStreaming: true))
             {
                 return false;
             }

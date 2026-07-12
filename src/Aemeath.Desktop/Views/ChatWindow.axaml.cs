@@ -19,7 +19,6 @@ using Aemeath.Core.Memory;
 using Aemeath.Core.Tools;
 using Aemeath.Desktop.Services;
 using Aemeath.Pet.Effects;
-using Aemeath.Speech;
 using System;
 using System.IO;
 using System.Linq;
@@ -45,17 +44,25 @@ public partial class ChatWindow : Window
     private readonly DispatcherTimer _pendingTimer;
     private readonly DispatcherTimer _flickerTimer;
     private readonly DispatcherTimer _statusHideTimer;
+    private readonly DispatcherTimer _scrollStabilizationTimer;
     private readonly string[] _pendingFrames = ["星点同步中", "星点同步中.", "星点同步中..", "星点同步中..."];
 
     private int _pendingFrameIndex;
     private TextBlock? _pendingTextBlock;
     private bool _isSending;
     private bool _scrollPending;
+    private bool _isScrollStabilizing;
+    private bool _isRenderingMessageBatch;
+    private int _scrollStabilizationTicks;
+    private int _stableScrollPasses;
+    private double _lastScrollMaximum = double.NaN;
     private bool _isUpdatingSessionList;
     private bool _userNearBottom = true;
     private CancellationTokenSource? _sendCancellationTokenSource;
     private readonly ChatInteractionStateMachine _interactionState = new();
     private const double AutoScrollThreshold = 96;
+    private const int MaxScrollStabilizationTicks = 12;
+    private const double ScrollStabilityTolerance = 0.5;
     private double _flickerPhase;
 
     private readonly Bitmap _assistantAvatar;
@@ -86,15 +93,27 @@ public partial class ChatWindow : Window
     private readonly SemaphoreSlim _providerSwitchLock = new(1, 1);
     private volatile bool _confirmationCreatedDuringGeneration;
     private bool _isLoadingProviderSwitch;
-    private SpeechService? _holdSpeechService;
+    private readonly Func<IVoiceCaptureSession> _voiceCaptureFactory;
+    private readonly DispatcherTimer _voiceDurationTimer;
+    private readonly DispatcherTimer _voicePulseTimer;
+    private readonly ScaleTransform _voicePulseTransform = new();
+    private IVoiceCaptureSession? _voiceCaptureSession;
+    private CancellationTokenSource? _voiceCaptureCancellation;
     private Task? _voiceCaptureStartTask;
     private DateTimeOffset? _voiceCaptureStartedAt;
-    private bool _voiceHolding;
+    private bool _isVoiceRecording;
+    private bool _isVoiceRecognizing;
+    private bool _isVoicePulseAnimationRunning;
     private bool _isVoiceMode;
+    private double _voicePulsePhase;
 
     private string _currentSessionId = string.Empty;
 
     public string CurrentSessionId => _currentSessionId;
+    internal bool IsVoiceRecording => _isVoiceRecording;
+    internal bool IsVoiceRecognizing => _isVoiceRecognizing;
+    internal bool IsVoicePulseAnimationRunning => _isVoicePulseAnimationRunning;
+    private bool IsVoiceCaptureActive => _isVoiceRecording || _isVoiceRecognizing;
 
     public event EventHandler<ChatActivityChangedEventArgs>? ActivityChanged;
 
@@ -111,7 +130,8 @@ public partial class ChatWindow : Window
         IChatService chatService,
         SettingsService settingsService,
         ChatSessionStore? sessionStore,
-        AttachmentThumbnailCache? attachmentThumbnailCache)
+        AttachmentThumbnailCache? attachmentThumbnailCache,
+        Func<IVoiceCaptureSession>? voiceCaptureFactory = null)
     {
         InitializeComponent();
         AppLogger.Info("chat", "chat window constructor start");
@@ -126,6 +146,7 @@ public partial class ChatWindow : Window
         };
         _sessionStore = sessionStore ?? new ChatSessionStore();
         _attachmentThumbnailCache = attachmentThumbnailCache ?? new AttachmentThumbnailCache();
+        _voiceCaptureFactory = voiceCaptureFactory ?? (() => new SpeechVoiceCaptureSession());
         // Mem0 记忆编排器：每轮 add + 发送前 search 注入。config/python 由 AemiChatService 提供。
         if (chatService is AemiChatService aemiChatSvc)
         {
@@ -204,8 +225,11 @@ public partial class ChatWindow : Window
         ToolTip.SetTip(McpToolsButton, "快速开启或关闭 MCP 服务");
         ToolTip.SetTip(VoiceButton, "\u5207\u6362\u8bed\u97f3/\u952e\u76d8\u8f93\u5165");
         ToolTip.SetTip(SendButton, "\u53d1\u9001\u5230\u5c0f\u7231\u7ec8\u7aef");
-        ToolTip.SetTip(NewSessionButton, "\u5f00\u542f\u65b0\u7684\u901a\u8baf\u6863\u6848");
-        ToolTip.SetTip(DeleteSessionButton, "\u5220\u9664\u5f53\u524d\u901a\u8baf\u6863\u6848");
+        ToolTip.SetTip(NewSessionButton, "开启新的通讯档案");
+        ToolTip.SetTip(RenameSessionButton, "重命名当前通讯档案");
+        ToolTip.SetTip(DeleteSessionButton, "删除当前通讯档案");
+        ToolTip.SetTip(VoiceRecordButton, "点击开始录音");
+        VoicePulseRing.RenderTransform = _voicePulseTransform;
 
         _pendingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(240) };
         _pendingTimer.Tick += (_, _) =>
@@ -238,6 +262,24 @@ public partial class ChatWindow : Window
             ProviderSwitchStatusBorder.IsVisible = false;
         };
 
+        _scrollStabilizationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _scrollStabilizationTimer.Tick += (_, _) => StabilizeScrollToBottom();
+
+        _voiceDurationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _voiceDurationTimer.Tick += (_, _) => UpdateVoiceRecordingText();
+
+        _voicePulseTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(33)
+        };
+        _voicePulseTimer.Tick += (_, _) => AdvanceVoicePulse();
+
         SendButton.Click += async (_, _) =>
         {
             if (_isSending)
@@ -250,9 +292,7 @@ public partial class ChatWindow : Window
         UploadButton.Click += (_, _) => ShowUploadMenu();
         McpToolsButton.Click += (_, _) => ShowMcpToolsMenu();
         VoiceButton.Click += (_, _) => ToggleVoiceMode();
-        VoiceRecordButton.AddHandler(PointerPressedEvent, VoiceRecordButton_OnPointerPressed, RoutingStrategies.Tunnel, true);
-        VoiceRecordButton.AddHandler(PointerReleasedEvent, VoiceRecordButton_OnPointerReleased, RoutingStrategies.Tunnel, true);
-        VoiceRecordButton.AddHandler(PointerCaptureLostEvent, VoiceRecordButton_OnPointerCaptureLost, RoutingStrategies.Tunnel, true);
+        VoiceRecordButton.Click += async (_, _) => await ToggleVoiceRecordingAsync();
 
         ToggleSidebarButton.Click += (_, _) => ToggleChatSidebar();
         CloseSidebarButton.Click += (_, _) => ToggleChatSidebar(forceOpen: false);
@@ -321,6 +361,7 @@ public partial class ChatWindow : Window
             if (e.Property == WindowStateProperty)
             {
                 UpdateAmbientAnimationState();
+                UpdateVoicePulseAnimationState();
             }
         };
 
@@ -331,9 +372,9 @@ public partial class ChatWindow : Window
             UpdateAmbientAnimationState();
 
             ChatSplitView.IsPaneOpen = _settingsService.Current.IsChatSidebarOpen;
+            UpdateResponsiveLayout();
             LoadLatestSessionOrCreateIfEmpty();
             RefreshProviderQuickSwitch();
-            UpdateResponsiveLayout();
             UpdateEmptyState();
             SetUiState(ChatUiState.Idle);
         };
@@ -348,6 +389,12 @@ public partial class ChatWindow : Window
                 if (_isSending)
                 {
                     CancelCurrentSend();
+                    e.Handled = true;
+                }
+                else if (IsVoiceCaptureActive)
+                {
+                    await ResetVoiceCaptureStateAsync(cancelActiveCapture: true);
+                    ShowStatusMessage("已取消语音输入。");
                     e.Handled = true;
                 }
                 else if (_isVoiceMode)
@@ -431,7 +478,7 @@ public partial class ChatWindow : Window
     }
 
     private bool CanNavigateSessions()
-        => !_isSending && !_voiceHolding && _pendingToolActions.Count == 0;
+        => !_isSending && !IsVoiceCaptureActive && _pendingToolActions.Count == 0;
 
     private async Task RenameCurrentSessionAsync()
     {
@@ -476,7 +523,9 @@ public partial class ChatWindow : Window
         SendButton.Classes.Add(streaming ? "danger" : "primary");
         InputBox.IsEnabled = !locked && hasProvider;
         VoiceButton.IsEnabled = !locked && hasProvider;
-        VoiceRecordButton.IsEnabled = !streaming && state != ChatUiState.WaitingConfirmation;
+        VoiceRecordButton.IsEnabled = hasProvider && state is not ChatUiState.Streaming
+            and not ChatUiState.WaitingConfirmation
+            and not ChatUiState.VoiceRecognizing;
         NewSessionButton.IsEnabled = !locked;
         RenameSessionButton.IsEnabled = !locked && !string.IsNullOrWhiteSpace(_currentSessionId);
         DeleteSessionButton.IsEnabled = !locked && !string.IsNullOrWhiteSpace(_currentSessionId);
@@ -505,6 +554,13 @@ public partial class ChatWindow : Window
 
     private void UpdateScrollProximity()
     {
+        if (_isScrollStabilizing)
+        {
+            _userNearBottom = true;
+            JumpToLatestButton.IsVisible = false;
+            return;
+        }
+
         var remaining = ChatScrollViewer.Extent.Height - ChatScrollViewer.Viewport.Height - ChatScrollViewer.Offset.Y;
         _userNearBottom = remaining <= AutoScrollThreshold;
         JumpToLatestButton.IsVisible = !_userNearBottom && _displayMessages.Count > 0;
@@ -607,17 +663,15 @@ public partial class ChatWindow : Window
                 return;
             }
 
-            pending.Text = string.IsNullOrWhiteSpace(sanitizedReply) ? "(\u65e0\u56de\u590d)" : sanitizedReply;
-            ScrollToBottom();
-
-            var assistantReply = pending.Text ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(assistantReply))
+            if (TryHandleEmptyAssistantReply(sanitizedReply, pending))
             {
-                assistantReply = "(\u65e0\u56de\u590d)";
-                pending.Text = assistantReply;
+                return;
             }
 
-            assistantReply = FormatToolResultForUser(assistantReply);
+            pending.Text = sanitizedReply;
+            ScrollToBottom();
+
+            var assistantReply = FormatToolResultForUser(sanitizedReply);
             pending.Text = assistantReply;
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = assistantReply, Timestamp = DateTimeOffset.UtcNow });
             _sessionStore.AppendMessage(_currentSessionId, "assistant", assistantReply);
@@ -817,7 +871,7 @@ public partial class ChatWindow : Window
 
     private void ShowMcpToolsMenu()
     {
-        if (_isSending || _voiceHolding || _pendingToolActions.Count > 0)
+        if (_isSending || IsVoiceCaptureActive || _pendingToolActions.Count > 0)
         {
             return;
         }
@@ -973,6 +1027,11 @@ public partial class ChatWindow : Window
 
     private void ToggleVoiceMode()
     {
+        if (IsVoiceCaptureActive)
+        {
+            return;
+        }
+
         _isVoiceMode = !_isVoiceMode;
         InputBox.IsVisible = !_isVoiceMode;
         VoiceRecordButton.IsVisible = _isVoiceMode;
@@ -983,110 +1042,85 @@ public partial class ChatWindow : Window
             Height = 18,
             Stretch = Stretch.Uniform
         };
+        SetVoiceIdleVisualState();
     }
 
-    private async void VoiceRecordButton_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private Task ToggleVoiceRecordingAsync()
+        => _isVoiceRecording ? StopVoiceCaptureAndSendAsync() : StartVoiceCaptureAsync();
+
+    private async Task StartVoiceCaptureAsync()
     {
-        try
-        {
-            await _voiceCaptureLock.WaitAsync();
-            try
-            {
-                if (_voiceHolding || _holdSpeechService is not null)
-                {
-                    return;
-                }
-
-                _voiceHolding = true;
-                SetUiState(ChatUiState.VoiceListening);
-                _voiceCaptureStartedAt = DateTimeOffset.UtcNow;
-                e.Pointer.Capture(VoiceRecordButton);
-                VoiceRecordButton.Content = "松开结束";
-                RaiseActivityChanged(ChatActivityKind.VoiceListening);
-                _holdSpeechService = new SpeechService();
-                _voiceCaptureStartTask = _holdSpeechService.StartCaptureAsync();
-            }
-            finally
-            {
-                _voiceCaptureLock.Release();
-            }
-
-            if (_voiceCaptureStartTask is not null)
-            {
-                await _voiceCaptureStartTask;
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("chat", "voice capture start failed", ex);
-            await ResetVoiceCaptureStateAsync();
-            SetUiState(ChatUiState.Failed);
-            RaiseActivityChanged(ChatActivityKind.Failed);
-        }
-    }
-
-    private async void VoiceRecordButton_OnPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        try
-        {
-            e.Pointer.Capture(null);
-            await StopVoiceCaptureAndSendAsync();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("chat", "voice pointer release failed", ex);
-            await ResetVoiceCaptureStateAsync();
-            SetUiState(ChatUiState.Failed);
-            RaiseActivityChanged(ChatActivityKind.Failed);
-        }
-    }
-
-    private async void VoiceRecordButton_OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
-    {
-        try
-        {
-            await StopVoiceCaptureAndSendAsync();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("chat", "voice pointer capture lost failed", ex);
-            await ResetVoiceCaptureStateAsync();
-            SetUiState(ChatUiState.Failed);
-            RaiseActivityChanged(ChatActivityKind.Failed);
-        }
-    }
-
-    private async Task StopVoiceCaptureAndSendAsync()
-    {
-        SpeechService? speechService;
-        Task? startTask;
-        DateTimeOffset startedAt;
-
         await _voiceCaptureLock.WaitAsync();
         try
         {
-            if (!_voiceHolding && _holdSpeechService is null)
+            if (_isVoiceRecording || _isVoiceRecognizing || _voiceCaptureSession is not null)
             {
                 return;
             }
 
-            speechService = _holdSpeechService;
-            startTask = _voiceCaptureStartTask;
-            startedAt = _voiceCaptureStartedAt ?? DateTimeOffset.UtcNow;
-            _voiceHolding = false;
-            _holdSpeechService = null;
-            _voiceCaptureStartTask = null;
-            _voiceCaptureStartedAt = null;
-            VoiceRecordButton.Content = "长按录音";
+            _voiceCaptureCancellation = new CancellationTokenSource();
+            _voiceCaptureSession = _voiceCaptureFactory();
+            _voiceCaptureStartedAt = DateTimeOffset.UtcNow;
+            _isVoiceRecording = true;
+            _isVoiceRecognizing = false;
+            SetUiState(ChatUiState.VoiceListening);
+            SetVoiceRecordingVisualState();
+            RaiseActivityChanged(ChatActivityKind.VoiceListening);
+            _voiceCaptureStartTask = _voiceCaptureSession.StartAsync(_voiceCaptureCancellation.Token);
         }
         finally
         {
             _voiceCaptureLock.Release();
         }
 
-        if (speechService is null)
+        try
         {
-            return;
+            if (_voiceCaptureStartTask is not null)
+            {
+                await _voiceCaptureStartTask;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            await ResetVoiceCaptureStateAsync(cancelActiveCapture: false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("chat", "voice capture start failed", ex);
+            await ResetVoiceCaptureStateAsync(cancelActiveCapture: true);
+            SetUiState(ChatUiState.Failed);
+            RaiseActivityChanged(ChatActivityKind.Failed);
+            ShowStatusMessage("\u65e0\u6cd5\u5f00\u59cb\u5f55\u97f3\uff0c\u8bf7\u68c0\u67e5\u9ea6\u514b\u98ce\u6743\u9650\u3002");
+        }
+    }
+
+    private async Task StopVoiceCaptureAndSendAsync()
+    {
+        IVoiceCaptureSession? session;
+        CancellationTokenSource? cancellation;
+        Task? startTask;
+        DateTimeOffset startedAt;
+
+        await _voiceCaptureLock.WaitAsync();
+        try
+        {
+            if (!_isVoiceRecording || _voiceCaptureSession is null || _voiceCaptureCancellation is null)
+            {
+                return;
+            }
+
+            session = _voiceCaptureSession;
+            cancellation = _voiceCaptureCancellation;
+            startTask = _voiceCaptureStartTask;
+            startedAt = _voiceCaptureStartedAt ?? DateTimeOffset.UtcNow;
+            _isVoiceRecording = false;
+            _isVoiceRecognizing = true;
+            SetUiState(ChatUiState.VoiceRecognizing);
+            SetVoiceRecognizingVisualState();
+        }
+        finally
+        {
+            _voiceCaptureLock.Release();
         }
 
         try
@@ -1098,56 +1132,173 @@ public partial class ChatWindow : Window
 
             if (DateTimeOffset.UtcNow - startedAt < MinimumVoiceCaptureDuration)
             {
-                AppLogger.Info("chat", "voice capture ignored because press was too short");
-                SetUiState(ChatUiState.Idle);
-                RaiseActivityChanged(ChatActivityKind.Idle);
+                await ResetVoiceCaptureStateAsync(cancelActiveCapture: true);
+                ShowStatusMessage("\u5f55\u97f3\u65f6\u95f4\u592a\u77ed\uff0c\u8bf7\u91cd\u65b0\u5f55\u5236\u3002");
                 return;
             }
 
-            var text = await speechService.StopCaptureAndRecognizeAsync();
-            if (!string.IsNullOrWhiteSpace(text))
+            var text = await session.StopAndRecognizeAsync(cancellation.Token);
+            await ResetVoiceCaptureStateAsync(cancelActiveCapture: false);
+            if (string.IsNullOrWhiteSpace(text))
             {
-                await SendVoiceTextAsync(text.Trim());
+                ShowStatusMessage("\u6ca1\u6709\u8bc6\u522b\u5230\u8bed\u97f3\uff0c\u8bf7\u91cd\u65b0\u5f55\u5236\u3002");
+                return;
             }
-            else
-            {
-                SetUiState(ChatUiState.Idle);
-                RaiseActivityChanged(ChatActivityKind.Idle);
-            }
+
+            await SendVoiceTextAsync(text.Trim());
+        }
+        catch (OperationCanceledException)
+        {
+            await ResetVoiceCaptureStateAsync(cancelActiveCapture: false);
         }
         catch (Exception ex)
         {
             AppLogger.Error("chat", "voice capture stop failed", ex);
+            await ResetVoiceCaptureStateAsync(cancelActiveCapture: true);
             SetUiState(ChatUiState.Failed);
             RaiseActivityChanged(ChatActivityKind.Failed);
-        }
-        finally
-        {
-            speechService.Dispose();
+            ShowStatusMessage("\u8bed\u97f3\u8bc6\u522b\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002");
         }
     }
 
-    private async Task ResetVoiceCaptureStateAsync()
+    private async Task ResetVoiceCaptureStateAsync(bool cancelActiveCapture)
     {
-        SpeechService? speechService;
+        IVoiceCaptureSession? session;
+        CancellationTokenSource? cancellation;
+
         await _voiceCaptureLock.WaitAsync();
         try
         {
-            speechService = _holdSpeechService;
-            _holdSpeechService = null;
+            session = _voiceCaptureSession;
+            cancellation = _voiceCaptureCancellation;
+            _voiceCaptureSession = null;
+            _voiceCaptureCancellation = null;
             _voiceCaptureStartTask = null;
             _voiceCaptureStartedAt = null;
-            _voiceHolding = false;
-            VoiceRecordButton.Content = "长按录音";
+            _isVoiceRecording = false;
+            _isVoiceRecognizing = false;
         }
         finally
         {
             _voiceCaptureLock.Release();
         }
 
-        speechService?.Dispose();
+        if (cancelActiveCapture)
+        {
+            cancellation?.Cancel();
+        }
+        session?.Dispose();
+        cancellation?.Dispose();
+        StopVoiceTimers();
+        SetVoiceIdleVisualState();
+        if (!_isSending)
+        {
+            SetUiState(ChatUiState.Idle);
+        }
         RaiseActivityChanged(ChatActivityKind.Idle);
-        SetUiState(ChatUiState.Idle);
+    }
+
+    private void SetVoiceIdleVisualState()
+    {
+        VoiceRecordButton.Classes.Remove("recording");
+        VoiceRecordButton.Classes.Remove("recognizing");
+        VoiceStatusDot.Classes.Remove("recording");
+        VoiceStatusDot.Classes.Remove("recognizing");
+        VoiceRecordButtonText.Text = "\u5f00\u59cb\u5f55\u97f3";
+        AutomationProperties.SetName(VoiceRecordButton, "\u5f00\u59cb\u5f55\u97f3");
+        ToolTip.SetTip(VoiceRecordButton, "\u70b9\u51fb\u5f00\u59cb\u5f55\u97f3");
+        VoicePulseRing.IsVisible = false;
+        VoicePulseRing.Opacity = 0;
+        _voicePulseTransform.ScaleX = 1;
+        _voicePulseTransform.ScaleY = 1;
+    }
+
+    private void SetVoiceRecordingVisualState()
+    {
+        VoiceRecordButton.Classes.Remove("recognizing");
+        VoiceRecordButton.Classes.Add("recording");
+        VoiceStatusDot.Classes.Remove("recognizing");
+        VoiceStatusDot.Classes.Add("recording");
+        AutomationProperties.SetName(VoiceRecordButton, "\u7ed3\u675f\u5f55\u97f3");
+        ToolTip.SetTip(VoiceRecordButton, "\u70b9\u51fb\u7ed3\u675f\u5f55\u97f3\u5e76\u5f00\u59cb\u8bc6\u522b");
+        UpdateVoiceRecordingText();
+        _voiceDurationTimer.Start();
+        UpdateVoicePulseAnimationState();
+    }
+
+    private void SetVoiceRecognizingVisualState()
+    {
+        StopVoiceTimers();
+        VoiceRecordButton.Classes.Remove("recording");
+        VoiceRecordButton.Classes.Add("recognizing");
+        VoiceStatusDot.Classes.Remove("recording");
+        VoiceStatusDot.Classes.Add("recognizing");
+        VoiceRecordButtonText.Text = "\u6b63\u5728\u8bc6\u522b\u2026";
+        AutomationProperties.SetName(VoiceRecordButton, "\u6b63\u5728\u8bc6\u522b\u8bed\u97f3");
+        ToolTip.SetTip(VoiceRecordButton, "\u6b63\u5728\u8bc6\u522b\u8bed\u97f3");
+    }
+
+    private void UpdateVoiceRecordingText()
+    {
+        if (!_isVoiceRecording || _voiceCaptureStartedAt is null)
+        {
+            return;
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - _voiceCaptureStartedAt.Value;
+        var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
+        VoiceRecordButtonText.Text = $"\u7ed3\u675f\u5f55\u97f3 \u00b7 {totalSeconds / 60:00}:{totalSeconds % 60:00}";
+    }
+
+    private void UpdateVoicePulseAnimationState()
+    {
+        var shouldAnimate = _isVoiceRecording &&
+            !_settingsService.Current.ReduceMotion &&
+            IsVisible &&
+            WindowState != WindowState.Minimized;
+
+        if (shouldAnimate)
+        {
+            VoicePulseRing.IsVisible = true;
+            if (!_isVoicePulseAnimationRunning)
+            {
+                _isVoicePulseAnimationRunning = true;
+                _voicePulseTimer.Start();
+            }
+            return;
+        }
+
+        _voicePulseTimer.Stop();
+        _isVoicePulseAnimationRunning = false;
+        VoicePulseRing.IsVisible = false;
+        VoicePulseRing.Opacity = 0;
+        _voicePulseTransform.ScaleX = 1;
+        _voicePulseTransform.ScaleY = 1;
+    }
+
+    private void AdvanceVoicePulse()
+    {
+        if (!_isVoiceRecording || _settingsService.Current.ReduceMotion)
+        {
+            UpdateVoicePulseAnimationState();
+            return;
+        }
+
+        _voicePulsePhase = (_voicePulsePhase + 0.08) % 1;
+        var progress = _voicePulsePhase;
+        var scale = 1 + progress * 0.42;
+        _voicePulseTransform.ScaleX = scale;
+        _voicePulseTransform.ScaleY = scale;
+        VoicePulseRing.Opacity = 0.72 * (1 - progress);
+    }
+
+    private void StopVoiceTimers()
+    {
+        _voiceDurationTimer.Stop();
+        _voicePulseTimer.Stop();
+        _isVoicePulseAnimationRunning = false;
+        VoicePulseRing.IsVisible = false;
+        VoicePulseRing.Opacity = 0;
     }
 
     private async Task SendVoiceTextAsync(string text)
@@ -1221,11 +1372,27 @@ public partial class ChatWindow : Window
                || text.Contains("高风险操作已暂停", StringComparison.OrdinalIgnoreCase);
     }
 
+    private bool TryHandleEmptyAssistantReply(string? reply, TextBlock pending)
+    {
+        if (!string.IsNullOrWhiteSpace(reply))
+        {
+            return false;
+        }
+
+        const string message = "\u672a\u6536\u5230\u6709\u6548\u56de\u590d\uff0c\u8bf7\u91cd\u8bd5\u3002";
+        pending.Text = message;
+        ShowStatusMessage(message);
+        SetUiState(ChatUiState.Failed);
+        RaiseActivityChanged(ChatActivityKind.Failed);
+        AppLogger.Info("chat", "stream completed without visible assistant content");
+        return true;
+    }
+
     private static string FormatToolResultForUser(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            return "(无回复)";
+            return string.Empty;
         }
 
         var cleaned = text.Trim();
@@ -1425,7 +1592,10 @@ public partial class ChatWindow : Window
         root.Children.Add(row);
 
         MessagesPanel.Children.Add(root);
-        ScrollToBottom();
+        if (!_isRenderingMessageBatch)
+        {
+            ScrollToBottom();
+        }
         return streamText;
     }
     private StackPanel BuildMessageAttachmentPanel(
@@ -1904,7 +2074,12 @@ public partial class ChatWindow : Window
                 return;
             }
 
-            var cleaned = string.IsNullOrWhiteSpace(sanitized) ? "(无回复)" : FormatToolResultForUser(sanitized);
+            if (TryHandleEmptyAssistantReply(sanitized, pending))
+            {
+                return;
+            }
+
+            var cleaned = FormatToolResultForUser(sanitized);
             _displayMessages.Add(new ChatMessageRecord { Role = "assistant", Content = cleaned, Timestamp = DateTimeOffset.UtcNow });
             PersistCurrentMessages();
             RenderCurrentMessages();
@@ -1948,6 +2123,7 @@ public partial class ChatWindow : Window
             }
 
             UpdateAmbientAnimationState();
+            UpdateVoicePulseAnimationState();
         });
     }
 
@@ -2166,14 +2342,14 @@ public partial class ChatWindow : Window
     }
 
     private bool CanSwitchProviderOrModel()
-        => !_isSending && !_voiceHolding && _pendingToolActions.Count == 0;
+        => !_isSending && !IsVoiceCaptureActive && _pendingToolActions.Count == 0;
 
     private void UpdateProviderQuickSwitchEnabled(bool forceDisabled = false)
     {
         var enabled = !forceDisabled && CanSwitchProviderOrModel();
         ProviderQuickSwitchBox.IsEnabled = enabled;
         ModelQuickSwitchBox.IsEnabled = enabled;
-        UploadButton.IsEnabled = !forceDisabled && !_isSending && !_voiceHolding && _pendingToolActions.Count == 0;
+        UploadButton.IsEnabled = !forceDisabled && !_isSending && !IsVoiceCaptureActive && _pendingToolActions.Count == 0;
         McpToolsButton.IsEnabled = enabled && _pendingToolActions.Count == 0;
     }
 
@@ -2238,7 +2414,13 @@ public partial class ChatWindow : Window
 
     private void ScrollToBottom(bool force = false)
     {
-        if (!force && !_userNearBottom)
+        if (force)
+        {
+            StartScrollStabilization();
+            return;
+        }
+
+        if (!_userNearBottom)
         {
             JumpToLatestButton.IsVisible = _displayMessages.Count > 0;
             return;
@@ -2250,15 +2432,81 @@ public partial class ChatWindow : Window
         {
             try
             {
-                ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, double.MaxValue);
-                _userNearBottom = true;
-                JumpToLatestButton.IsVisible = false;
+                ScrollViewerToMaximumOffset();
             }
             finally
             {
                 _scrollPending = false;
             }
         }, DispatcherPriority.Background);
+    }
+
+    private void StabilizeAfterLateMessageLayoutChange()
+    {
+        if (_userNearBottom)
+        {
+            StartScrollStabilization();
+        }
+    }
+
+    private void StartScrollStabilization()
+    {
+        _isScrollStabilizing = true;
+        _scrollStabilizationTicks = 0;
+        _stableScrollPasses = 0;
+        _lastScrollMaximum = double.NaN;
+        _userNearBottom = true;
+        JumpToLatestButton.IsVisible = false;
+        ScrollViewerToMaximumOffset();
+        _scrollStabilizationTimer.Stop();
+        _scrollStabilizationTimer.Start();
+    }
+
+    private void StabilizeScrollToBottom()
+    {
+        if (!_isScrollStabilizing)
+        {
+            _scrollStabilizationTimer.Stop();
+            return;
+        }
+
+        var maximum = GetMaximumScrollOffset();
+        ScrollViewerToMaximumOffset(maximum);
+        _scrollStabilizationTicks++;
+
+        if (!double.IsNaN(_lastScrollMaximum) &&
+            Math.Abs(maximum - _lastScrollMaximum) <= ScrollStabilityTolerance)
+        {
+            _stableScrollPasses++;
+        }
+        else
+        {
+            _stableScrollPasses = 0;
+        }
+
+        _lastScrollMaximum = maximum;
+        if (_stableScrollPasses >= 2 || _scrollStabilizationTicks >= MaxScrollStabilizationTicks)
+        {
+            StopScrollStabilization();
+        }
+    }
+
+    private void StopScrollStabilization()
+    {
+        _scrollStabilizationTimer.Stop();
+        _isScrollStabilizing = false;
+        _userNearBottom = true;
+        JumpToLatestButton.IsVisible = false;
+    }
+
+    private double GetMaximumScrollOffset()
+        => Math.Max(0, ChatScrollViewer.Extent.Height - ChatScrollViewer.Viewport.Height);
+
+    private void ScrollViewerToMaximumOffset(double? maximum = null)
+    {
+        ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, maximum ?? GetMaximumScrollOffset());
+        _userNearBottom = true;
+        JumpToLatestButton.IsVisible = false;
     }
     private IImage GetUserAvatar()
     {
@@ -2497,12 +2745,20 @@ public partial class ChatWindow : Window
         _attachmentRenderCts = new CancellationTokenSource();
         MessagesPanel.Children.Clear();
         _attachmentThumbnailCache.ReleaseRenderedBitmaps();
-        for (var i = 0; i < _displayMessages.Count; i++)
+        _isRenderingMessageBatch = true;
+        try
         {
-            var message = _displayMessages[i];
-            var isAssistant = string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase);
-            var content = isAssistant ? SanitizeAssistantOutput(message.Content) : message.Content;
-            AddMessageBubble(i, isAssistant, content, false);
+            for (var i = 0; i < _displayMessages.Count; i++)
+            {
+                var message = _displayMessages[i];
+                var isAssistant = string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase);
+                var content = isAssistant ? SanitizeAssistantOutput(message.Content) : message.Content;
+                AddMessageBubble(i, isAssistant, content, false);
+            }
+        }
+        finally
+        {
+            _isRenderingMessageBatch = false;
         }
 
         RenderPendingToolActions();
@@ -2571,8 +2827,14 @@ public partial class ChatWindow : Window
         AppLogger.Info("chat", "chat window closed dispose resources");
         _pendingTimer.Stop();
         _flickerTimer.Stop();
+        StopScrollStabilization();
         _particleEffect.Stop();
-        _holdSpeechService?.Dispose();
+        StopVoiceTimers();
+        _voiceCaptureCancellation?.Cancel();
+        _voiceCaptureSession?.Dispose();
+        _voiceCaptureCancellation?.Dispose();
+        _voiceCaptureSession = null;
+        _voiceCaptureCancellation = null;
         _sendCancellationTokenSource?.Cancel();
         _sendCancellationTokenSource?.Dispose();
         _sendCancellationTokenSource = null;
@@ -2604,6 +2866,7 @@ internal enum ChatUiState
     Idle,
     Streaming,
     VoiceListening,
+    VoiceRecognizing,
     WaitingConfirmation,
     Failed,
     Canceled

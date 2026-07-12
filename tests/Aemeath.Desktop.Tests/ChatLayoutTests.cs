@@ -1,8 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Aemeath.Core.Configuration;
 using Aemeath.Desktop.Services;
 using Aemeath.Desktop.Views;
@@ -120,6 +123,86 @@ public sealed class ChatLayoutTests
             Assert.True(row.Bounds.Width > initialWidth);
             Assert.Equal(messages.Bounds.Width, row.Bounds.Width, precision: 1);
             AssertControlRightEdgeIsInside(bubble, messages, window);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void SessionActions_UseExactRenameLabelAndAccessibleName()
+    {
+        using var temp = new TemporaryDirectory();
+        var settings = new SettingsService(Path.Combine(temp.Path, "settings.json"));
+        var window = new ChatWindow(
+            new NoOpChatService(),
+            settings,
+            new ChatSessionStore(Path.Combine(temp.Path, "sessions.json")),
+            new AttachmentThumbnailCache());
+
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            var rename = window.FindControl<Button>("RenameSessionButton")!;
+
+            Assert.Equal("\u91cd\u547d\u540d", rename.Content);
+            Assert.Equal("\u91cd\u547d\u540d\u5f53\u524d\u5bf9\u8bdd", Avalonia.Automation.AutomationProperties.GetName(rename));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task InitialOpen_WithSidebarAndLateLayoutGrowth_StaysAtLatestMessage()
+    {
+        using var temp = new TemporaryDirectory();
+        var settings = new SettingsService(Path.Combine(temp.Path, "settings.json"));
+        settings.Current.IsChatSidebarOpen = true;
+        settings.Save();
+        var sessions = new ChatSessionStore(Path.Combine(temp.Path, "sessions.json"));
+        var session = sessions.CreateSession("initial scroll regression");
+        for (var index = 0; index < 24; index++)
+        {
+            sessions.AppendMessage(
+                session.Id,
+                index % 2 == 0 ? "user" : "assistant",
+                $"message {index}: " + string.Join(" ", Enumerable.Repeat("layout content", 36)));
+        }
+
+        var window = new ChatWindow(
+            new NoOpChatService(),
+            settings,
+            sessions,
+            new AttachmentThumbnailCache())
+        {
+            Width = 940,
+            Height = 720
+        };
+
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            var messages = window.FindControl<StackPanel>("MessagesPanel")!;
+            messages.Children.Add(new Border { Height = 900 });
+            Dispatcher.UIThread.RunJobs();
+
+            await Task.Delay(260);
+            Dispatcher.UIThread.RunJobs();
+
+            var viewer = window.FindControl<ScrollViewer>("ChatScrollViewer")!;
+            var maxOffset = Math.Max(0, viewer.Extent.Height - viewer.Viewport.Height);
+            Assert.True(maxOffset > 0);
+            Assert.InRange(Math.Abs(viewer.Offset.Y - maxOffset), 0, 1.5);
+
+            var verticalBar = viewer.GetVisualDescendants()
+                .OfType<ScrollBar>()
+                .Single(bar => bar.Orientation == Orientation.Vertical);
+            Assert.True(verticalBar.IsVisible);
         }
         finally
         {

@@ -59,7 +59,13 @@
 
             <Grid Grid.Row="3" ColumnDefinitions="*,*,*" Margin="0,10,0,0">
               <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;" Classes="primary" MinWidth="0"/>
-              <Button Grid.Column="1" x:Name="RenameSessionButton" Content="&#x91CD;&#x547D;&#x540D;" Classes="ghost" MinWidth="0" Margin="6,0"/>
+              <Button Grid.Column="1"
+                      x:Name="RenameSessionButton"
+                      Content="&#x91CD;&#x547D;&#x540D;"
+                      Classes="ghost"
+                      MinWidth="0"
+                      Margin="6,0"
+                      AutomationProperties.Name="&#x91CD;&#x547D;&#x540D;&#x5F53;&#x524D;&#x5BF9;&#x8BDD;"/>
               <Button Grid.Column="2" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;" Classes="danger" MinWidth="0"/>
             </Grid>
           </Grid>
@@ -190,15 +196,41 @@
                 <Button Grid.Column="2"
                         x:Name="VoiceRecordButton"
                         IsVisible="False"
-                        Content="&#x6309;&#x4F4F;&#x8BF4;&#x8BDD;"
                         MinHeight="50"
                         Height="50"
                         HorizontalAlignment="Stretch"
                         Margin="8,0,0,0"
-                        Classes="ghost"
+                        Classes="ghost voice-record"
                         FontSize="15"
                         FontWeight="SemiBold"
-                        AutomationProperties.Name="&#x6309;&#x4F4F;&#x5F00;&#x59CB;&#x5F55;&#x97F3;"/>
+                        AutomationProperties.Name="&#x5F00;&#x59CB;&#x5F55;&#x97F3;">
+                  <Grid ColumnDefinitions="Auto,Auto" HorizontalAlignment="Center">
+                    <Grid Width="26" Height="26" VerticalAlignment="Center">
+                      <Ellipse x:Name="VoicePulseRing"
+                               Classes="voice-pulse"
+                               Width="20"
+                               Height="20"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsVisible="False"
+                               IsHitTestVisible="False"
+                               RenderTransformOrigin="50%,50%"/>
+                      <Ellipse x:Name="VoiceStatusDot"
+                               Classes="voice-dot"
+                               Width="9"
+                               Height="9"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"/>
+                    </Grid>
+                    <TextBlock Grid.Column="1"
+                               x:Name="VoiceRecordButtonText"
+                               Text="&#x5F00;&#x59CB;&#x5F55;&#x97F3;"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               AutomationProperties.LiveSetting="Polite"/>
+                  </Grid>
+                </Button>
                 <Button Grid.Column="3" x:Name="VoiceButton" Classes="icon ghost" Width="50" Height="50" Margin="8,0,0,0" AutomationProperties.Name="&#x5207;&#x6362;&#x8BED;&#x97F3;&#x8F93;&#x5165;"/>
                 <Button Grid.Column="4" x:Name="SendButton" Content="&#x53D1;&#x9001;" Classes="primary" MinWidth="100" Height="50" Margin="8,0,0,0" AutomationProperties.Name="&#x53D1;&#x9001;&#x6D88;&#x606F;"/>
               </Grid>

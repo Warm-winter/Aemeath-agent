@@ -18,6 +18,7 @@ public sealed class SkillLoader
 {
     private const string BuiltinResourcePrefix = "Aemeath.Skills.";
     private const string SkillFileName = "SKILL.md";
+    private const string PersonaEndMarker = "<!-- persona-end -->";
 
     // 内置 skill 目录名 → 是否内置。新增内置 skill 时在这里登记。
     private static readonly string[] BuiltinSkillNames = { "aemeath" };
@@ -187,7 +188,7 @@ public sealed class SkillLoader
         manifest.Enabled = isBuiltin;
 
         // 人格提示词：SKILL.md 正文 + interaction.md（互动风格、典型回复示例、禁区）
-        var persona = body;
+        var persona = ExtractPersonaBody(body);
         if (files.TryGetValue("interaction", out var interaction) && !string.IsNullOrWhiteSpace(interaction))
         {
             persona += "\n\n---\n\n" + interaction;
@@ -219,6 +220,13 @@ public sealed class SkillLoader
     }
 
     /// <summary>分离 YAML frontmatter（--- 包裹）和正文。</summary>
+    internal static string ExtractPersonaBody(string body)
+    {
+        var markerIndex = body.IndexOf(PersonaEndMarker, StringComparison.OrdinalIgnoreCase);
+        return (markerIndex >= 0 ? body[..markerIndex] : body).Trim();
+    }
+
+    /// <summary>?? YAML frontmatter?--- ???????</summary>
     private static (string frontMatter, string body) SplitFrontMatter(string content)
     {
         // 匹配开头的 ---\n...\n---

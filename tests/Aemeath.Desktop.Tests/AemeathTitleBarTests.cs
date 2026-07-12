@@ -65,15 +65,17 @@ public sealed class AemeathTitleBarTests
     }
 
     [AvaloniaFact]
-    public void UnsavedDialogTitleBar_HidesRedundantCloseButtonOnlyForThatFlow()
+    public void CancelableDialogTitleBar_HidesRedundantCloseButtonByDefault()
     {
-        var unsavedTitleBar = DialogService.BuildDialogTitleBar("\u672a\u4fdd\u5b58\u66f4\u6539", showCloseButton: false);
-        var standardTitleBar = DialogService.BuildDialogTitleBar("\u786e\u8ba4\u64cd\u4f5c");
+        var unsavedTitleBar = DialogService.BuildDialogTitleBar("未保存更改");
+        var cancelableTitleBar = DialogService.BuildDialogTitleBar("确认操作");
+        var independentTitleBar = DialogService.BuildDialogTitleBar("导入配置", showCloseButton: true);
 
         Assert.False(unsavedTitleBar.ShowMinimizeButton);
         Assert.False(unsavedTitleBar.ShowMaximizeButton);
         Assert.False(unsavedTitleBar.ShowCloseButton);
-        Assert.True(standardTitleBar.ShowCloseButton);
+        Assert.False(cancelableTitleBar.ShowCloseButton);
+        Assert.True(independentTitleBar.ShowCloseButton);
     }
 
     [AvaloniaFact]

@@ -32,6 +32,7 @@ public sealed class ChatInteractionStateMachineTests
     [Theory]
     [InlineData((int)ChatUiState.WaitingConfirmation, true)]
     [InlineData((int)ChatUiState.VoiceListening, true)]
+    [InlineData((int)ChatUiState.VoiceRecognizing, true)]
     [InlineData((int)ChatUiState.Failed, false)]
     [InlineData((int)ChatUiState.Idle, false)]
     public void TransitionTo_State_ReportsExpectedLock(int stateValue, bool expectedLocked)

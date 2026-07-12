@@ -9,6 +9,7 @@ internal sealed class ChatInteractionStateMachine
     public bool IsInteractionLocked => State is
         ChatUiState.Streaming or
         ChatUiState.VoiceListening or
+        ChatUiState.VoiceRecognizing or
         ChatUiState.WaitingConfirmation;
 
     public void TransitionTo(ChatUiState state)
@@ -18,7 +19,7 @@ internal sealed class ChatInteractionStateMachine
 
     public void CancelActiveOperation()
     {
-        if (State is ChatUiState.Streaming or ChatUiState.VoiceListening)
+        if (State is ChatUiState.Streaming or ChatUiState.VoiceListening or ChatUiState.VoiceRecognizing)
         {
             State = ChatUiState.Canceled;
         }
