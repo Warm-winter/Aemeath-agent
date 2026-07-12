@@ -40,7 +40,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
             return response;
         }
 
-        // SSE 流式响应：包装为规范化 Content，逐行规范化 finish_reason / content / tool_calls
+        // SSE 流式响应：仅把空白 finish_reason 转为 JSON null，其余分片原样保留
         if (mediaType?.Contains("event-stream", StringComparison.OrdinalIgnoreCase) == true)
         {
             response.Content = new SseNormalizingContent(response.Content);
@@ -203,15 +203,24 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
 
     private static bool NormalizeChoiceObject(JsonObject choice, bool isStreaming)
     {
-        var changed = false;
+        if (isStreaming)
+        {
+            // Streaming choices are partial protocol frames rather than complete messages.
+            // Preserve delta/content/tool_calls byte semantics so IDs, names and argument
+            // fragments can be reconstructed by the OpenAI client. An empty finish_reason
+            // is non-terminal; map it to JSON null so older clients accept the frame without
+            // ending the stream early.
+            if (IsExplicitEmptyFinishReason(choice["finish_reason"]))
+            {
+                choice["finish_reason"] = null;
+                return true;
+            }
 
-        // Non-stream responses require a terminal reason. In SSE, null or missing means
-        // the stream is still active and must not be rewritten to stop.
-        var finishReason = choice["finish_reason"];
-        var shouldNormalizeFinishReason = isStreaming
-            ? IsExplicitEmptyFinishReason(finishReason) && !HasStreamingPayload(choice)
-            : ShouldTreatAsEmptyFinishReason(finishReason);
-        if (shouldNormalizeFinishReason)
+            return false;
+        }
+
+        var changed = false;
+        if (ShouldTreatAsEmptyFinishReason(choice["finish_reason"]))
         {
             choice["finish_reason"] = "stop";
             changed = true;
@@ -236,12 +245,6 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
                value.TryGetValue<JsonElement>(out var element) &&
                element.ValueKind == JsonValueKind.String &&
                string.IsNullOrWhiteSpace(element.GetString());
-    }
-
-    private static bool HasStreamingPayload(JsonObject choice)
-    {
-        return choice["delta"] is JsonObject { Count: > 0 } ||
-               choice["message"] is JsonObject { Count: > 0 };
     }
 
     private static bool ShouldTreatAsEmptyFinishReason(JsonNode? node)
@@ -479,7 +482,7 @@ public sealed class OpenAIResponseNormalizationHandler : DelegatingHandler
 
     /// <summary>
     /// SSE 流式响应规范化 Content：逐行解析 <c>data:</c> 前缀的 JSON，
-    /// 规范化 <c>finish_reason</c> / <c>content</c> / <c>tool_calls</c> 字段。
+    /// 仅把空白 <c>finish_reason</c> 转为 JSON null；其他流式字段和工具分片原样保留。
     /// </summary>
     private sealed class SseNormalizingContent : HttpContent
     {

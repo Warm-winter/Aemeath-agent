@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -44,25 +43,22 @@ public partial class ChatWindow : Window
     private readonly DispatcherTimer _pendingTimer;
     private readonly DispatcherTimer _flickerTimer;
     private readonly DispatcherTimer _statusHideTimer;
-    private readonly DispatcherTimer _scrollStabilizationTimer;
     private readonly string[] _pendingFrames = ["星点同步中", "星点同步中.", "星点同步中..", "星点同步中..."];
 
     private int _pendingFrameIndex;
     private TextBlock? _pendingTextBlock;
     private bool _isSending;
     private bool _scrollPending;
-    private bool _isScrollStabilizing;
+    private bool _isProgrammaticScroll;
+    private bool _pinLatestUntilMeasured;
     private bool _isRenderingMessageBatch;
-    private int _scrollStabilizationTicks;
-    private int _stableScrollPasses;
-    private double _lastScrollMaximum = double.NaN;
+    private int _scrollLayoutGeneration;
     private bool _isUpdatingSessionList;
     private bool _userNearBottom = true;
     private CancellationTokenSource? _sendCancellationTokenSource;
     private readonly ChatInteractionStateMachine _interactionState = new();
     private const double AutoScrollThreshold = 96;
-    private const int MaxScrollStabilizationTicks = 12;
-    private const double ScrollStabilityTolerance = 0.5;
+    private const double ScrollBottomTolerance = 1.5;
     private double _flickerPhase;
 
     private readonly Bitmap _assistantAvatar;
@@ -83,6 +79,7 @@ public partial class ChatWindow : Window
     private readonly DrawingImage _fileIcon;
     private readonly McpServerStore _mcpServerStore = new();
     private readonly List<ChatMessageRecord> _displayMessages = [];
+    private TransientChatFailure? _transientFailure;
     private readonly Dictionary<string, PendingToolAction> _pendingToolActions = new(StringComparer.OrdinalIgnoreCase);
     // 确认卡片控件：actionId → 渲染出的 Border。确认/取消时从面板移除该卡片。
     private readonly Dictionary<string, Border> _pendingActionCards = new(StringComparer.OrdinalIgnoreCase);
@@ -262,12 +259,6 @@ public partial class ChatWindow : Window
             ProviderSwitchStatusBorder.IsVisible = false;
         };
 
-        _scrollStabilizationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _scrollStabilizationTimer.Tick += (_, _) => StabilizeScrollToBottom();
-
         _voiceDurationTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(250)
@@ -324,7 +315,16 @@ public partial class ChatWindow : Window
         };
 
         JumpToLatestButton.Click += (_, _) => ScrollToBottom(force: true);
-        ChatScrollViewer.ScrollChanged += (_, _) => UpdateScrollProximity();
+        ChatScrollViewer.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.OffsetProperty && !_isProgrammaticScroll)
+            {
+                CancelLatestMessagePinIfUserMovedAway();
+            }
+        };
+        ChatScrollViewer.ScrollChanged += OnChatScrollChanged;
+        ChatScrollViewer.SizeChanged += (_, _) => OnChatLayoutMetricsChanged();
+        MessagesPanel.SizeChanged += (_, _) => OnChatLayoutMetricsChanged();
         PromptIntroButton.Click += (_, _) => SetPromptText("介绍一下你自己吧。");
         PromptPlanButton.Click += (_, _) => SetPromptText("帮我整理一下今天的计划。");
         PromptImageButton.Click += async (_, _) => await PickAttachmentsAsync(imagesOnly: true);
@@ -554,17 +554,98 @@ public partial class ChatWindow : Window
 
     private void UpdateScrollProximity()
     {
-        if (_isScrollStabilizing)
+        var remaining = GetMaximumScrollOffset() - ChatScrollViewer.Offset.Y;
+        _userNearBottom = remaining <= AutoScrollThreshold;
+        JumpToLatestButton.IsVisible = !_userNearBottom && _displayMessages.Count > 0;
+    }
+
+    private void CancelLatestMessagePinIfUserMovedAway()
+    {
+        UpdateScrollProximity();
+        if (!_userNearBottom)
+        {
+            _pinLatestUntilMeasured = false;
+        }
+    }
+
+    private void OnChatScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        var offsetChanged = Math.Abs(e.OffsetDelta.Y) > 0.1;
+        if (!_isProgrammaticScroll && offsetChanged)
+        {
+            CancelLatestMessagePinIfUserMovedAway();
+            if (!_userNearBottom)
+            {
+                return;
+            }
+        }
+
+        var layoutChanged = Math.Abs(e.ExtentDelta.Y) > 0.1 || Math.Abs(e.ViewportDelta.Y) > 0.1;
+        if (layoutChanged)
+        {
+            _scrollLayoutGeneration++;
+            if (_pinLatestUntilMeasured || _userNearBottom || _isProgrammaticScroll)
+            {
+                _userNearBottom = true;
+                JumpToLatestButton.IsVisible = false;
+                QueueScrollToBottom();
+            }
+            else
+            {
+                UpdateScrollProximity();
+            }
+            return;
+        }
+
+        if (_isProgrammaticScroll)
         {
             _userNearBottom = true;
             JumpToLatestButton.IsVisible = false;
             return;
         }
 
-        var remaining = ChatScrollViewer.Extent.Height - ChatScrollViewer.Viewport.Height - ChatScrollViewer.Offset.Y;
-        _userNearBottom = remaining <= AutoScrollThreshold;
-        JumpToLatestButton.IsVisible = !_userNearBottom && _displayMessages.Count > 0;
+        UpdateScrollProximity();
     }
+
+    private void OnChatLayoutMetricsChanged()
+    {
+        ConstrainMessageRowsToViewport();
+        _scrollLayoutGeneration++;
+        if (_pinLatestUntilMeasured || _userNearBottom)
+        {
+            QueueScrollToBottom();
+        }
+    }
+
+    private void ConstrainMessageRowsToViewport()
+    {
+        var availableWidth = MessagesPanel.Bounds.Width;
+        if (availableWidth <= 0)
+        {
+            return;
+        }
+
+        foreach (var root in MessagesPanel.Children.OfType<StackPanel>())
+        {
+            var row = root.Children
+                .OfType<Grid>()
+                .FirstOrDefault(candidate => candidate.Classes.Contains("message-row"));
+            if (row is null)
+            {
+                continue;
+            }
+
+            if (Math.Abs(root.MaxWidth - availableWidth) > 0.5)
+            {
+                root.MaxWidth = availableWidth;
+            }
+            if (Math.Abs(row.MaxWidth - availableWidth) > 0.5)
+            {
+                row.MaxWidth = availableWidth;
+            }
+        }
+    }
+
     private async Task SendAsync()
     {
         if (_isSending)
@@ -593,6 +674,7 @@ public partial class ChatWindow : Window
             return;
         }
 
+        ClearTransientFailure(render: true);
         var visibleUserText = text.Trim();
         var modelInput = string.IsNullOrWhiteSpace(visibleUserText)
             ? "\u8bf7\u5206\u6790\u6211\u4e0a\u4f20\u7684\u9644\u4ef6\u3002"
@@ -616,12 +698,9 @@ public partial class ChatWindow : Window
 
             // 先取历史（不含当前这一条），再持久化当前消息，避免当前消息在历史里重复出现一次。
             var recent = _sessionStore.GetRecentMessages(_currentSessionId, 40);
-            AppLogger.Info("chat", $"[诊断] 输入文本: {modelInput.Substring(0, Math.Min(100, modelInput.Length))}... | recent 消息数: {recent.Count}");
-            if (recent.Count > 0)
-            {
-                var lastMsg = recent[recent.Count - 1];
-                AppLogger.Info("chat", $"[诊断] recent 最后一条: Role={lastMsg.Role}, Content={lastMsg.Content.Substring(0, Math.Min(80, lastMsg.Content.Length))}...");
-            }
+            AppLogger.Info(
+                "chat",
+                $"send context loaded: inputChars={modelInput.Length}, recentMessages={recent.Count}, attachments={attachmentList.Count}");
 
             var userMessage = new ChatMessageRecord
             {
@@ -648,7 +727,9 @@ public partial class ChatWindow : Window
             // 这里是按当前用户消息做向量检索，只注入相关片段。
             var memoryBlock = await _memoryOrchestrator.BuildRelevantMemoryBlockAsync(_currentSessionId, modelInput);
             var prompt = BuildPromptWithRecentContext(recent, modelInput, attachmentList, memoryBlock);
-            AppLogger.Info("chat", $"[诊断] 构建的 Prompt 前 500 字符: {prompt.Substring(0, Math.Min(500, prompt.Length))}...");
+            AppLogger.Info(
+                "chat",
+                $"send prompt prepared: promptChars={prompt.Length}, memoryIncluded={!string.IsNullOrWhiteSpace(memoryBlock)}");
 
             _chatService.ClearHistory();
 
@@ -663,7 +744,7 @@ public partial class ChatWindow : Window
                 return;
             }
 
-            if (TryHandleEmptyAssistantReply(sanitizedReply, pending))
+            if (TryHandleEmptyAssistantReply(sanitizedReply, userMessage))
             {
                 return;
             }
@@ -735,6 +816,7 @@ public partial class ChatWindow : Window
         var visibleText = string.Empty;
         var lastFlush = DateTimeOffset.MinValue;
         var timerStopped = false;
+        var textChunkCount = 0;
 
         await foreach (var chunk in _chatService.SendMessageStreamingAsync(prompt, attachments, cancellationToken))
         {
@@ -744,6 +826,7 @@ public partial class ChatWindow : Window
                 continue;
             }
 
+            textChunkCount++;
             builder.Append(chunk);
             var current = builder.ToString();
             if (ShouldSuppressConfirmationReply(current))
@@ -781,6 +864,9 @@ public partial class ChatWindow : Window
             ScrollToBottom();
         }
 
+        AppLogger.Info(
+            "chat",
+            $"stream consumed: textChunks={textChunkCount}, rawChars={builder.Length}, visibleChars={finalText.Length}");
         return builder.ToString();
     }
     private void InputBox_OnTextChanged(object? sender, TextChangedEventArgs e)
@@ -1372,7 +1458,7 @@ public partial class ChatWindow : Window
                || text.Contains("高风险操作已暂停", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool TryHandleEmptyAssistantReply(string? reply, TextBlock pending)
+    private bool TryHandleEmptyAssistantReply(string? reply, ChatMessageRecord userMessage)
     {
         if (!string.IsNullOrWhiteSpace(reply))
         {
@@ -1380,7 +1466,12 @@ public partial class ChatWindow : Window
         }
 
         const string message = "\u672a\u6536\u5230\u6709\u6548\u56de\u590d\uff0c\u8bf7\u91cd\u8bd5\u3002";
-        pending.Text = message;
+        _transientFailure = new TransientChatFailure(
+            message,
+            CloneMessage(userMessage),
+            DateTimeOffset.UtcNow);
+        RenderCurrentMessages();
+        ScrollToBottom();
         ShowStatusMessage(message);
         SetUiState(ChatUiState.Failed);
         RaiseActivityChanged(ChatActivityKind.Failed);
@@ -1465,27 +1556,28 @@ public partial class ChatWindow : Window
         };
     }
 
-    private TextBlock AddMessageBubble(int messageIndex, bool isAssistant, string text, bool isPending)
+    private TextBlock AddMessageBubble(
+        int messageIndex,
+        bool isAssistant,
+        string text,
+        bool isPending,
+        WrapPanel? customActions = null,
+        DateTimeOffset? timestampOverride = null)
     {
         var root = new StackPanel
         {
             Spacing = 5,
             Margin = new Thickness(0, 0, 0, 8),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Focusable = !isPending
         };
         var row = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions(isAssistant ? "Auto,*" : "*,Auto"),
-            Margin = new Thickness(0, 2, 0, 2)
+            Margin = new Thickness(0, 2, 0, 2),
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         row.Classes.Add("message-row");
-        row.Bind(
-            Control.WidthProperty,
-            new Binding("Bounds.Width")
-            {
-                Source = MessagesPanel,
-                Mode = BindingMode.OneWay
-            });
         var avatar = new AvaloniaImage
         {
             Width = 38,
@@ -1517,9 +1609,10 @@ public partial class ChatWindow : Window
             HorizontalAlignment = isAssistant ? HorizontalAlignment.Left : HorizontalAlignment.Right
         };
 
-        var timestamp = messageIndex >= 0 && messageIndex < _displayMessages.Count
-            ? _displayMessages[messageIndex].Timestamp.ToLocalTime()
-            : DateTimeOffset.Now;
+        var timestamp = timestampOverride?.ToLocalTime() ??
+            (messageIndex >= 0 && messageIndex < _displayMessages.Count
+                ? _displayMessages[messageIndex].Timestamp.ToLocalTime()
+                : DateTimeOffset.Now);
         var speaker = isAssistant ? "小爱 · 飞行雪绒" : "你";
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         header.Children.Add(new TextBlock
@@ -1567,11 +1660,14 @@ public partial class ChatWindow : Window
             content.Children.Add(new MarkdownPresenter(text));
         }
 
-        if (!isPending && messageIndex >= 0)
+        if (!isPending && (messageIndex >= 0 || customActions is not null))
         {
-            content.Children.Add(BuildMessageActions(messageIndex, isAssistant));
-            bubble.ContextMenu = BuildMessageContextMenu(messageIndex, isAssistant);
-            AutomationProperties.SetName(root, $"{speaker}的消息，{timeText.Text}");
+            content.Children.Add(customActions ?? BuildMessageActions(messageIndex, isAssistant));
+            if (messageIndex >= 0)
+            {
+                bubble.ContextMenu = BuildMessageContextMenu(messageIndex, isAssistant);
+            }
+            AutomationProperties.SetName(root, $"{speaker}\u7684\u6d88\u606f\uff0c{timeText.Text}");
         }
         bubble.Child = content;
 
@@ -1591,6 +1687,12 @@ public partial class ChatWindow : Window
         }
         root.Children.Add(row);
 
+        var currentViewportWidth = MessagesPanel.Bounds.Width;
+        if (currentViewportWidth > 0)
+        {
+            root.MaxWidth = currentViewportWidth;
+            row.MaxWidth = currentViewportWidth;
+        }
         MessagesPanel.Children.Add(root);
         if (!_isRenderingMessageBatch)
         {
@@ -1705,6 +1807,84 @@ public partial class ChatWindow : Window
         host.Child = AttachmentCardFactory.CreateFileCard(attachment, _imageIcon, reason);
         AutomationProperties.SetName(host, $"不可用图片附件 {attachment.Name}：{reason}");
     }
+
+    private void RenderTransientFailure()
+    {
+        var failure = _transientFailure;
+        if (failure is null)
+        {
+            return;
+        }
+
+        AddMessageBubble(
+            -1,
+            isAssistant: true,
+            failure.Message,
+            isPending: false,
+            BuildTransientFailureActions(failure),
+            failure.Timestamp);
+    }
+
+    private WrapPanel BuildTransientFailureActions(TransientChatFailure failure)
+    {
+        var panel = new WrapPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 5, 0, 0)
+        };
+        panel.Classes.Add("message-actions");
+        AutomationProperties.SetName(panel, "\u5931\u8d25\u6d88\u606f\u64cd\u4f5c");
+        panel.Children.Add(BuildActionButton(_copyIcon, "\u590d\u5236", async () => await CopyTextAsync(failure.Message)));
+        panel.Children.Add(BuildActionButton(_retryIcon, "\u91cd\u8bd5", async () => await RetryTransientFailureAsync(failure)));
+        panel.Children.Add(BuildActionButton(_deleteIcon, "\u5220\u9664", () => DismissTransientFailure(failure), danger: true));
+        return panel;
+    }
+
+    private async Task RetryTransientFailureAsync(TransientChatFailure failure)
+    {
+        if (_isSending || _transientFailure != failure)
+        {
+            return;
+        }
+
+        _transientFailure = null;
+        RenderCurrentMessages();
+        await GenerateAssistantReplyForUserAsync(CloneMessage(failure.UserMessage));
+    }
+
+    private void DismissTransientFailure(TransientChatFailure failure)
+    {
+        if (_transientFailure != failure)
+        {
+            return;
+        }
+
+        _transientFailure = null;
+        RenderCurrentMessages();
+    }
+
+    private void ClearTransientFailure(bool render)
+    {
+        if (_transientFailure is null)
+        {
+            return;
+        }
+
+        _transientFailure = null;
+        if (render)
+        {
+            RenderCurrentMessages();
+        }
+    }
+
+    private static ChatMessageRecord CloneMessage(ChatMessageRecord message)
+        => new()
+        {
+            Role = message.Role,
+            Content = message.Content,
+            Timestamp = message.Timestamp,
+            Attachments = message.Attachments?.Select(attachment => attachment with { }).ToList() ?? []
+        };
 
     internal WrapPanel BuildMessageActions(int messageIndex, bool isAssistant)
     {
@@ -1989,10 +2169,15 @@ public partial class ChatWindow : Window
             return;
         }
 
+        await CopyTextAsync(_displayMessages[index].Content);
+    }
+
+    private async Task CopyTextAsync(string text)
+    {
         var topLevel = GetTopLevel(this);
         if (topLevel?.Clipboard is not null)
         {
-            await topLevel.Clipboard.SetTextAsync(_displayMessages[index].Content);
+            await topLevel.Clipboard.SetTextAsync(text);
         }
     }
 
@@ -2040,6 +2225,7 @@ public partial class ChatWindow : Window
             return;
         }
 
+        ClearTransientFailure(render: true);
         var attachments = userMessage.Attachments?.Select(attachment => attachment with { }).ToList()
             ?? new List<ChatAttachment>();
         var userContent = string.IsNullOrWhiteSpace(userMessage.Content) && attachments.Count > 0
@@ -2074,7 +2260,7 @@ public partial class ChatWindow : Window
                 return;
             }
 
-            if (TryHandleEmptyAssistantReply(sanitized, pending))
+            if (TryHandleEmptyAssistantReply(sanitized, userMessage))
             {
                 return;
             }
@@ -2416,7 +2602,7 @@ public partial class ChatWindow : Window
     {
         if (force)
         {
-            StartScrollStabilization();
+            BeginLatestMessagePin();
             return;
         }
 
@@ -2426,85 +2612,99 @@ public partial class ChatWindow : Window
             return;
         }
 
-        if (_scrollPending) return;
-        _scrollPending = true;
-        Dispatcher.UIThread.Post(() =>
-        {
-            try
-            {
-                ScrollViewerToMaximumOffset();
-            }
-            finally
-            {
-                _scrollPending = false;
-            }
-        }, DispatcherPriority.Background);
+        QueueScrollToBottom();
     }
 
-    private void StabilizeAfterLateMessageLayoutChange()
+    private void BeginLatestMessagePin()
     {
-        if (_userNearBottom)
-        {
-            StartScrollStabilization();
-        }
-    }
-
-    private void StartScrollStabilization()
-    {
-        _isScrollStabilizing = true;
-        _scrollStabilizationTicks = 0;
-        _stableScrollPasses = 0;
-        _lastScrollMaximum = double.NaN;
+        _pinLatestUntilMeasured = true;
         _userNearBottom = true;
+        _scrollLayoutGeneration++;
         JumpToLatestButton.IsVisible = false;
-        ScrollViewerToMaximumOffset();
-        _scrollStabilizationTimer.Stop();
-        _scrollStabilizationTimer.Start();
+        QueueScrollToBottom();
     }
 
-    private void StabilizeScrollToBottom()
+    private void QueueScrollToBottom()
     {
-        if (!_isScrollStabilizing)
+        if (_scrollPending)
         {
-            _scrollStabilizationTimer.Stop();
             return;
         }
 
-        var maximum = GetMaximumScrollOffset();
-        ScrollViewerToMaximumOffset(maximum);
-        _scrollStabilizationTicks++;
+        _scrollPending = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scrollPending = false;
+            if (!_pinLatestUntilMeasured && !_userNearBottom)
+            {
+                return;
+            }
 
-        if (!double.IsNaN(_lastScrollMaximum) &&
-            Math.Abs(maximum - _lastScrollMaximum) <= ScrollStabilityTolerance)
-        {
-            _stableScrollPasses++;
-        }
-        else
-        {
-            _stableScrollPasses = 0;
-        }
-
-        _lastScrollMaximum = maximum;
-        if (_stableScrollPasses >= 2 || _scrollStabilizationTicks >= MaxScrollStabilizationTicks)
-        {
-            StopScrollStabilization();
-        }
+            _isProgrammaticScroll = true;
+            ScrollViewerToMaximumOffset();
+            Dispatcher.UIThread.Post(() =>
+            {
+                _isProgrammaticScroll = false;
+                if (_pinLatestUntilMeasured)
+                {
+                    TryReleaseLatestMessagePin();
+                }
+                else
+                {
+                    UpdateScrollProximity();
+                }
+            }, DispatcherPriority.Render);
+        }, DispatcherPriority.Render);
     }
 
-    private void StopScrollStabilization()
+    private void TryReleaseLatestMessagePin()
     {
-        _scrollStabilizationTimer.Stop();
-        _isScrollStabilizing = false;
-        _userNearBottom = true;
-        JumpToLatestButton.IsVisible = false;
+        if (!_pinLatestUntilMeasured || !IsLatestMessageMeasured() || !IsScrolledToBottom())
+        {
+            return;
+        }
+
+        var observedGeneration = _scrollLayoutGeneration;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_pinLatestUntilMeasured)
+            {
+                return;
+            }
+
+            if (observedGeneration != _scrollLayoutGeneration ||
+                !IsLatestMessageMeasured() ||
+                !IsScrolledToBottom())
+            {
+                QueueScrollToBottom();
+                return;
+            }
+
+            _pinLatestUntilMeasured = false;
+            _userNearBottom = true;
+            JumpToLatestButton.IsVisible = false;
+        }, DispatcherPriority.Background);
     }
+
+    private bool IsLatestMessageMeasured()
+    {
+        if (ChatScrollViewer.Viewport.Height <= 0 || MessagesPanel.Bounds.Width <= 0)
+        {
+            return false;
+        }
+
+        return MessagesPanel.Children.Count == 0 || MessagesPanel.Children[^1].Bounds.Height > 0;
+    }
+
+    private bool IsScrolledToBottom()
+        => Math.Abs(ChatScrollViewer.Offset.Y - GetMaximumScrollOffset()) <= ScrollBottomTolerance;
 
     private double GetMaximumScrollOffset()
         => Math.Max(0, ChatScrollViewer.Extent.Height - ChatScrollViewer.Viewport.Height);
 
-    private void ScrollViewerToMaximumOffset(double? maximum = null)
+    private void ScrollViewerToMaximumOffset()
     {
-        ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, maximum ?? GetMaximumScrollOffset());
+        ChatScrollViewer.Offset = new Vector(ChatScrollViewer.Offset.X, GetMaximumScrollOffset());
         _userNearBottom = true;
         JumpToLatestButton.IsVisible = false;
     }
@@ -2585,6 +2785,7 @@ public partial class ChatWindow : Window
 
     private void StartNewSession()
     {
+        _transientFailure = null;
         var session = _sessionStore.CreateSession();
         _currentSessionId = session.Id;
         _displayMessages.Clear();
@@ -2596,6 +2797,7 @@ public partial class ChatWindow : Window
 
     private void LoadLatestSessionOrCreateIfEmpty()
     {
+        _transientFailure = null;
         var sessions = _sessionStore.ListSessions();
         if (sessions.Count == 0)
         {
@@ -2613,6 +2815,7 @@ public partial class ChatWindow : Window
 
     private void LoadLatestSessionOrEmpty()
     {
+        _transientFailure = null;
         var sessions = _sessionStore.ListSessions();
         if (sessions.Count == 0)
         {
@@ -2635,6 +2838,7 @@ public partial class ChatWindow : Window
 
     private void LoadSession(string sessionId)
     {
+        _transientFailure = null;
         var session = _sessionStore.GetSession(sessionId);
         if (session is null)
         {
@@ -2761,6 +2965,7 @@ public partial class ChatWindow : Window
             _isRenderingMessageBatch = false;
         }
 
+        RenderTransientFailure();
         RenderPendingToolActions();
         UpdateEmptyState();
     }
@@ -2827,7 +3032,6 @@ public partial class ChatWindow : Window
         AppLogger.Info("chat", "chat window closed dispose resources");
         _pendingTimer.Stop();
         _flickerTimer.Stop();
-        StopScrollStabilization();
         _particleEffect.Stop();
         StopVoiceTimers();
         _voiceCaptureCancellation?.Cancel();
@@ -2855,6 +3059,11 @@ public partial class ChatWindow : Window
         base.OnClosed(e);
     }
 }
+
+internal sealed record TransientChatFailure(
+    string Message,
+    ChatMessageRecord UserMessage,
+    DateTimeOffset Timestamp);
 
 public sealed class ChatActivityChangedEventArgs(ChatActivityKind kind) : EventArgs
 {

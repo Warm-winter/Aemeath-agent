@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -104,6 +105,7 @@ public sealed class ChatLayoutTests
         {
             Dispatcher.UIThread.RunJobs();
 
+            var viewer = window.FindControl<ScrollViewer>("ChatScrollViewer")!;
             var messages = window.FindControl<StackPanel>("MessagesPanel")!;
             var root = Assert.IsType<StackPanel>(Assert.Single(messages.Children));
             var row = Assert.IsType<Grid>(Assert.Single(root.Children));
@@ -112,6 +114,9 @@ public sealed class ChatLayoutTests
                 .Single(border => Math.Abs(border.MaxWidth - 720) < 0.01);
 
             Assert.Contains("message-row", row.Classes);
+            Assert.Equal(HorizontalAlignment.Stretch, viewer.HorizontalContentAlignment);
+            Assert.Equal(HorizontalAlignment.Stretch, messages.HorizontalAlignment);
+            Assert.True(double.IsNaN(row.Width), "Message rows must stretch instead of binding Width to live bounds.");
             Assert.True(messages.Bounds.Width < 774, "The test must reproduce the constrained inline layout.");
             Assert.Equal(messages.Bounds.Width, row.Bounds.Width, precision: 1);
             AssertControlRightEdgeIsInside(bubble, messages, window);
@@ -149,6 +154,28 @@ public sealed class ChatLayoutTests
 
             Assert.Equal("\u91cd\u547d\u540d", rename.Content);
             Assert.Equal("\u91cd\u547d\u540d\u5f53\u524d\u5bf9\u8bdd", Avalonia.Automation.AutomationProperties.GetName(rename));
+            Assert.Contains("compact", rename.Classes);
+            Assert.Equal(new Thickness(0), rename.Margin);
+            Assert.Equal(8, rename.Padding.Left, precision: 1);
+            Assert.Equal(8, rename.Padding.Right, precision: 1);
+
+            var textProbe = new TextBlock
+            {
+                Text = Assert.IsType<string>(rename.Content),
+                FontFamily = rename.FontFamily,
+                FontSize = rename.FontSize,
+                FontStyle = rename.FontStyle,
+                FontWeight = rename.FontWeight
+            };
+            textProbe.Measure(Size.Infinity);
+            var availableContentWidth = rename.Bounds.Width
+                - rename.Padding.Left
+                - rename.Padding.Right
+                - rename.BorderThickness.Left
+                - rename.BorderThickness.Right;
+            Assert.True(
+                availableContentWidth >= textProbe.DesiredSize.Width,
+                $"Rename text needs {textProbe.DesiredSize.Width:F1}px but only {availableContentWidth:F1}px is available.");
         }
         finally
         {
@@ -157,7 +184,7 @@ public sealed class ChatLayoutTests
     }
 
     [AvaloniaFact]
-    public async Task InitialOpen_WithSidebarAndLateLayoutGrowth_StaysAtLatestMessage()
+    public async Task InitialOpen_WithSidebarAndLayoutGrowthAfterInitialPin_StaysAtLatestMessage()
     {
         using var temp = new TemporaryDirectory();
         var settings = new SettingsService(Path.Combine(temp.Path, "settings.json"));
@@ -188,10 +215,15 @@ public sealed class ChatLayoutTests
         {
             Dispatcher.UIThread.RunJobs();
             var messages = window.FindControl<StackPanel>("MessagesPanel")!;
+
+            // The previous fixed-frame stabilizer completed after at most ~192 ms.
+            // Reproduce a real late layout change after that window has already elapsed.
+            await Task.Delay(260);
+            Dispatcher.UIThread.RunJobs();
             messages.Children.Add(new Border { Height = 900 });
             Dispatcher.UIThread.RunJobs();
 
-            await Task.Delay(260);
+            await Task.Delay(120);
             Dispatcher.UIThread.RunJobs();
 
             var viewer = window.FindControl<ScrollViewer>("ChatScrollViewer")!;
@@ -203,6 +235,115 @@ public sealed class ChatLayoutTests
                 .OfType<ScrollBar>()
                 .Single(bar => bar.Orientation == Orientation.Vertical);
             Assert.True(verticalBar.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task UserScrollsUp_LateLayoutGrowth_DoesNotForceLatest()
+    {
+        using var temp = new TemporaryDirectory();
+        var settings = new SettingsService(Path.Combine(temp.Path, "settings.json"));
+        settings.Current.IsChatSidebarOpen = true;
+        settings.Save();
+        var sessions = new ChatSessionStore(Path.Combine(temp.Path, "sessions.json"));
+        var session = sessions.CreateSession("manual scroll regression");
+        for (var index = 0; index < 24; index++)
+        {
+            sessions.AppendMessage(
+                session.Id,
+                index % 2 == 0 ? "user" : "assistant",
+                $"message {index}: " + string.Join(" ", Enumerable.Repeat("layout content", 36)));
+        }
+
+        var window = new ChatWindow(
+            new NoOpChatService(),
+            settings,
+            sessions,
+            new AttachmentThumbnailCache())
+        {
+            Width = 940,
+            Height = 720
+        };
+
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(260);
+            Dispatcher.UIThread.RunJobs();
+
+            var viewer = window.FindControl<ScrollViewer>("ChatScrollViewer")!;
+            var messages = window.FindControl<StackPanel>("MessagesPanel")!;
+            var jump = window.FindControl<Button>("JumpToLatestButton")!;
+            var originalMaximum = Math.Max(0, viewer.Extent.Height - viewer.Viewport.Height);
+            viewer.Offset = new Vector(viewer.Offset.X, Math.Max(0, originalMaximum - 320));
+            Dispatcher.UIThread.RunJobs();
+            var userOffset = viewer.Offset.Y;
+
+            messages.Children.Add(new Border { Height = 900 });
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(120);
+            Dispatcher.UIThread.RunJobs();
+
+            var newMaximum = Math.Max(0, viewer.Extent.Height - viewer.Viewport.Height);
+            Assert.True(newMaximum > originalMaximum);
+            Assert.InRange(Math.Abs(viewer.Offset.Y - userOffset), 0, 1.5);
+            Assert.True(viewer.Offset.Y < newMaximum - 100);
+            Assert.True(jump.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void UserScrollsUp_WhileLatestPinIsQueued_CancelsPendingFollow()
+    {
+        using var temp = new TemporaryDirectory();
+        var settings = new SettingsService(Path.Combine(temp.Path, "settings.json"));
+        settings.Current.IsChatSidebarOpen = true;
+        settings.Save();
+        var sessions = new ChatSessionStore(Path.Combine(temp.Path, "sessions.json"));
+        var session = sessions.CreateSession("queued pin regression");
+        for (var index = 0; index < 24; index++)
+        {
+            sessions.AppendMessage(
+                session.Id,
+                index % 2 == 0 ? "user" : "assistant",
+                $"message {index}: " + string.Join(" ", Enumerable.Repeat("layout content", 36)));
+        }
+
+        var window = new ChatWindow(
+            new NoOpChatService(),
+            settings,
+            sessions,
+            new AttachmentThumbnailCache())
+        {
+            Width = 940,
+            Height = 720
+        };
+
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            var viewer = window.FindControl<ScrollViewer>("ChatScrollViewer")!;
+            var jump = window.FindControl<Button>("JumpToLatestButton")!;
+            var maximum = Math.Max(0, viewer.Extent.Height - viewer.Viewport.Height);
+            Assert.True(maximum > 320);
+
+            jump.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var userOffset = maximum - 320;
+            viewer.Offset = new Vector(viewer.Offset.X, userOffset);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.InRange(Math.Abs(viewer.Offset.Y - userOffset), 0, 1.5);
+            Assert.True(jump.IsVisible);
         }
         finally
         {

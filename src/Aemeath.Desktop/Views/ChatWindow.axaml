@@ -57,16 +57,15 @@
                      BorderThickness="0"
                      AutomationProperties.Name="&#x5386;&#x53F2;&#x5BF9;&#x8BDD;&#x5217;&#x8868;"/>
 
-            <Grid Grid.Row="3" ColumnDefinitions="*,*,*" Margin="0,10,0,0">
-              <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;" Classes="primary" MinWidth="0"/>
+            <Grid Grid.Row="3" ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="0,10,0,0">
+              <Button x:Name="NewSessionButton" Content="&#x65B0;&#x5EFA;" Classes="primary compact" MinWidth="0"/>
               <Button Grid.Column="1"
                       x:Name="RenameSessionButton"
                       Content="&#x91CD;&#x547D;&#x540D;"
-                      Classes="ghost"
+                      Classes="ghost compact"
                       MinWidth="0"
-                      Margin="6,0"
                       AutomationProperties.Name="&#x91CD;&#x547D;&#x540D;&#x5F53;&#x524D;&#x5BF9;&#x8BDD;"/>
-              <Button Grid.Column="2" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;" Classes="danger" MinWidth="0"/>
+              <Button Grid.Column="2" x:Name="DeleteSessionButton" Content="&#x5220;&#x9664;" Classes="danger compact" MinWidth="0"/>
             </Grid>
           </Grid>
         </Border>
@@ -138,11 +137,16 @@
             <Grid>
               <Border IsHitTestVisible="False" Margin="1" CornerRadius="19" BorderBrush="{StaticResource AemiBorderSoftBrush}" BorderThickness="1"/>
               <ScrollViewer x:Name="ChatScrollViewer"
+                            Classes="chat-messages"
                             Padding="18"
+                            HorizontalContentAlignment="Stretch"
                             VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled"
                             AutomationProperties.Name="&#x5BF9;&#x8BDD;&#x6D88;&#x606F;">
-                <StackPanel x:Name="MessagesPanel" Spacing="12" Margin="0,0,0,54"/>
+                <StackPanel x:Name="MessagesPanel"
+                            HorizontalAlignment="Stretch"
+                            Spacing="12"
+                            Margin="0,0,0,54"/>
               </ScrollViewer>
 
               <StackPanel x:Name="EmptyStatePanel"

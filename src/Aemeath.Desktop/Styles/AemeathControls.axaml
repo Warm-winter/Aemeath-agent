@@ -100,6 +100,9 @@
     <Setter Property="MinHeight" Value="42"/>
     <Setter Property="Padding" Value="8"/>
   </Style>
+  <Style Selector="Button.compact">
+    <Setter Property="Padding" Value="8"/>
+  </Style>
 
   <Style Selector="ScrollBar">
     <Setter Property="AllowAutoHide" Value="False"/>
@@ -183,6 +186,26 @@
   <Style Selector="ScrollBar /template/ Thumb:pressed">
     <Setter Property="Background" Value="{DynamicResource AemiIconBrush}"/>
     <Setter Property="Opacity" Value="1"/>
+  </Style>
+
+  <Style Selector="ScrollViewer.chat-messages /template/ ScrollBar:vertical">
+    <Setter Property="Width" Value="12"/>
+  </Style>
+  <Style Selector="ScrollViewer.chat-messages /template/ ScrollBar:vertical /template/ Rectangle#TrackRect">
+    <Setter Property="Width" Value="3"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="StrokeThickness" Value="0"/>
+    <Setter Property="Opacity" Value="0.22"/>
+  </Style>
+  <Style Selector="ScrollViewer.chat-messages /template/ ScrollBar:vertical /template/ Thumb">
+    <Setter Property="Width" Value="5"/>
+    <Setter Property="MinWidth" Value="5"/>
+  </Style>
+  <Style Selector="ScrollViewer.chat-messages /template/ ScrollBar:vertical:pointerover /template/ Thumb">
+    <Setter Property="Width" Value="7"/>
+  </Style>
+  <Style Selector="ScrollViewer.chat-messages /template/ ScrollBar:vertical /template/ Thumb:pressed">
+    <Setter Property="Width" Value="7"/>
   </Style>
 
   <Style Selector="Button.voice-record">

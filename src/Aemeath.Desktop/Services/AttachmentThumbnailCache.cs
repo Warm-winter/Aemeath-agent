@@ -139,7 +139,13 @@ internal sealed class AttachmentThumbnailCache : IDisposable
     {
         try
         {
-            using var stream = File.OpenRead(path);
+            // Preview decoding runs in the background and may overlap window shutdown or test cleanup.
+            // Allow the source file to be deleted without waiting for ImageSharp to finish reading it.
+            using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read | FileShare.Delete);
             var options = new DecoderOptions
             {
                 MaxFrames = 1,
