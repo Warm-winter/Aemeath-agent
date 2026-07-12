@@ -401,6 +401,7 @@ public partial class PetWindow : Window
     internal ContextMenu BuildContextMenu()
     {
         var menu = new ContextMenu();
+        menu.Classes.Add("pet-menu");
 
         var chatItem = new MenuItem { Header = "打开对话" };
         chatItem.Click += (_, _) => _openChatAction?.Invoke();
@@ -507,7 +508,20 @@ public partial class PetWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(trayItem);
         menu.Items.Add(exitItem);
+        foreach (var item in menu.Items.OfType<MenuItem>())
+        {
+            ApplyPetMenuItemClass(item);
+        }
         return menu;
+    }
+
+    private static void ApplyPetMenuItemClass(MenuItem item)
+    {
+        item.Classes.Add("pet-menu-item");
+        foreach (var child in item.Items.OfType<MenuItem>())
+        {
+            ApplyPetMenuItemClass(child);
+        }
     }
 
     private MenuItem BuildToggleMenuItem(string header, bool isChecked, Action<bool> onChanged)

@@ -22,6 +22,7 @@
 
     <SplitView Grid.Row="1" x:Name="ChatSplitView"
                Margin="16"
+               PaneBackground="Transparent"
                DisplayMode="Inline"
                PanePlacement="Left"
                OpenPaneLength="252"

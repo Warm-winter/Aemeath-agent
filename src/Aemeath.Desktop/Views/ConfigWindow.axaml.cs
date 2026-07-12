@@ -909,8 +909,14 @@ public partial class ConfigWindow : Window
         var isNarrow = width < 940;
         SettingsShellGrid.ColumnDefinitions = new ColumnDefinitions(width < 820 ? "156,*" : "176,*");
 
-        ArrangeTwoPaneGrid(ProviderLayoutGrid, ProviderListPane, ProviderEditorPane, isNarrow, "270,*");
-        ProviderCardsScrollViewer.MaxHeight = isNarrow ? 220 : 500;
+        ArrangeTwoPaneGrid(
+            ProviderLayoutGrid,
+            ProviderListPane,
+            ProviderEditorPane,
+            isNarrow,
+            "270,*",
+            stretchWideRow: true);
+        ProviderCardsScrollViewer.MaxHeight = isNarrow ? 220 : double.PositiveInfinity;
         ArrangeTwoPaneGrid(MemoryLayoutGrid, MemoryListPane, MemoryDetailPane, isNarrow, "360,*");
         ArrangeTwoPaneGrid(AppearanceLayoutGrid, AvatarPane, ChatBackgroundPane, isNarrow, "*,*");
 
@@ -942,7 +948,13 @@ public partial class ConfigWindow : Window
         }
     }
 
-    private static void ArrangeTwoPaneGrid(Grid grid, Control firstPane, Control secondPane, bool isNarrow, string wideColumns)
+    private static void ArrangeTwoPaneGrid(
+        Grid grid,
+        Control firstPane,
+        Control secondPane,
+        bool isNarrow,
+        string wideColumns,
+        bool stretchWideRow = false)
     {
         if (isNarrow)
         {
@@ -957,7 +969,7 @@ public partial class ConfigWindow : Window
         else
         {
             grid.ColumnDefinitions = new ColumnDefinitions(wideColumns);
-            grid.RowDefinitions = new RowDefinitions("Auto");
+            grid.RowDefinitions = new RowDefinitions(stretchWideRow ? "*" : "Auto");
             Grid.SetColumn(firstPane, 0);
             Grid.SetRow(firstPane, 0);
             Grid.SetColumn(secondPane, 1);

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -155,6 +156,47 @@ public sealed class ConfigWindowTests
             var providerItem = window.FindControl<ListBoxItem>("ProviderNavigationItem")!;
             var providerLabel = Assert.IsType<TextBlock>(providerItem.Content);
             Assert.Equal("AI \u670d\u52a1", providerLabel.Text);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+
+    [AvaloniaFact]
+    public void ProviderPage_WideLayout_FillsAvailableHeightWithoutCenteredListGap()
+    {
+        using var temp = new TemporaryDirectory();
+        var (window, _) = CreateWindow(temp.Path);
+        window.Width = 1100;
+        window.Height = 1000;
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+
+            var layout = window.FindControl<Grid>("ProviderLayoutGrid")!;
+            var listPane = window.FindControl<Border>("ProviderListPane")!;
+            var editorPane = window.FindControl<Border>("ProviderEditorPane")!;
+            var cards = window.FindControl<ScrollViewer>("ProviderCardsScrollViewer")!;
+
+            Assert.Single(layout.RowDefinitions);
+            Assert.True(layout.RowDefinitions[0].Height.IsStar);
+            Assert.Equal(layout.Bounds.Height, listPane.Bounds.Height, precision: 1);
+            Assert.Equal(layout.Bounds.Height, editorPane.Bounds.Height, precision: 1);
+            Assert.True(double.IsPositiveInfinity(cards.MaxHeight));
+
+            var cardsOrigin = cards.TranslatePoint(default, listPane)!.Value;
+            var bottomGap = listPane.Bounds.Height - (cardsOrigin.Y + cards.Bounds.Height);
+            Assert.InRange(bottomGap, 13, 16);
+
+            window.Width = 900;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(2, layout.RowDefinitions.Count);
+            Assert.All(layout.RowDefinitions, row => Assert.True(row.Height.IsAuto));
+            Assert.Equal(220, cards.MaxHeight);
         }
         finally
         {

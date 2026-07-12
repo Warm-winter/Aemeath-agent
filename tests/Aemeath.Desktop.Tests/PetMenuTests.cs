@@ -1,5 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Aemeath.Pet;
 
 namespace Aemeath.Desktop.Tests;
@@ -39,10 +42,60 @@ public sealed class PetMenuTests
 
             var followItem = items.OfType<MenuItem>().Single(item => item.Header?.ToString() == "\u8ddf\u968f\u9f20\u6807");
             Assert.Equal(MenuItemToggleType.CheckBox, followItem.ToggleType);
+
+            Assert.Contains("pet-menu", menu.Classes);
+            var allMenuItems = EnumerateMenuItems(items).ToArray();
+            Assert.All(allMenuItems, item => Assert.Contains("pet-menu-item", item.Classes));
+
+            menu.Open(window);
+            Dispatcher.UIThread.RunJobs();
+            foreach (var item in items.OfType<MenuItem>())
+            {
+                AssertRenderedMenuItemHeadersAreCentered(item);
+            }
+            menu.Close();
         }
         finally
         {
             window.Close();
+        }
+    }
+
+
+
+    private static void AssertRenderedMenuItemHeadersAreCentered(MenuItem item)
+    {
+        var headerPresenter = item
+            .GetVisualDescendants()
+            .OfType<ContentPresenter>()
+            .FirstOrDefault(presenter => presenter.Name == "PART_HeaderPresenter");
+        Assert.NotNull(headerPresenter);
+        Assert.Equal(Avalonia.Layout.HorizontalAlignment.Center, headerPresenter.HorizontalAlignment);
+
+        if (item.Items.Count == 0)
+        {
+            return;
+        }
+
+        item.IsSubMenuOpen = true;
+        Dispatcher.UIThread.RunJobs();
+        foreach (var child in item.Items.OfType<MenuItem>())
+        {
+            AssertRenderedMenuItemHeadersAreCentered(child);
+        }
+        item.IsSubMenuOpen = false;
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static IEnumerable<MenuItem> EnumerateMenuItems(IEnumerable<object> items)
+    {
+        foreach (var item in items.OfType<MenuItem>())
+        {
+            yield return item;
+            foreach (var child in EnumerateMenuItems(item.Items.Cast<object>()))
+            {
+                yield return child;
+            }
         }
     }
 

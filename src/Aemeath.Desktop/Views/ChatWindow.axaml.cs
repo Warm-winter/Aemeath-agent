@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -1310,6 +1311,14 @@ public partial class ChatWindow : Window
             ColumnDefinitions = new ColumnDefinitions(isAssistant ? "Auto,*" : "*,Auto"),
             Margin = new Thickness(0, 2, 0, 2)
         };
+        row.Classes.Add("message-row");
+        row.Bind(
+            Control.WidthProperty,
+            new Binding("Bounds.Width")
+            {
+                Source = MessagesPanel,
+                Mode = BindingMode.OneWay
+            });
         var avatar = new AvaloniaImage
         {
             Width = 38,
