@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`Aemeath.sln` is a Windows-only .NET 8 solution. `src/Aemeath.Core` owns AI, settings, memory, and MCP persistence; `src/Aemeath.Desktop` contains Avalonia windows, styles, dialogs, Markdown, chat sessions, and attachment rendering; `src/Aemeath.Pet` owns desktop-pet animation and menus; `src/Aemeath.Speech` handles recording and recognition. Tests live in `tests/Aemeath.Desktop.Tests`, debugging reports in `memory/`, assets/notices in `assets/`, and installer sources in `tools/installer.iss`. Never edit generated `bin/`, `obj/`, `publish/`, or installer output.
+`Aemeath.sln` is a Windows-only .NET 8 solution. `src/Aemeath.Core` owns AI, settings, memory, and MCP persistence; `src/Aemeath.Desktop` contains Avalonia windows, styles, dialogs, Markdown, chat sessions, and attachment rendering; `src/Aemeath.Pet` owns desktop-pet animation and menus; `src/Aemeath.Speech` handles recording and recognition. Tests live in `tests/Aemeath.Desktop.Tests`, local debugging notes stay in ignored `memory/`, assets/notices in `assets/`, and installer sources in `tools/installer.iss`. Never edit generated `bin/`, `obj/`, `publish/`, or installer output.
 
 ## Build, Test, and Development Commands
 
@@ -26,4 +26,4 @@ Chat `SplitView` owns its outer margin: use a transparent pane, a 240 px card, a
 
 ## Testing, Commits & Security
 
-Name tests `<Type>Tests.cs` and methods `Method_State_ExpectedResult`. Cover persistence compatibility, confirmations, unsaved decisions, responsive layouts, accessibility, attachment fallback, title-bar state, chat clipping, provider alignment, and pet transparency/menu order. Before review, run all commands above and a real-HWND frame smoke. Use concise Chinese action-led commits. PRs must describe visible behavior and validation, with screenshots for UI changes. Never commit API keys, local chats/settings/memories, logs, dumps, runtime binaries, or `%AppData%/Aemeath` data; put third-party notices under `assets/notices/`.
+Name tests `<Type>Tests.cs` and methods `Method_State_ExpectedResult`. Cover persistence compatibility, confirmations, unsaved decisions, responsive layouts, accessibility, attachment fallback, title-bar state, chat clipping, provider alignment, and pet transparency/menu order. Before review, run all commands above and a real-HWND frame smoke. Use concise Chinese action-led commits. PRs must describe visible behavior and validation, with screenshots for UI changes. Never commit API keys, local chats/settings/memories, `memory/` notes, logs, dumps, runtime binaries, or `%AppData%/Aemeath` data; put third-party notices under `assets/notices/`.
