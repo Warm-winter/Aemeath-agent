@@ -18,8 +18,7 @@
 *.sln.docstates
 
 # Local agent/session state
-.sisyphus/
-.trae/
+memory/
 
 
 # Duplicate/source-package assets not used by the solution
